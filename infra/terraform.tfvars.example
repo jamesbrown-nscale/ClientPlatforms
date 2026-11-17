@@ -1,0 +1,12 @@
+project_id = "nscale-client-platforms"
+
+# Who can use each tool. IAP members: group:…, user:…, domain:…
+portal_access        = ["domain:nscale.com"]
+notifications_access = ["group:it-notifications@nscale.com"]
+elevation_access     = ["group:client-platforms@nscale.com"]
+
+# Optional extra check inside IT Notifications: only these may send.
+# notify_admin_emails = "james.brown@nscale.com"
+
+# If nscale.com's DNS is a Cloud DNS zone in this project:
+# dns_managed_zone = "nscale-com"

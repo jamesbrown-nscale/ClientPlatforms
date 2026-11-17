@@ -1,0 +1,27 @@
+name: test
+on: [push, pull_request]
+jobs:
+  services:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [portal, elevation]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q tests
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform -chdir=infra init -backend=false
+      - run: terraform -chdir=infra validate
+      - run: terraform -chdir=infra fmt -check -recursive
+        continue-on-error: true
