@@ -33,8 +33,25 @@ def check(c, uri, method="GET", headers=None):
                  follow_redirects=False)
 
 
-def add(c, email, tools=(), admin=False, password="a-good-password"):
-    return c.post("/api/users", headers=H, json={"email": email, "password": password, "tools": list(tools), "admin": admin})
+def role_for(c, tools, level="edit"):
+    """A role giving `level` on these tools (made once per combination)."""
+    if not tools:
+        return []
+    name = f"{level}: {', '.join(sorted(tools))}"
+    for r in c.get("/api/roles").json()["roles"]:
+        if r["name"] == name:
+            return [r["id"]]
+    r = c.post("/api/roles", headers=H, json={"name": name, "levels": {t: level for t in tools}})
+    assert r.status_code == 200, r.text
+    return [r.json()["id"]]
+
+
+def add(c, email, tools=(), admin=False, password="a-good-password", level="edit"):
+    roles = ["administrator"] if admin else role_for(c, list(tools), level) if all(t in TOOLS for t in tools) else ["nope"]
+    return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
+
+
+TOOLS = ["notifications", "elevation", "changes", "restart", "projects", "tasks", "team"]
 
 
 def test_first_admin_and_sign_in(c):
@@ -119,7 +136,7 @@ def test_people_admin(c):
     assert c.patch("/api/users/bob@nscale.com", headers=H, json={"disabled": True}).json()["disabled"] is True
     assert bob.get("/api/me").status_code == 401
     assert sign_in(bob, "bob@nscale.com", "a-good-password").status_code == 401
-    c.patch("/api/users/bob@nscale.com", headers=H, json={"disabled": False, "tools": ["restart", "elevation"]})
+    c.patch("/api/users/bob@nscale.com", headers=H, json={"disabled": False, "roles": role_for(c, ["restart", "elevation"])})
     sign_in(bob, "bob@nscale.com", "a-good-password")
     assert c.post("/api/users/bob@nscale.com/password", headers=H, json={"password": "another-password"}).status_code == 200
     assert bob.get("/api/me").status_code == 401
@@ -127,7 +144,7 @@ def test_people_admin(c):
 
     # There is always an admin, and you can't lock yourself out.
     me = "/api/users/james.brown@nscale.com"
-    assert c.patch(me, headers=H, json={"admin": False}).status_code == 400
+    assert c.patch(me, headers=H, json={"roles": []}).status_code == 400
     assert c.patch(me, headers=H, json={"disabled": True}).status_code == 400
     assert c.delete(me, headers=H).status_code == 400
     assert c.delete("/api/users/bob@nscale.com", headers=H).status_code == 200
@@ -201,3 +218,78 @@ def test_people_list_for_assigning(c):
     assert c.get("/api/people?tool=nope").status_code == 404
     c.cookies.clear()
     assert c.get("/api/people").status_code == 401
+
+
+def test_roles_and_levels(c):
+    sign_in(c)
+    roles = c.get("/api/roles").json()
+    assert roles["roles"][0]["id"] == "administrator" and roles["roles"][0]["system"]
+    assert roles["levels"] == ["none", "view", "edit", "admin"] and {p["id"] for p in roles["sitePerms"]} == {"people", "settings"}
+    # The Administrator role can't be changed or deleted.
+    assert c.put("/api/roles/administrator", headers=H, json={"name": "x"}).status_code == 400
+    assert c.delete("/api/roles/administrator", headers=H).status_code == 400
+    assert c.post("/api/roles", headers=H, json={"name": "Bad", "levels": {"restart": "god"}}).status_code == 422
+    assert c.post("/api/roles", headers=H, json={"name": "Bad", "perms": ["root"]}).status_code == 422
+    r = c.post("/api/roles", headers=H, json={"name": "Service desk", "description": "Looks after devices",
+               "levels": {"restart": "view", "tasks": "edit", "changes": "admin", "team": "none"}}).json()
+    assert r["levels"] == {"restart": "view", "tasks": "edit", "changes": "admin"}
+    assert c.post("/api/roles", headers=H, json={"name": "service desk"}).status_code == 409
+    add(c, "sam@nscale.com", tools=[])
+    c.patch("/api/users/sam@nscale.com", headers=H, json={"roles": [r["id"]]})
+    sign_in(c, "sam@nscale.com", "a-good-password")
+    me = c.get("/api/me").json()
+    assert {t["id"]: t["level"] for t in me["tools"]} == {"restart": "view", "tasks": "edit", "changes": "admin"}
+    assert me["perms"] == [] and ">Settings</a>" not in c.get("/").text
+    # View: pages and reads go through; any change is refused at the front door.
+    assert check(c, "/restart/api/devices").status_code == 200
+    v = check(c, "/restart/api/devices/x", method="DELETE")
+    assert v.status_code == 403 and "view" in v.json()["detail"].lower()
+    assert access.verify(check(c, "/restart/").headers["x-cp-user"], "restart", SECRET)["level"] == "view"
+    # Edit and admin: the token says which, and admin sets the tool's admin flag.
+    t = access.verify(check(c, "/tasks/api/tasks", method="POST").headers["x-cp-user"], "tasks", SECRET)
+    assert t["level"] == "edit" and t["admin"] is False
+    a = access.verify(check(c, "/changes/api/settings", method="PUT").headers["x-cp-user"], "changes", SECRET)
+    assert a["level"] == "admin" and a["admin"] is True
+    assert check(c, "/team/").status_code == 403
+    assert c.get("/api/users").status_code == 403 and c.get("/api/settings").status_code == 403
+
+
+def test_site_abilities_are_separate(c):
+    sign_in(c)
+    s = c.post("/api/roles", headers=H, json={"name": "Site editor", "perms": ["settings"]}).json()
+    p = c.post("/api/roles", headers=H, json={"name": "People manager", "perms": ["people"]}).json()
+    add(c, "sue@nscale.com"); c.patch("/api/users/sue@nscale.com", headers=H, json={"roles": [s["id"]]})
+    add(c, "pip@nscale.com"); c.patch("/api/users/pip@nscale.com", headers=H, json={"roles": [p["id"]]})
+    sign_in(c, "sue@nscale.com", "a-good-password")
+    assert c.get("/api/settings").status_code == 200 and c.get("/api/users").status_code == 403 and c.get("/api/roles").status_code == 403
+    sign_in(c, "pip@nscale.com", "a-good-password")
+    assert c.get("/api/users").status_code == 200 and c.get("/api/settings").status_code == 403
+    # Pip can manage people, but there must always be someone who can.
+    assert c.patch("/api/users/pip@nscale.com", headers=H, json={"roles": []}).status_code == 400   # not yourself
+    assert c.patch("/api/users/james.brown@nscale.com", headers=H, json={"roles": []}).status_code == 200
+    assert c.put(f"/api/roles/{p['id']}", headers=H, json={"name": "People manager", "perms": []}).status_code == 400
+    assert c.delete(f"/api/roles/{p['id']}", headers=H).status_code == 400
+    assert c.patch("/api/users/james.brown@nscale.com", headers=H, json={"roles": ["administrator"]}).status_code == 200
+    assert c.delete(f"/api/roles/{s['id']}", headers=H).status_code == 200
+    assert {u["email"]: u["roles"] for u in c.get("/api/users").json()["users"]}["sue@nscale.com"] == []   # the deleted role is gone
+
+
+def test_existing_accounts_move_to_roles(tmp_path):
+    import sqlite3
+    from app.db import DB
+    path = str(tmp_path / "old.db")
+    db = sqlite3.connect(path)
+    db.executescript("""CREATE TABLE users (email TEXT PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL,
+        admin INTEGER NOT NULL DEFAULT 0, tools TEXT NOT NULL DEFAULT '[]', disabled INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT, updated_at TEXT, last_sign_in TEXT);
+        INSERT INTO users (email, name, password, admin, tools) VALUES ('boss@x.com', 'Boss', 'p', 1, '[]'),
+        ('amy@x.com', 'Amy', 'p', 0, '["tasks","restart"]'), ('bob@x.com', 'Bob', 'p', 0, '["tasks"]');""")
+    db.commit(); db.close()
+    d = DB(path)
+    users = {u["email"]: u for u in d.list_users()}
+    assert users["boss@x.com"]["admin"] and users["boss@x.com"]["levels"]["team"] == "admin"
+    assert users["amy@x.com"]["levels"] == {"tasks": "edit", "restart": "edit"} and users["amy@x.com"]["perms"] == []
+    assert users["bob@x.com"]["roles"] == ["tasks-editor"]
+    assert {r["name"] for r in d.roles()} == {"Administrator", "Tasks editor", "Restart reminder editor"}
+    DB(path)   # running again changes nothing
+    assert len(d.roles()) == 3

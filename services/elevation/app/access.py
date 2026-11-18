@@ -67,9 +67,11 @@ def _mac(body: str, secret: str) -> str:
     return _b64(hmac.new(secret.encode(), b"cp-user-v1." + body.encode(), hashlib.sha256).digest())
 
 
-def issue(email: str, name: str, tool: str, admin: bool = False, secret: str | None = None) -> str:
-    """A token saying this person may use this tool for the next TOKEN_SECONDS. Portal only."""
-    body = _b64(json.dumps({"email": email, "name": name, "tool": tool, "admin": bool(admin),
+def issue(email: str, name: str, tool: str, admin: bool = False, secret: str | None = None, level: str | None = None) -> str:
+    """A token saying this person may use this tool for the next TOKEN_SECONDS, and how (view, edit
+    or admin; admin also sets `admin`). Portal only."""
+    level = level or ("admin" if admin else "edit")
+    body = _b64(json.dumps({"email": email, "name": name, "tool": tool, "admin": bool(admin), "level": level,
                             "exp": int(time.time()) + TOKEN_SECONDS}, separators=(",", ":")).encode())
     return f"{body}.{_mac(body, secret or AUTH_SECRET)}"
 
@@ -123,20 +125,20 @@ def _iap(request) -> dict | None:
     email = (claims.get("email") or "").lower()
     if claims.get("iss") != "https://cloud.google.com/iap" or (claims.get("hd") or "").lower() != ALLOWED_DOMAIN:
         return None
-    return {"email": email, "name": display_name(email), "admin": False} if email else None
+    return {"email": email, "name": display_name(email), "admin": False, "level": "edit"} if email else None
 
 
 def identity(request, tool: str) -> dict | None:
-    """{email, name, admin} for whoever made this request to `tool`, or None."""
+    """{email, name, admin, level} for whoever made this request to `tool`, or None."""
     if DEV_USER:
-        return {"email": DEV_USER, "name": display_name(DEV_USER), "admin": True}
+        return {"email": DEV_USER, "name": display_name(DEV_USER), "admin": True, "level": "admin"}
     if AUTH_MODE == "iap":
         return _iap(request)
     claims = verify(request.headers.get(HEADER, ""), tool)
     if not claims:
         return None
     return {"email": claims["email"].lower(), "name": claims.get("name") or display_name(claims["email"]),
-            "admin": bool(claims.get("admin"))}
+            "admin": bool(claims.get("admin")), "level": claims.get("level") or ("admin" if claims.get("admin") else "edit")}
 
 
 def sign_in_message() -> str:

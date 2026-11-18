@@ -30,7 +30,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 
 - **By IP, with a password** (`AUTH_MODE=local`, the default). Open `http://<host>:8080` and sign in with an email and password the portal keeps (scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords).
 - **Through Cloudflare as well, if you set it up.** When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are set, people coming in through Cloudflare Access are signed in by it, with no password. The portal checks Cloudflare's signed header (`Cf-Access-Jwt-Assertion`) against your team's keys, issuer and the application's AUD tag before it believes the email in it. `AUTH_MODE=cloudflare` turns passwords off, leaving Cloudflare as the only way in (and no sign-in by IP).
-- **The portal decides who gets which tool.** Signing in isn't enough: the person must also be on the portal's **People** list, which sets the tools each person can use. Admins can use every tool and change Settings.
+- **The portal decides who gets which tool.** Signing in isn't enough: the person must also be on the portal's **People** list, with **roles** (see *Permissions* below).
 - **The tools trust only the portal.** Before any request reaches a tool, Caddy asks the portal (`forward_auth` to `/auth/check`). If the person may use that tool, the portal answers with `X-CP-User`: a 2-minute token signed with `AUTH_SECRET`, naming the person and the tool. The tool checks the signature, the tool name and the expiry. Caddy removes any `X-CP-User` a client sends, and a token for one tool is refused by the others.
 - **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these.
 
@@ -207,6 +207,23 @@ Three flows come ready to edit: **Standard** (pre-approved), **Normal** (two rev
 Nobody is told about their own doing. Opening a notification marks it read and takes you there; each can be marked unread or dismissed, and there's *Mark all as read*. Read notifications older than 120 days are cleared away.
 
 **Your 1-2-1 actions** stay at the top of the page until you tick them off (the action's owner can tick it, even in someone else's 1-2-1; their manager is told).
+
+## Permissions
+
+**Settings** has five tabs, each shown only to those who can use it: *Your account* · *Site* · *People* · *Permissions* · *Change management*.
+
+People are given **roles**; a role says what it allows, and someone with several roles gets the most any of them allows. Make roles under **Permissions**:
+
+| Tool level | Means |
+|---|---|
+| **None** | No access; the tool isn't in their sidebar. |
+| **View** | Sees everything, changes nothing. Enforced at the front door: any change is refused, and the tool shows a *View only* bar. |
+| **Edit** | Uses it fully: adds, changes, comments. |
+| **Admin** | Edit, plus the tool's own admin powers: every project as an owner, Change management settings, managing anyone in Team, and so on. |
+
+A role can also give the **site abilities**: *Manage people and roles* (People and Permissions tabs) and *Manage site settings* (Site tab: addresses and tool links). The built-in **Administrator** role has admin on every tool (including any added later) and both abilities; it can't be changed or deleted. Someone must always be able to manage people and roles: the portal refuses any change that would leave nobody who can, and you can't take that right away from yourself.
+
+When the portal first starts with roles, existing admins get *Administrator* and everyone else keeps exactly what they had, through an "editor" role for each tool they used. Notifications are everyone's, whatever their roles.
 
 ## Dialogs
 

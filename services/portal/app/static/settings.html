@@ -51,6 +51,36 @@
   tbody tr:last-child td { border-bottom: 0; }
   td input[type=text] { max-width: none; min-width: 220px; }
   .muted { color: var(--text2); font-size: 12.5px; }
+  .rolepick { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow: auto; }
+  .rolepick label { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--surface); border-radius: 8px; padding: 8px 10px; margin: 0; font-weight: 400; cursor: pointer; }
+  .rolepick label:has(input:checked) { border-color: var(--primary); background: #F7F9FE; }
+  .rolepick input { margin-top: 3px; }
+  .rolepick b { display: block; }
+  .rolepick span.muted { display: block; }
+  .rbadge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 11px; background: var(--surface); color: var(--primary); margin: 0 4px 4px 0; }
+  .rbadge.admin { background: #0F41F3; color: #fff; }
+  .permgrid { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .permgrid .card { margin-bottom: 0; }
+  .ritem { display: block; width: 100%; text-align: left; border: 1px solid var(--surface); background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; font: inherit; color: inherit; }
+  .ritem:hover { border-color: var(--border); }
+  .ritem[aria-current="true"] { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .ritem b { display: flex; gap: 8px; align-items: center; }
+  .ritem .muted { display: block; margin-top: 2px; }
+  .lock { font-size: 11px; font-weight: 600; color: var(--text2); background: var(--grey-fill); border-radius: 8px; padding: 1px 7px; }
+  table.matrix { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  table.matrix th { text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); padding: 8px 6px; border-bottom: 1px solid var(--surface); }
+  table.matrix th:first-child { text-align: left; }
+  table.matrix td { padding: 8px 6px; border-bottom: 1px solid var(--surface); text-align: center; }
+  table.matrix td:first-child { text-align: left; }
+  table.matrix tr.grp td { background: var(--page); font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); text-align: left; padding: 6px; }
+  table.matrix input[type=radio] { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
+  table.matrix input:disabled { cursor: default; }
+  .lvlhelp { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 4px; }
+  .lvlhelp div { background: var(--page); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: var(--text2); }
+  .lvlhelp b { display: block; color: var(--text); }
+  .abil { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+  .abil label { display: flex; gap: 8px; align-items: center; font-weight: 400; margin: 0; }
+  @media (max-width: 900px) { .permgrid { grid-template-columns: 1fr; } .lvlhelp { grid-template-columns: 1fr 1fr; } }
   .stabs { display: flex; gap: 4px; border-bottom: 1px solid var(--surface); margin: -8px 0 24px; }
   .stabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; color: var(--text2); font: inherit; font-weight: 600;
     border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -82,10 +112,13 @@
 <main>
   <h1 id="title">Settings</h1>
   <div class="stabs" id="stabs" role="tablist" hidden>
-    <button role="tab" data-stab="general" aria-selected="true" aria-controls="generalTab">Site and people</button>
-    <button role="tab" data-stab="changes" aria-selected="false" aria-controls="changesTab">Change management</button>
+    <button role="tab" data-stab="account" aria-controls="accountTab" hidden>Your account</button>
+    <button role="tab" data-stab="site" aria-controls="siteTab" hidden>Site</button>
+    <button role="tab" data-stab="people" aria-controls="peopleTab" hidden>People</button>
+    <button role="tab" data-stab="permissions" aria-controls="permissionsTab" hidden>Permissions</button>
+    <button role="tab" data-stab="changes" aria-controls="changesTab" hidden>Change management</button>
   </div>
-  <div id="generalTab" role="tabpanel">
+  <div id="accountTab" role="tabpanel" data-panel hidden>
 
   <section class="card" id="account" hidden>
     <h2>Your account</h2>
@@ -98,8 +131,10 @@
       <div id="pwNotice" class="notice" hidden></div>
     </form>
   </section>
+  </div>
 
-  <section class="card admin" hidden>
+  <div id="siteTab" role="tabpanel" data-panel hidden>
+  <section class="card">
     <h2>Addresses</h2>
     <p class="sub">Where people and devices reach this site. Leave a box empty to use the address this page was opened on.</p>
     <form id="siteForm">
@@ -121,7 +156,7 @@
     </form>
   </section>
 
-  <section class="card admin" hidden>
+  <section class="card">
     <h2>Device settings</h2>
     <p class="sub">What to put in each app's installer, from the device server address. The keys are set on the stack (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS).</p>
     <label>IT Notifications: Windows MSI and Mac profile</label>
@@ -131,10 +166,12 @@
     <label>Restart Reminder: appsettings.json</label>
     <span class="copy" id="dvRestart"></span>
   </section>
+  </div>
 
-  <section class="card admin local" hidden>
+  <div id="peopleTab" role="tabpanel" data-panel hidden>
+  <section class="card">
     <div class="row" style="margin-top:0; justify-content:space-between">
-      <div><h2>People</h2><p class="sub" style="margin:0" id="peopleSub">Who can sign in, and which tools each person can use. Admins can use every tool and change these settings.</p></div>
+      <div><h2>People</h2><p class="sub" style="margin:0" id="peopleSub">Who can sign in, and their roles. What each role can do is set under Permissions.</p></div>
       <button class="btn primary" id="addUser" type="button">Add person</button>
     </div>
     <div class="tablewrap" style="margin-top:16px"><table>
@@ -144,7 +181,18 @@
     <div id="userNotice" class="notice" hidden></div>
   </section>
   </div>
-  <div id="changesTab" role="tabpanel" hidden></div>
+
+  <div id="permissionsTab" role="tabpanel" data-panel hidden>
+    <div class="permgrid">
+      <section class="card roles">
+        <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Roles</h2><button class="btn primary small" id="newRole" type="button">New role</button></div>
+        <p class="sub" style="margin:6px 0 10px">Give people roles under People. Someone with several roles gets the most any of them allows.</p>
+        <div id="roleList"></div>
+      </section>
+      <section class="card" id="roleEditor"><p class="muted">Pick a role to see or change what it can do.</p></section>
+    </div>
+  </div>
+  <div id="changesTab" role="tabpanel" data-panel hidden></div>
 </main>
 
 <dialog id="userDlg">
@@ -154,9 +202,9 @@
     <label for="udName">Name</label><input id="udName" type="text" placeholder="From the email if empty" autocomplete="off">
     <div id="udPwWrap"><label for="udPw">Password</label><input id="udPw" type="password" autocomplete="new-password">
       <div class="hint" id="udPwHint"></div></div>
-    <label>Access</label>
-    <div class="checks" id="udTools"></div>
-    <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="udAdmin"> Admin (every tool, and these settings)</label></div>
+    <label>Roles</label>
+    <div class="rolepick" id="udRoles"></div>
+    <div class="hint" id="udSummary"></div>
     <div id="udNotice" class="notice err" hidden></div>
     <div class="row"><button class="btn primary" type="submit" id="udSave">Save</button><button class="btn" type="button" id="udCancel">Cancel</button></div>
   </form>
@@ -175,7 +223,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let me = null, tools = [], users = [], editing = null, resetting = null;
+let me = null, tools = [], users = [], roles = [], editing = null, resetting = null, LEVELS = ['none', 'view', 'edit', 'admin'], SITE = [];
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, cache: 'no-store',
@@ -234,7 +282,24 @@ $('siteForm').addEventListener('submit', async e => {
 });
 
 /* ---------- People ---------- */
-function toolName(id) { return (tools.find(t => t.id === id) || { name: id }).name; }
+const roleName = id => (roles.find(r => r.id === id) || { name: id }).name;
+const LEVEL_WORD = { view: 'view', edit: 'edit', admin: 'admin' };
+
+/** What a set of roles adds up to: the highest level per tool, and the site abilities. */
+function effective(ids) {
+  const lv = {}, perms = new Set();
+  for (const r of roles.filter(r => ids.includes(r.id))) {
+    r.perms.forEach(p => perms.add(p));
+    for (const [t, l] of Object.entries(r.levels)) if (LEVELS.indexOf(l) > LEVELS.indexOf(lv[t] || 'none')) lv[t] = l;
+  }
+  return { levels: lv, perms: [...perms] };
+}
+function summary(ids) {
+  const e = effective(ids);
+  const bits = tools.filter(t => e.levels[t.id]).map(t => `${t.name} (${LEVEL_WORD[e.levels[t.id]]})`);
+  const site = SITE.filter(p => e.perms.includes(p.id)).map(p => p.name.toLowerCase());
+  return (bits.length ? bits.join(', ') : 'No tools') + (site.length ? '. Can ' + site.join(' and ') + '.' : '.');
+}
 
 function renderUsers() {
   const tb = $('userRows'); tb.replaceChildren();
@@ -242,9 +307,9 @@ function renderUsers() {
     const who = el('td', {}, el('b', { textContent: u.name }), el('div', { className: 'muted', textContent: u.email }));
     const access = el('td');
     if (u.disabled) access.append(el('span', { className: 'badge off', textContent: 'Turned off' }), ' ');
-    if (u.admin) access.append(el('span', { className: 'badge', textContent: 'Admin' }));
-    else if (!u.tools.length) access.append(el('span', { className: 'badge grey', textContent: 'No tools' }));
-    else access.append(el('span', { className: 'muted', textContent: u.tools.map(toolName).join(', ') }));
+    if (!u.roles.length) access.append(el('span', { className: 'badge grey', textContent: 'No roles' }));
+    u.roles.forEach(id => access.append(el('span', { className: 'rbadge' + (id === 'administrator' ? ' admin' : ''), textContent: roleName(id) })));
+    if (u.roles.length) access.append(el('div', { className: 'muted', textContent: summary(u.roles) }));
     const acts = el('div', { className: 'acts' });
     const btn = (text, fn, cls = '') => { const b = el('button', { type: 'button', className: 'btn small ' + cls, textContent: text }); b.onclick = fn; acts.append(b); };
     btn('Edit', () => openUser(u));
@@ -258,7 +323,7 @@ function renderUsers() {
 }
 
 async function loadUsers() {
-  const r = await api('/api/users'); users = r.users; tools = r.tools; renderUsers();
+  const r = await api('/api/users'); users = r.users; tools = r.tools; roles = r.roles; LEVELS = r.levels; SITE = r.sitePerms; renderUsers();
 }
 
 async function change(u, body) {
@@ -278,32 +343,112 @@ function openUser(u) {
   $('udEmail').value = u ? u.email : ''; $('udEmail').disabled = !!u;
   $('udName').value = u ? u.name : '';
   $('udPwWrap').hidden = !!u || !me.passwords; $('udPw').required = !u && me.passwords && !me.cloudflare; $('udPw').value = '';
-  $('udAdmin').checked = u ? u.admin : false;
-  $('udAdmin').disabled = !!u && u.email === me.email;
-  const box = $('udTools'); box.replaceChildren();
-  for (const t of tools) {
-    const c = el('input', { type: 'checkbox', value: t.id, checked: u ? u.tools.includes(t.id) : false });
-    box.append(el('label', {}, c, ' ' + t.name));
+  const box = $('udRoles'); box.replaceChildren();
+  for (const r of roles) {
+    const c = el('input', { type: 'checkbox', value: r.id, checked: u ? u.roles.includes(r.id) : false });
+    c.onchange = showSummary;
+    box.append(el('label', {}, c, el('div', {}, el('b', { textContent: r.name }), el('span', { className: 'muted', textContent: r.description || summary([r.id]) }))));
   }
+  showSummary();
   notice($('udNotice'), ''); $('userDlg').showModal();
 }
+function picked() { return [...$('udRoles').querySelectorAll('input:checked')].map(c => c.value); }
+function showSummary() { $('udSummary').textContent = 'Can use: ' + summary(picked()); }
 
 $('addUser').onclick = () => openUser(null);
 $('udCancel').onclick = () => $('userDlg').close();
 $('userForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const picked = [...$('udTools').querySelectorAll('input:checked')].map(c => c.value);
   try {
     if (editing) {
       await api('/api/users/' + encodeURIComponent(editing.email), { method: 'PATCH',
-        body: JSON.stringify({ name: $('udName').value.trim(), admin: $('udAdmin').checked, tools: picked }) });
+        body: JSON.stringify({ name: $('udName').value.trim(), roles: picked() }) });
     } else {
       await api('/api/users', { method: 'POST', body: JSON.stringify({ email: $('udEmail').value.trim(),
-        name: $('udName').value.trim(), password: $('udPw').value, admin: $('udAdmin').checked, tools: picked }) });
+        name: $('udName').value.trim(), password: $('udPw').value, roles: picked() }) });
     }
-    $('userDlg').close(); await loadUsers();
+    $('userDlg').close(); await loadUsers(); if (ROLE) loadRoles(ROLE.id);
   } catch (err) { notice($('udNotice'), err.message); }
 });
+
+/* ---------- Permissions: roles ---------- */
+let ROLE = null, ROLE_DIRTY = false;
+const HELP = { none: 'No access. The tool is hidden.', view: 'Sees everything, changes nothing.',
+               edit: 'Uses it fully: adds, changes, comments.', admin: "Edit, plus the tool's admin powers." };
+
+async function loadRoles(selectId) {
+  const r = await api('/api/roles');
+  roles = r.roles; tools = r.tools; LEVELS = r.levels; SITE = r.sitePerms;
+  $('roleList').replaceChildren(...roles.map(x => {
+    const b = el('button', { type: 'button', className: 'ritem' });
+    b.setAttribute('aria-current', String(ROLE?.id === x.id));
+    b.innerHTML = `<b>${esc(x.name)}${x.system ? '<span class="lock">Built in</span>' : ''}</b>
+      <span class="muted">${x.members} ${x.members === 1 ? 'person' : 'people'} · ${esc(x.description || summary([x.id]))}</span>`;
+    b.onclick = () => pickRole(x.id);
+    return b;
+  }));
+  if (selectId) pickRole(selectId);
+}
+async function pickRole(id) {
+  if (ROLE_DIRTY && !(await cp.confirm({ title: 'Leave without saving?', message: 'This role has unsaved changes.', confirm: 'Leave', cancel: 'Stay', danger: true }))) return;
+  ROLE = structuredClone(roles.find(r => r.id === id)); ROLE_DIRTY = false; drawRole();
+  $('roleList').querySelectorAll('.ritem').forEach((b, i) => b.setAttribute('aria-current', String(roles[i].id === id)));
+}
+function newRole() {
+  ROLE = { id: null, name: '', description: '', levels: {}, perms: [], system: false, people: [], members: 0 }; ROLE_DIRTY = false; drawRole();
+  $('roleList').querySelectorAll('.ritem').forEach(b => b.setAttribute('aria-current', 'false'));
+  $('rName').focus();
+}
+function drawRole() {
+  const r = ROLE, ro = r.system;
+  const groups = [...new Set(tools.map(t => t.group))];
+  const rows = groups.map(g => `<tr class="grp"><td colspan="5">${esc(g)}</td></tr>` + tools.filter(t => t.group === g).map(t => {
+    const cur = r.levels[t.id] || 'none';
+    return `<tr><td>${esc(t.name)}</td>${LEVELS.map(l => `<td><input type="radio" name="lv_${t.id}" value="${l}" ${cur === l ? 'checked' : ''} ${ro ? 'disabled' : ''} aria-label="${esc(t.name)}: ${l}"></td>`).join('')}</tr>`;
+  }).join('')).join('');
+  $('roleEditor').innerHTML = `
+    <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">${r.id ? esc(r.name) : 'New role'}</h2>
+      ${r.id && !ro ? '<div class="row" style="margin:0"><button class="btn small" id="rCopy" type="button">Duplicate</button><button class="btn small danger" id="rDel" type="button">Delete</button></div>' : ''}</div>
+    ${ro ? '<p class="sub" style="margin:6px 0 0">The Administrator role has admin on every tool, including new ones, and every site ability. It can\'t be changed.</p>' : ''}
+    <label for="rName">Name</label><input id="rName" type="text" maxlength="60" value="${esc(r.name)}" placeholder="Service desk" ${ro ? 'disabled' : ''}>
+    <label for="rDesc">Description</label><input id="rDesc" type="text" maxlength="300" value="${esc(r.description)}" placeholder="Who it's for, in a few words" ${ro ? 'disabled' : ''}>
+    <label>Tools</label>
+    <div class="lvlhelp">${LEVELS.map(l => `<div><b>${l[0].toUpperCase() + l.slice(1)}</b>${esc(HELP[l])}</div>`).join('')}</div>
+    <div class="tablewrap"><table class="matrix"><thead><tr><th>Tool</th>${LEVELS.map(l => `<th>${l[0].toUpperCase() + l.slice(1)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="row" style="margin:8px 0 0">${ro ? '' : '<button class="btn small" type="button" data-all="view">All view</button><button class="btn small" type="button" data-all="edit">All edit</button><button class="btn small" type="button" data-all="none">Clear</button>'}</div>
+    <label>Site abilities</label>
+    <div class="abil">${SITE.map(p => `<label><input type="checkbox" value="${p.id}" ${r.perms.includes(p.id) ? 'checked' : ''} ${ro ? 'disabled' : ''}> ${esc(p.name)}
+      <span class="muted">· ${p.id === 'people' ? 'Settings → People and Permissions' : 'Settings → Site: addresses and tool links'}</span></label>`).join('')}</div>
+    ${r.id ? `<label>People with this role</label><div>${(r.people || []).map(p => `<span class="rbadge">${esc(p.name)}</span>`).join('') || '<span class="muted">Nobody yet. Give it to people under People.</span>'}</div>` : ''}
+    <div id="rNotice" class="notice" hidden></div>
+    ${ro ? '' : `<div class="row"><button class="btn primary" id="rSave" type="button">${r.id ? 'Save role' : 'Create role'}</button><span class="muted" id="rDirty"></span></div>`}`;
+  if (ro) return;
+  const dirty = () => { ROLE_DIRTY = true; $('rDirty').textContent = 'Unsaved changes'; };
+  $('rName').oninput = e => { ROLE.name = e.target.value; dirty(); };
+  $('rDesc').oninput = e => { ROLE.description = e.target.value; dirty(); };
+  $('roleEditor').querySelectorAll('table.matrix input').forEach(i => i.onchange = () => { ROLE.levels[i.name.slice(3)] = i.value; dirty(); });
+  $('roleEditor').querySelectorAll('[data-all]').forEach(b => b.onclick = () => { tools.forEach(t => ROLE.levels[t.id] = b.dataset.all); drawRole(); dirty(); });
+  $('roleEditor').querySelectorAll('.abil input').forEach(i => i.onchange = () => {
+    ROLE.perms = [...$('roleEditor').querySelectorAll('.abil input:checked')].map(x => x.value); dirty(); });
+  $('rSave').onclick = async () => {
+    const body = { name: ROLE.name, description: ROLE.description, levels: ROLE.levels, perms: ROLE.perms };
+    try {
+      const saved = ROLE.id ? await api('/api/roles/' + encodeURIComponent(ROLE.id), { method: 'PUT', body: JSON.stringify(body) })
+                            : await api('/api/roles', { method: 'POST', body: JSON.stringify(body) });
+      ROLE_DIRTY = false; await loadRoles(saved.id); await loadUsers();
+      notice($('rNotice'), 'Saved. People with this role get the change on their next page.', true);
+    } catch (e) { notice($('rNotice'), e.message); }
+  };
+  if ($('rCopy')) $('rCopy').onclick = () => { ROLE = { ...structuredClone(ROLE), id: null, name: ROLE.name + ' (copy)', people: [], members: 0 }; drawRole(); dirty(); };
+  if ($('rDel')) $('rDel').onclick = async () => {
+    if (!(await cp.confirm({ title: `Delete the ${ROLE.name} role?`, message: ROLE.members ? `${ROLE.members} ${ROLE.members === 1 ? 'person loses' : 'people lose'} what it gives them.` : 'Nobody has it.', confirm: 'Delete role', danger: true }))) return;
+    try { await api('/api/roles/' + encodeURIComponent(ROLE.id), { method: 'DELETE' }); ROLE = null; ROLE_DIRTY = false;
+      $('roleEditor').innerHTML = '<p class="muted">Deleted.</p>'; await loadRoles(); await loadUsers(); }
+    catch (e) { cp.alert(e.message); }
+  };
+}
+$('newRole').onclick = newRole;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function openReset(u) { resetting = u; $('rpWho').textContent = u.email; $('rpPw').value = ''; notice($('rpNotice'), ''); $('pwDlg').showModal(); }
 $('rpCancel').onclick = () => $('pwDlg').close();
@@ -315,16 +460,19 @@ $('resetForm').addEventListener('submit', async e => {
   } catch (err) { notice($('rpNotice'), err.message); }
 });
 
-/* ---------- Tabs: site and people · change management ---------- */
-function setupTabs() {
-  $('stabs').hidden = false;
+/* ---------- Tabs: what you can see depends on what you may change ---------- */
+function setupTabs(available) {
+  const btns = [...document.querySelectorAll('[data-stab]')];
+  btns.forEach(b => { b.hidden = !available.includes(b.dataset.stab); });
+  $('stabs').hidden = available.length < 2;
   const show = async tab => {
+    if (!available.includes(tab)) tab = available[0];
     if (tab !== 'changes' && window.cpChangeSettings?.isDirty?.() &&
         !(await cp.confirm({ title: 'Leave without saving?', message: 'Your change management settings have unsaved changes.', confirm: 'Leave', cancel: 'Stay', danger: true }))) return;
-    document.querySelectorAll('[data-stab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.stab === tab)));
-    $('generalTab').hidden = tab !== 'general';
-    $('changesTab').hidden = tab !== 'changes';
-    history.replaceState(null, '', tab === 'changes' ? '#changes' : location.pathname);
+    btns.forEach(b => b.setAttribute('aria-selected', String(b.dataset.stab === tab)));
+    document.querySelectorAll('[data-panel]').forEach(p => { p.hidden = p.id !== tab + 'Tab'; });
+    history.replaceState(null, '', '#' + tab);
+    if (tab === 'permissions' && !$('roleList').children.length) loadRoles();
     if (tab === 'changes' && !$('changesTab').dataset.loaded) {
       $('changesTab').dataset.loaded = '1';
       // The flow builder lives with Change management (projects service) and draws itself here.
@@ -335,8 +483,8 @@ function setupTabs() {
       document.head.append(sc);
     }
   };
-  document.querySelectorAll('[data-stab]').forEach(b => b.onclick = () => show(b.dataset.stab));
-  if (location.hash === '#changes') show('changes');
+  btns.forEach(b => b.onclick = () => show(b.dataset.stab));
+  show(location.hash.slice(1) || available[0]);
 }
 
 /* ---------- Start ---------- */
@@ -347,13 +495,17 @@ function setupTabs() {
   $('pwHint').textContent = hint;
   $('udPwHint').textContent = me.cloudflare ? hint + ' Leave it empty if they only sign in through Cloudflare.' : hint;
   $('pwNew').minLength = me.minPassword; $('udPw').minLength = me.minPassword; $('rpPw').minLength = me.minPassword;
-  if (me.passwords) { $('account').hidden = false; $('accountSub').textContent = `${me.name} · ${me.email}`; }
-  if (!me.admin) { $('title').textContent = 'Your account'; return; }
-  document.querySelectorAll('.admin').forEach(s => { s.hidden = s.classList.contains('local') && !me.accounts; });
+  if (me.passwords) $('accountSub').textContent = `${me.name} · ${me.email}`;
+  $('account').hidden = !me.passwords;
+  const can = p => (me.perms || []).includes(p);
+  const changesAdmin = (me.tools || []).some(t => t.id === 'changes' && t.level === 'admin');
+  const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
+                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes'].filter(Boolean);
+  if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
   if (!me.passwords) $('peopleSub').textContent += ' Cloudflare Access does the signing in, so there are no passwords here: add the same email Cloudflare signs them in with.';
-  renderSettings(await api('/api/settings'));
-  if (me.accounts) await loadUsers();
-  setupTabs();
+  if (can('settings')) renderSettings(await api('/api/settings'));
+  if (can('people') && me.accounts) await loadUsers();
+  if (available.length) setupTabs(available);
 })().catch(err => { document.querySelector('main').append(el('p', { className: 'notice err', textContent: err.message })); });
 </script>
 </body>

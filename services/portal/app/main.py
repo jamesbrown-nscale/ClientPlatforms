@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from . import access, cloudflare
-from .db import DB, TOOL_IDS, TOOLS, iso, now
+from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, iso, now
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "cp_session"
@@ -57,7 +57,7 @@ def bootstrap() -> None:
     email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     password = os.environ.get("ADMIN_PASSWORD", "") if PASSWORDS else secrets.token_urlsafe(32)
     if ACCOUNTS and email and password and db.count_users() == 0:
-        db.create_user(email, access.display_name(email), password, admin=True, tools=TOOL_IDS)
+        db.create_user(email, access.display_name(email), password, roles=[ADMIN_ROLE])
 
 
 bootstrap()
@@ -79,12 +79,14 @@ app.mount("/static", _Static(directory=STATIC), name="static")
 def current(request: Request) -> dict | None:
     if access.DEV_USER:
         return {"email": access.DEV_USER, "name": access.display_name(access.DEV_USER), "admin": True,
-                "tools": TOOL_IDS}
+                "tools": TOOL_IDS, "levels": {t: "admin" for t in TOOL_IDS}, "perms": list(SITE_PERMS), "roles": [ADMIN_ROLE]}
     if MODE == "iap":
         who = access.identity(request, "portal")
         if not who:
             return None
-        return {**who, "admin": who["email"] in ADMIN_EMAILS, "tools": TOOL_IDS}
+        admin = who["email"] in ADMIN_EMAILS
+        return {**who, "admin": admin, "tools": TOOL_IDS, "levels": {t: "admin" if admin else "edit" for t in TOOL_IDS},
+                "perms": list(SITE_PERMS) if admin else [], "roles": []}
     user = db.session_user(request.cookies.get(COOKIE, "")) if PASSWORDS else None
     if not user and CLOUDFLARE:
         email = cloudflare.email(request)
@@ -113,8 +115,19 @@ def not_signed_in(request: Request, nxt: str = "/") -> Response:
 EVERYONE = {"inbox"}   # everyone signed in has their own notifications, whatever tools they have
 
 
+def level(user: dict, tool: str) -> str:
+    """none, view, edit or admin: the highest any of their roles gives them on this tool."""
+    if tool in EVERYONE:
+        return "edit"
+    return user.get("levels", {}).get(tool, "none")
+
+
 def can_use(user: dict, tool: str) -> bool:
-    return user["admin"] or tool in user["tools"] or tool in EVERYONE
+    return level(user, tool) != "none"
+
+
+def has(user: dict, perm: str) -> bool:
+    return perm in user.get("perms", [])
 
 
 def require_user(request: Request) -> dict:
@@ -126,9 +139,15 @@ def require_user(request: Request) -> dict:
     return user
 
 
-def require_admin(user: dict = Depends(require_user)) -> dict:
-    if not user["admin"]:
-        raise HTTPException(403, "Only admins can do that.")
+def require_people(user: dict = Depends(require_user)) -> dict:
+    if not has(user, "people"):
+        raise HTTPException(403, "Only people who manage people and roles can do that.")
+    return user
+
+
+def require_settings(user: dict = Depends(require_user)) -> dict:
+    if not has(user, "settings"):
+        raise HTTPException(403, "Only people who manage the site settings can do that.")
     return user
 
 
@@ -238,7 +257,11 @@ def auth_check(request: Request):
         name = next((t["name"] for t in TOOLS if t["id"] == tool), "this tool")
         msg = f"You don't have access to {name}. Ask a Client Platforms admin to add it to your account."
         return message_page(msg, 403, "Back to home", "/") if page else JSONResponse({"detail": msg}, status_code=403)
-    token = access.issue(user["email"], user["name"], tool, user["admin"])
+    lv = level(user, tool)
+    if lv == "view" and method not in ("GET", "HEAD"):
+        name = next((t["name"] for t in TOOLS if t["id"] == tool), "this tool")
+        return JSONResponse({"detail": f"You can view {name} but not change anything in it. Ask for edit access."}, status_code=403)
+    token = access.issue(user["email"], user["name"], tool, lv == "admin", level=lv)
     return Response(status_code=200, headers={"X-CP-User": token, "Cache-Control": "no-store"})
 
 
@@ -260,7 +283,7 @@ def index(request: Request):
         <span class="ic">{ICONS[t['icon']]}</span>
         <b>{escape(t['name'])}</b><span>{escape(t['about'])}</span><i>Open →</i>
       </a>""" for t in tools) or "<p class='sub'>No tools have been given to your account yet. Ask a Client Platforms admin.</p>"
-    links = ('<a href="/settings">Settings</a> · ' if user["admin"] else
+    links = ('<a href="/settings">Settings</a> · ' if user.get("perms") else
              '<a href="/settings">Account</a> · ' if PASSWORDS else "")
     return HTMLResponse(PAGE.replace("{{TILES}}", tiles).replace("{{EMAIL}}", escape(user["email"]))
                         .replace("{{LINKS}}", links).replace("{{FIRST}}", escape(user["name"].split(" ")[0])),
@@ -278,8 +301,8 @@ def settings_page(request: Request):
 
 @app.get("/api/me")
 def me(user: dict = Depends(require_user)):
-    tools = [t for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
-    return {"email": user["email"], "name": user["name"], "admin": user["admin"], "tools": tools,
+    tools = [{**t, "level": level(user, t["id"])} for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
+    return {"email": user["email"], "name": user["name"], "admin": user["admin"], "perms": user.get("perms", []), "tools": tools,
             "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "cloudflare": CLOUDFLARE, "minPassword": MIN_PASSWORD}
 
 
@@ -344,13 +367,13 @@ def device_urls(request: Request) -> dict:
 
 
 @app.get("/api/settings")
-def get_settings(request: Request, user: dict = Depends(require_admin)):
+def get_settings(request: Request, user: dict = Depends(require_settings)):
     s = db.settings()
     return {**s, "siteUrl": s["publicUrl"] or base_url(request), "devices": device_urls(request)}
 
 
 @app.put("/api/settings")
-def put_settings(body: Settings, request: Request, user: dict = Depends(require_admin)):
+def put_settings(body: Settings, request: Request, user: dict = Depends(require_settings)):
     current_tools = {t["id"]: t for t in db.settings()["tools"]}
     tools = {}
     for t in body.tools:
@@ -368,7 +391,7 @@ def people(tool: str = "", user: dict = Depends(require_user)):
         return {"people": []}
     if tool and tool not in TOOL_IDS:
         raise HTTPException(404, "No such tool.")
-    rows = [u for u in db.list_users() if not u["disabled"] and (not tool or u["admin"] or tool in u["tools"])]
+    rows = [u for u in db.list_users() if not u["disabled"] and (not tool or tool in u["levels"])]
     return {"people": sorted(({"email": u["email"], "name": u["name"]} for u in rows), key=lambda p: p["name"].lower())}
 
 
@@ -388,54 +411,58 @@ def _email(v: str) -> str:
     return v
 
 
-def _tools(v: list[str]) -> list[str]:
-    bad = [t for t in v if t not in TOOL_IDS]
+def _roles(v: list[str]) -> list[str]:
+    known = {r["id"] for r in db.roles()}
+    bad = [r for r in v if r not in known]
     if bad:
-        raise ValueError(f"Unknown tool: {', '.join(bad)}")
-    return v
+        raise ValueError(f"Unknown role: {', '.join(bad)}")
+    return list(dict.fromkeys(v))
 
 
 class NewUser(BaseModel):
     email: str
     name: str = Field(default="", max_length=100)
     password: str = Field(default="", max_length=200)   # not used with Cloudflare Access
-    admin: bool = False
-    tools: list[str] = Field(default_factory=list)
+    roles: list[str] = Field(default_factory=list)
 
     @field_validator("email")
     @classmethod
     def _e(cls, v: str) -> str:
         return _email(v)
 
-    @field_validator("tools")
+    @field_validator("roles")
     @classmethod
-    def _t(cls, v: list[str]) -> list[str]:
-        return _tools(v)
+    def _r(cls, v: list[str]) -> list[str]:
+        return _roles(v)
 
 
 class UserChange(BaseModel):
     name: str | None = Field(default=None, max_length=100)
-    admin: bool | None = None
     disabled: bool | None = None
-    tools: list[str] | None = None
+    roles: list[str] | None = None
 
-    @field_validator("tools")
+    @field_validator("roles")
     @classmethod
-    def _t(cls, v: list[str] | None) -> list[str] | None:
-        return v if v is None else _tools(v)
+    def _r(cls, v: list[str] | None) -> list[str] | None:
+        return v if v is None else _roles(v)
 
 
 class NewPassword(BaseModel):
     password: str = Field(min_length=MIN_PASSWORD, max_length=200)
 
 
+def _catalog() -> dict:
+    return {"tools": [{"id": t["id"], "name": t["name"], "group": t["group"]} for t in TOOLS], "levels": LEVELS,
+            "sitePerms": [{"id": k, "name": v} for k, v in SITE_PERMS.items()]}
+
+
 @app.get("/api/users", dependencies=[Depends(require_accounts)])
-def list_users(user: dict = Depends(require_admin)):
-    return {"users": [db.public(u) for u in db.list_users()], "tools": [{"id": t["id"], "name": t["name"]} for t in TOOLS]}
+def list_users(user: dict = Depends(require_people)):
+    return {"users": [db.public(u) for u in db.list_users()], "roles": db.roles(), **_catalog()}
 
 
 @app.post("/api/users", dependencies=[Depends(require_accounts)])
-def create_user(body: NewUser, user: dict = Depends(require_admin)):
+def create_user(body: NewUser, user: dict = Depends(require_people)):
     if db.get_user(body.email):
         raise HTTPException(409, f"{body.email} already has an account.")
     if PASSWORDS and not (body.password or CLOUDFLARE):
@@ -444,8 +471,7 @@ def create_user(body: NewUser, user: dict = Depends(require_admin)):
         raise HTTPException(422, f"The password needs at least {MIN_PASSWORD} characters.")
     # Without a password (Cloudflare only) they get a random one nobody knows.
     password = body.password if PASSWORDS and body.password else secrets.token_urlsafe(32)
-    u = db.create_user(body.email, body.name.strip() or access.display_name(body.email), password,
-                       body.admin, body.tools)
+    u = db.create_user(body.email, body.name.strip() or access.display_name(body.email), password, body.roles)
     return db.public(u)
 
 
@@ -457,19 +483,24 @@ def _target(email: str) -> dict:
 
 
 @app.patch("/api/users/{email}", dependencies=[Depends(require_accounts)])
-def update_user(email: str, body: UserChange, user: dict = Depends(require_admin)):
+def update_user(email: str, body: UserChange, user: dict = Depends(require_people)):
     u = _target(email)
-    losing_admin = u["admin"] and not u["disabled"] and (body.admin is False or body.disabled is True)
-    if losing_admin and u["email"] == user["email"]:
-        raise HTTPException(400, "You can't take away your own admin rights or turn off your own account.")
-    if losing_admin and db.count_admins() <= 1:
-        raise HTTPException(400, "There must always be at least one admin.")
-    return db.public(db.update_user(u["email"], name=(body.name or "").strip() or None, admin=body.admin,
-                                    disabled=body.disabled, tools=body.tools))
+    me = u["email"] == user["email"]
+    if me and body.disabled:
+        raise HTTPException(400, "You can't turn off your own account.")
+    if body.roles is not None and me and "people" in u["perms"] and \
+            "people" not in db._effective(body.roles, {r["id"]: r for r in db.roles()})["perms"]:
+        raise HTTPException(400, "You can't take away your own right to manage people and roles.")
+    if body.disabled or body.roles is not None:
+        after = db.count_people_managers(without=u["email"] if body.disabled else None,
+                                         roles_for=(u["email"], body.roles) if body.roles is not None else None)
+        if after < 1:
+            raise HTTPException(400, "Someone must always be able to manage people and roles.")
+    return db.public(db.update_user(u["email"], name=(body.name or "").strip() or None, disabled=body.disabled, roles=body.roles))
 
 
 @app.post("/api/users/{email}/password", dependencies=[Depends(require_passwords)])
-def reset_password(email: str, body: NewPassword, user: dict = Depends(require_admin)):
+def reset_password(email: str, body: NewPassword, user: dict = Depends(require_people)):
     u = _target(email)
     if u["email"] == user["email"]:
         raise HTTPException(400, "Change your own password under Your account.")
@@ -478,13 +509,89 @@ def reset_password(email: str, body: NewPassword, user: dict = Depends(require_a
 
 
 @app.delete("/api/users/{email}", dependencies=[Depends(require_accounts)])
-def delete_user(email: str, user: dict = Depends(require_admin)):
+def delete_user(email: str, user: dict = Depends(require_people)):
     u = _target(email)
     if u["email"] == user["email"]:
         raise HTTPException(400, "You can't delete your own account.")
-    if u["admin"] and not u["disabled"] and db.count_admins() <= 1:
-        raise HTTPException(400, "There must always be at least one admin.")
+    if db.count_people_managers(without=u["email"]) < 1:
+        raise HTTPException(400, "Someone must always be able to manage people and roles.")
     db.delete_user(u["email"])
+    return {"ok": True}
+
+
+# ---------- API: roles ----------
+
+class RoleIn(BaseModel):
+    name: str = Field(max_length=60)
+    description: str = Field(default="", max_length=300)
+    levels: dict[str, str] = Field(default_factory=dict)
+    perms: list[str] = Field(default_factory=list)
+
+    @field_validator("levels")
+    @classmethod
+    def _lv(cls, v: dict) -> dict:
+        bad = [f"{k}={x}" for k, x in v.items() if k not in TOOL_IDS or x not in LEVELS]
+        if bad:
+            raise ValueError(f"Unknown tool or level: {', '.join(bad)}")
+        return v
+
+    @field_validator("perms")
+    @classmethod
+    def _p(cls, v: list) -> list:
+        bad = [p for p in v if p not in SITE_PERMS]
+        if bad:
+            raise ValueError(f"Unknown ability: {', '.join(bad)}")
+        return v
+
+
+@app.get("/api/roles", dependencies=[Depends(require_accounts)])
+def list_roles(user: dict = Depends(require_people)):
+    people = {u["email"]: u for u in db.list_users()}
+    roles = [{**r, "people": [{"email": e, "name": people[e]["name"]} for e in db.role_members(r["id"]) if e in people]}
+             for r in db.roles()]
+    return {"roles": roles, **_catalog()}
+
+
+@app.post("/api/roles", dependencies=[Depends(require_accounts)])
+def create_role(body: RoleIn, user: dict = Depends(require_people)):
+    if not body.name.strip():
+        raise HTTPException(422, "Give the role a name.")
+    if body.name.strip().lower() in {r["name"].lower() for r in db.roles()}:
+        raise HTTPException(409, f"There's already a role called {body.name.strip()}.")
+    return db.save_role(None, body.name.strip(), body.description.strip(), body.levels, body.perms)
+
+
+@app.put("/api/roles/{rid}", dependencies=[Depends(require_accounts)])
+def update_role(rid: str, body: RoleIn, user: dict = Depends(require_people)):
+    r = db.role(rid)
+    if not r:
+        raise HTTPException(404, "No such role.")
+    if r["system"]:
+        raise HTTPException(400, "The Administrator role can't be changed.")
+    if not body.name.strip():
+        raise HTTPException(422, "Give the role a name.")
+    if body.name.strip().lower() in {x["name"].lower() for x in db.roles() if x["id"] != rid}:
+        raise HTTPException(409, f"There's already a role called {body.name.strip()}.")
+    if "people" in r["perms"] and "people" not in body.perms:
+        roles = {x["id"]: x for x in db.roles()}
+        roles[rid] = {**r, "perms": body.perms}
+        still = sum(1 for u in db.list_users() if not u["disabled"] and "people" in db._effective(u["roles"], roles)["perms"])
+        if still < 1:
+            raise HTTPException(400, "Someone must always be able to manage people and roles.")
+    return db.save_role(rid, body.name.strip(), body.description.strip(), body.levels, body.perms)
+
+
+@app.delete("/api/roles/{rid}", dependencies=[Depends(require_accounts)])
+def delete_role(rid: str, user: dict = Depends(require_people)):
+    r = db.role(rid)
+    if not r:
+        raise HTTPException(404, "No such role.")
+    if r["system"]:
+        raise HTTPException(400, "The Administrator role can't be deleted.")
+    roles = {x["id"]: x for x in db.roles() if x["id"] != rid}
+    if sum(1 for u in db.list_users() if not u["disabled"] and "people" in db._effective(u["roles"], roles)["perms"]) < 1:
+        raise HTTPException(400, "Someone must always be able to manage people and roles.")
+    db.delete_role(rid)
     return {"ok": True}
 
 

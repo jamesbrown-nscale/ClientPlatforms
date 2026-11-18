@@ -22,6 +22,7 @@
     restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   };
   const svg = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name] || ICON.home}</svg>`;
@@ -47,6 +48,9 @@
     font-size: 11.5px; font-weight: 700; display: inline-grid; place-items: center; letter-spacing: 0; }
   .cp-side .cp-badge.late { background: #D92D20; }
   .cp-side button.cp-label > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .cp-viewonly { background: #FFF1D6; color: #8A5300; font: 600 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; padding: 8px 16px;
+    display: flex; gap: 8px; align-items: center; border-bottom: 1px solid #F5DDA8; }
+  .cp-viewonly svg { width: 16px; height: 16px; flex-shrink: 0; }
   .cp-side .cp-dot { width: 8px; height: 8px; border-radius: 50%; background: #0F41F3; flex-shrink: 0; }
   .cp-side .cp-dot.late { background: #D92D20; }
   .cp-side button.cp-label[aria-expanded="true"] .cp-dot { display: none; }
@@ -141,6 +145,14 @@
       try { localStorage.setItem('cp-nav-open', JSON.stringify({ ...opened, [b.dataset.group]: open })); opened[b.dataset.group] = open; } catch {}
     }));
     document.body.prepend(side);
+    // On a tool you can only view, say so before anyone tries to change something.
+    const here = (me.tools || []).find(t => t.level === 'view' && current(t.url));
+    if (here) {
+      const bar = document.createElement('div');
+      bar.className = 'cp-viewonly'; bar.setAttribute('role', 'status');
+      bar.innerHTML = `${svg('eye')}<span>View only: you can see ${esc(here.name)} but not change anything in it.</span>`;
+      side.after(bar);
+    }
     if (me.inbox) {
       inboxBadge(side);
       window.cpNavRefreshInbox = () => inboxBadge(side);   // the inbox page calls this after changes

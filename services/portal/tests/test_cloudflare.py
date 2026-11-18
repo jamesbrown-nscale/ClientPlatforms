@@ -44,6 +44,11 @@ def cf(request, monkeypatch, tmp_path):
         importlib.reload(m)
 
 
+def restart_role(cf, h):
+    r = cf.post("/api/roles", headers={**h(), **base.H}, json={"name": "Restart", "levels": {"restart": "edit"}})
+    return r.json()["id"] if r.status_code == 200 else [x["id"] for x in cf.get("/api/roles", headers=h()).json()["roles"] if x["name"] == "Restart"][0]
+
+
 def test_cloudflare_identity_and_people_list(cf):
     h = cf.h
     home = cf.get("/", headers=h())
@@ -60,7 +65,7 @@ def test_cloudflare_identity_and_people_list(cf):
     assert r.status_code == 403 and "amy.chen@nscale.com" in r.text
     assert cf.get("/auth/check", headers={**h("amy.chen@nscale.com"), "x-forwarded-uri": "/elevation/"}).status_code == 401
     # An admin adds her without a password; she gets just her tool.
-    assert cf.post("/api/users", headers={**h(), **base.H}, json={"email": "amy.chen@nscale.com", "tools": ["restart"]}).status_code == 200
+    assert cf.post("/api/users", headers={**h(), **base.H}, json={"email": "amy.chen@nscale.com", "roles": [restart_role(cf, h)]}).status_code == 200
     ok = cf.get("/auth/check", headers={**h("amy.chen@nscale.com"), "x-forwarded-uri": "/restart/"})
     assert ok.status_code == 200 and access.verify(ok.headers["x-cp-user"], "restart")["email"] == "amy.chen@nscale.com"
     assert cf.get("/auth/check", headers={**h("amy.chen@nscale.com"), "x-forwarded-uri": "/elevation/"}).status_code == 403
@@ -80,7 +85,7 @@ def test_by_ip_with_a_password_and_through_cloudflare(cf):
     me = cf.get("/api/me", headers=h()).json()
     assert me["email"] == "james.brown@nscale.com" and me["passwords"] and me["cloudflare"]
     # A Cloudflare-only person needs no password; someone not on the list still gets nothing.
-    assert cf.post("/api/users", headers={**h(), **base.H}, json={"email": "amy.chen@nscale.com", "tools": ["restart"]}).status_code == 200
+    assert cf.post("/api/users", headers={**h(), **base.H}, json={"email": "amy.chen@nscale.com", "roles": [restart_role(cf, h)]}).status_code == 200
     assert cf.get("/auth/check", headers={**h("amy.chen@nscale.com"), "x-forwarded-uri": "/restart/"}).status_code == 200
     assert cf.get("/", headers=h("bob@nscale.com")).status_code == 403
     assert cf.get("/logout", headers=h(), follow_redirects=False).headers["location"] == "/cdn-cgi/access/logout"
