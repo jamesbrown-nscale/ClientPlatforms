@@ -2,7 +2,8 @@
 #
 # In Portainer: Stacks → Add stack → Repository, point it at this repo (compose path
 # docker-compose.yml), and set the environment variables from .env.example. Every image runs its
-# tests while it builds, so a stack with failing tests doesn't deploy.
+# tests while it builds, so a stack with failing tests doesn't deploy. pull_policy: build makes
+# Portainer rebuild the images from the repo on every redeploy.
 #
 #   proxy          Caddy: routes paths, asks the portal about every request to a tool
 #   portal         home page, sign-in (Cloudflare Access or passwords), people, settings
@@ -31,6 +32,7 @@ x-auth: &auth
 services:
   proxy:
     build: ./proxy
+    pull_policy: build   # rebuild from the repo on every (re)deploy
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
@@ -42,9 +44,10 @@ services:
   portal:
     <<: *service
     build: ./services/portal
+    pull_policy: build   # rebuild from the repo on every (re)deploy
     environment:
       <<: *auth
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL: the first admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL to the first admin email}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
@@ -57,6 +60,7 @@ services:
   notifications:
     <<: *service
     build: ./services/notifications
+    pull_policy: build   # rebuild from the repo on every (re)deploy
     environment:
       <<: *auth
       ENROLLMENT_KEY: ${ENROLLMENT_KEY:-}
@@ -68,6 +72,7 @@ services:
   elevation:
     <<: *service
     build: ./services/elevation
+    pull_policy: build   # rebuild from the repo on every (re)deploy
     environment:
       <<: *auth
       INGEST_KEYS: ${ELEVATION_INGEST_KEYS:-}
@@ -77,6 +82,7 @@ services:
   restart:
     <<: *service
     build: ./services/restart
+    pull_policy: build   # rebuild from the repo on every (re)deploy
     environment:
       <<: *auth
       INGEST_KEYS: ${RESTART_INGEST_KEYS:-}
