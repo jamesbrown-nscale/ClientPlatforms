@@ -528,6 +528,7 @@ def message_page(message: str, status: int, button: str = "", href: str = "") ->
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nscale Client Platforms</title><link rel="icon" href="/static/nscale-icon.svg">
+<script src="/static/nav.js" defer></script>
 <style>""" + BASE_CSS + """
   header { background:var(--bg); border-bottom:1px solid var(--surface); }
   .bar { max-width:1080px; margin:0 auto; padding:0 24px; height:64px; display:flex; align-items:center; gap:16px; }
