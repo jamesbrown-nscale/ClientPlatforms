@@ -1,109 +1,147 @@
 # Nscale Client Platforms
 
-**https://clientplatforms.nscale.com** — the Client Platforms team's tools, on Google Cloud, behind one Google sign-in.
+The Client Platforms team's tools, behind one sign-in, as a Docker stack you run in Portainer.
 
 | Path | Tool | Code |
 |---|---|---|
-| `/` | Home page | [`services/portal`](services/portal) |
-| `/notifications/` | IT Notifications: send branded notifications to Windows and Mac devices | [ITNotifications](https://github.com/jamesbrown-nscale/ITNotifications) repo |
-| `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation), fed by the [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp) worker |
+| `/` | Home page, sign-in, Settings (people, tool links, addresses) | [`services/portal`](services/portal) |
+| `/notifications/` | IT Notifications: send branded notifications to Windows and Mac devices | [`services/notifications`](services/notifications) (apps: [ITNotifications](https://github.com/jamesbrown-nscale/ITNotifications)) |
+| `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
+| `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 
 ```
-                         clientplatforms.nscale.com  (global HTTPS load balancer, Google-managed certificate)
- people ──► Google sign-in (IAP, nscale.com only, one access list per tool) ──┐
-                                                                               ├──► /               cp-portal
- Windows / Mac notification app ── enrollment key ── /notifications/api/v1/checkin ──► cp-notify ◄── /notifications/*
- Windows elevation worker ──────── ingest key ────── /elevation/api/elevations/ingest ─► cp-elevation ◄── /elevation/*
-                                                                                          │
-                                         Cloud Run, London (europe-west2)  ·  one Firestore database per tool
+ people ──► Cloudflare Access (sign-in) ──► Cloudflare Tunnel ──► cloudflared ──► proxy (Caddy)
+                                                                                     │
+       every request to a tool: proxy asks portal /auth/check ──► 200 + X-CP-User ───┤
+                                                                                     ├─► /               portal
+ Windows / Mac apps ── device keys ── /notifications/api/v1/checkin ────────────────┼─► /notifications/ notifications
+                                      /elevation/api/elevations/ingest ─────────────┼─► /elevation/     elevation
+                                      /restart/api/reports ─────────────────────────┴─► /restart/       restart
+                                                                       one SQLite volume per service
 ```
 
-## How it fits together
+## How sign-in works
 
-- **One sign-in.** Google Identity-Aware Proxy (IAP) on the load balancer signs people in with their nscale.com Google account. Each tool has its own access list (`portal_access`, `notifications_access`, `elevation_access`), so someone can be allowed the elevation log but not IT Notifications.
-- **Belt and braces.** Every app also checks the signed header IAP adds (`X-Goog-IAP-JWT-Assertion`): Google's signature, the issuer, that the token was issued for *that* tool's backend, and the nscale.com domain. Cloud Run only accepts traffic from the load balancer, so there's no way round IAP; if there were, the apps would still refuse.
-- **Devices don't sign in.** Exactly two paths skip IAP: the notification check-in and the elevation ingest. The apps check the device keys there, and Cloud Armor rate-limits each source address.
-- **Separate workloads.** Each tool is its own Cloud Run service with its own service account, its own Firestore database (`notifications`, `elevation`) and its own secrets. An IAM condition limits each service account to its own database, so a fault in one tool can't touch another's data.
-- **Logs.** The load balancer logs every request. The elevation service also writes one structured line per elevation record to Cloud Logging (`WARNING` when a record was changed after it was first reported), so you can alert on it or export it to a SIEM.
+- **Cloudflare Access signs people in** (`AUTH_MODE=cloudflare`, the default). Cloudflare adds a signed header (`Cf-Access-Jwt-Assertion`) to every request. The portal checks that header against your team's keys, issuer and the application's AUD tag before it believes the email in it.
+- **The portal decides who gets which tool.** Being let in by Cloudflare isn't enough: the person must also be on the portal's **People** list, which sets the tools each person can use. Admins can use every tool and change Settings.
+- **The tools trust only the portal.** Before any request reaches a tool, Caddy asks the portal (`forward_auth` to `/auth/check`). If the person may use that tool, the portal answers with `X-CP-User`: a 2-minute token signed with `AUTH_SECRET`, naming the person and the tool. The tool checks the signature, the tool name and the expiry. Caddy removes any `X-CP-User` a client sends, and a token for one tool is refused by the others.
+- **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these.
+- **Passwords instead.** With `AUTH_MODE=local` the portal shows its own sign-in page (email and password, scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords). Use it if you aren't putting Cloudflare Access in front.
 
-## First-time setup
+## Running it in Portainer
 
-You need: a Google Cloud project, `gcloud` signed in as an owner (`gcloud auth login` and `gcloud auth application-default login`), Terraform 1.6+ (or OpenTofu, with `TF=tofu`), and someone who can add a DNS record for nscale.com.
+### 1. Cloudflare (once)
 
-1. **Settings.** Copy `infra/terraform.tfvars.example` to `infra/terraform.tfvars`. Set the project and the Google groups for each tool.
-2. **Infrastructure.** `./deploy.sh infra`. This creates a private state bucket, then the load balancer, IAP, Cloud Run services (with a placeholder image), Firestore databases with daily backups, secrets and service accounts. It ends by printing the load balancer's IP.
-3. **DNS.** Add an A record: `clientplatforms.nscale.com → <that IP>`. (Or set `dns_managed_zone` if nscale.com is in Cloud DNS in this project, and Terraform makes it.) The certificate becomes active 15 to 60 minutes after DNS resolves. `./deploy.sh status` shows where it is.
-4. **Code.**
-   ```bash
-   ./deploy.sh all ../ITNotifications      # portal, elevation log, and IT Notifications from its repo
-   ```
-5. **Device keys.** `./deploy.sh keys` prints the IT Notifications enrollment key and the elevation ingest key(s), in the form each installer wants.
+1. **Tunnel.** In Zero Trust → Networks → Tunnels, create a tunnel and copy its token. Add a public hostname, e.g. `clientplatforms.nscale.com`, with service `http://proxy:80`.
+2. **Access application.** In Zero Trust → Access → Applications, add a self-hosted app for that hostname with an *Allow* policy for your people (e.g. emails ending `@nscale.com`). Copy the **Application Audience (AUD) tag** from its overview.
+3. **Let devices through.** Devices can't sign in, so add a second application (or a policy with action **Bypass**) for these paths on the same hostname:
+   `/notifications/api/v1/checkin`, `/elevation/api/elevations/ingest`, `/restart/api/reports`, `/restart/api/policy`, `/api/device-config`.
 
-IAP is set up with a Google-managed OAuth client, which works for accounts in your own Workspace. If the organisation hasn't used IAP before, the first `apply` may ask you to configure the OAuth consent screen (APIs & Services → OAuth consent screen → **Internal**). If org policy blocks `allUsers` on Cloud Run (domain-restricted sharing), allow it for this project: ingress is already limited to the load balancer.
+### 2. The stack
 
-## Rolling out changes
+In Portainer: **Stacks → Add stack → Repository**. Point it at this repo, with compose path `docker-compose.yml`. Then set the environment variables listed in [`.env.example`](.env.example):
 
-| What | Command |
+| Variable | What |
 |---|---|
-| Home page | `./deploy.sh portal` |
-| Elevation log | `./deploy.sh elevation` |
-| IT Notifications | `./deploy.sh notifications ../ITNotifications` |
-| Infrastructure, access lists | edit `infra/`, then `./deploy.sh infra` |
+| `AUTH_SECRET` | `openssl rand -hex 32`. Shared by every service. |
+| `ADMIN_EMAIL` | The first admin. It's only used while the portal has no accounts. |
+| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | From step 1, e.g. `nscale.cloudflareaccess.com`. |
+| `CLOUDFLARE_TUNNEL_TOKEN` | From step 1. If you don't use a tunnel, remove the `cloudflared` service. |
+| `ENROLLMENT_KEY` | IT Notifications device key. |
+| `ELEVATION_INGEST_KEYS`, `RESTART_INGEST_KEYS` | `label:key` pairs, comma separated, keys 24+ characters. Each label is shown against what its devices send, so give each group of devices its own key. |
 
-Each build is tagged with the time and git commit. Cloud Run keeps earlier revisions, so rolling back is `gcloud run services update-traffic cp-<name> --to-revisions <revision>=100 --region europe-west2`.
+Deploy. **Every image runs its tests while it builds**, so if a test fails the stack doesn't deploy. That is the "check" step. To roll out a change, use **Pull and redeploy** on the stack (tick *Re-pull image and redeploy*), or turn on Portainer's GitOps updates to redeploy when `main` changes.
+
+The `proxy` also listens on `HTTP_PORT` (default 8080) on the host, for the local network. In `cloudflare` mode a request there without Cloudflare's header just sees "not signed in". Remove the port if you only want the tunnel.
+
+### 3. First sign-in
+
+Open the site; Cloudflare signs you in as `ADMIN_EMAIL`. Then go to **Settings**:
+
+- **People**: add each person (the email Cloudflare signs them in with) and tick their tools.
+- **Addresses**: the *site address* (what people open) and the *device server address* (what devices send to, if it's different). Devices and installers can read the current addresses from `/api/device-config`.
+- **Tools**: where each home page tile links to, and whether it's shown. Point one at another server if that tool runs somewhere else.
+- **Device settings**: the exact installer values for each app, built from the device server address.
+
+Data is in four Docker volumes (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`). Back them up.
 
 ## IT Notifications
 
-The server code stays in its own repo. Here it runs with `AUTH_MODE=iap` and `BASE_PATH=/notifications`, so the OAuth client and session secret from its standalone setup aren't needed.
-
-Install the Windows MSI with `SERVERURL=https://clientplatforms.nscale.com/notifications ENROLLMENTKEY=<key>`, and put the same two values in the Mac profile. `notify_admin_emails` optionally narrows who can send, on top of `notifications_access`.
+The server code from the ITNotifications repo now lives here (its `client-platforms` branch, with sign-in from the front door). The Windows and Mac apps stay in that repo. Install the Windows MSI with `SERVERURL=<device server address>/notifications ENROLLMENTKEY=<key>`, and put the same two values in the Mac profile. `NOTIFY_ADMIN_EMAILS` optionally narrows who can send, on top of the portal's access list.
 
 ## Admin elevation log
 
-Both Windows elevation apps (the 15-minute **Admin Elevation** and the 60-minute **Admin Elevation 60**) send each elevation here, as well as to TechOps. They queue separately, so one being down doesn't hold up the other.
-
-**On devices.** Put a `ClientPlatforms.json` beside `Install.ps1` when you build the Intune package (see the ElevationApp README):
+Both Windows elevation apps send each elevation here as well as to TechOps. To set them up, put a `ClientPlatforms.json` beside `Install.ps1` when you build the Intune package (see the ElevationApp README):
 
 ```json
 { "url": "https://clientplatforms.nscale.com/elevation", "key": "<ingest key>" }
 ```
-
-**Ingest keys.** The secret `cp-elevation-ingest-keys` holds one `label:key` per line. The label is shown against every record, so give each group of devices its own key and one can be revoked on its own:
-
-```bash
-./deploy.sh add-ingest-key laptops-us       # prints the ClientPlatforms.json for that group
-./deploy.sh remove-ingest-key laptops-us    # those devices get 401 and keep their records queued
-```
-
-**What's recorded.** One record per elevation, upserted by the worker's `eventId`, with who, which device and serial, the reason, how long, when it was requested and granted, and how it ended (`granted`, `denied`, `expired`, `user_ended`, `revoked`). Every send is also kept unchanged in the record's history, with the time, source address and key label.
 
 **What's flagged.**
 
 | On the page | Means |
 |---|---|
 | **Admin right now** | Granted and not yet expired. |
-| **Never reported ending** | Granted, more than 20 minutes past expiry, and no end record has arrived. The device may be offline, or someone stopped the worker reporting. |
-| **Changed after reporting** | A later send changed the person, device, serial, reason or times, or came with a different key. The worker never does that, so someone may be rewriting the record with a key read from a device. The first values are kept and shown alongside. |
+| **Never reported ending** | Granted, more than 20 minutes past expiry, and no end record has arrived. |
+| **Changed after reporting** | A later send changed the person, device, serial, reason or times, or came with a different key. The worker never does that, so someone may be rewriting the record with a key read from a device. |
 | **Tried to reopen** | A send tried to set an ended or denied elevation back to granted. It's kept in the history and ignored. |
 
-**API.** `POST /elevation/api/elevations/ingest` with `Authorization: Bearer <key>` and `{"events": [...]}` — the same request the worker sends TechOps. It answers `{"results": [{"eventId", "status": "created" | "updated" | "rejected", "error"?}]}`; 400 if the body isn't that shape, 401 for an unknown key.
+**API.** `POST /elevation/api/elevations/ingest` with `Authorization: Bearer <key>` and `{"events": [...]}`, the same request the worker sends TechOps.
 
-## Running locally
+## Restart reminder
 
-```bash
-cd services/elevation && pip install -r requirements.txt -r requirements-dev.txt
-STORE=sqlite DATABASE_PATH=./dev.db BASE_PATH=/elevation DEV_USER=you@nscale.com INGEST_KEYS="dev:$(openssl rand -hex 16)" \
-  uvicorn app.main:app --reload       # http://localhost:8000/elevation/
-python -m pytest -q tests
+The Windows Restart Reminder app reports what happens on each device, and the page shows every device's state:
+
+| On the page | Means |
+|---|---|
+| **Within the limit** | Up less than `MAX_UPTIME_DAYS` (3). |
+| **Restart due** | The countdown is running; shows when it restarts and whether the person picked the time. |
+| **Put off** | The person picked a later time on the current boot. |
+| **Overdue** | Its restart time passed over an hour ago with no restart, or it's been up past the limit with no countdown running (the app may not be working). |
+| **Restart didn't happen** | A restart was issued over 30 minutes ago, but the device still reports the same boot. |
+| **Not reporting** | Nothing for 48 hours. It may be off, or the app isn't running. |
+
+**API for the app.** `POST /restart/api/reports` with `Authorization: Bearer <key>`:
+
+```json
+{ "reports": [ {
+  "reportId": "<new GUID per report>", "event": "status", "at": "2026-11-18T09:00:00Z",
+  "deviceName": "LT-LON-042", "serial": "5CG1234ABC", "user": "amy.chen@nscale.com",
+  "bootTime": "2026-11-14T08:12:00Z", "deadline": null, "userScheduled": false,
+  "reason": "", "appVersion": "1.3.0", "dryRun": false } ] }
 ```
 
-The portal runs the same way (`DEV_USER=… uvicorn app.main:app`). Never set `DEV_USER` on Cloud Run: it skips sign-in.
+| Field | What to send |
+|---|---|
+| `event` | `status` on each regular check; `countdown_started`, `scheduled` (picked a time), `hidden`, `restart_now`, `restarting` (with `reason`), `booted` (first run after a restart), `dry_run`. |
+| `bootTime` | The last real boot (WMI `LastBootUpTime`). A new boot time is how a restart is detected, even if `restarting` never arrived. |
+| `deadline` | When it will restart, while a countdown is running. Otherwise `null`. |
+
+The answer is `{"results": [{"reportId", "status": "created" | "updated" | "duplicate" | "rejected", "error"?}]}`. Resending a report is safe. `GET /restart/api/policy` returns the policy (`maxUptimeDays`, `countdownHours`, `latestScheduleTime`), so the app can follow the site instead of its `appsettings.json`.
+
+**Before the page has data,** the WindowsRestart app needs to send these reports (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker).
+
+## Running locally and tests
+
+```bash
+cd services/restart && pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest -q tests
+DEV_USER=you@nscale.com BASE_PATH=/restart DATABASE_PATH=./dev.db INGEST_KEYS="dev:$(openssl rand -hex 16)" \
+  uvicorn app.main:app --reload       # http://localhost:8000/restart/
+```
+
+Every service runs the same way. `DEV_USER` skips sign-in, so never set it on a server. GitHub Actions runs every service's tests on each push.
+
+## Google Cloud (paused)
+
+`infra/` (Terraform) and `deploy.sh` still deploy the portal, elevation log and IT Notifications to Cloud Run behind Google IAP (`AUTH_MODE=iap`, Firestore). They don't include the restart reminder or the People/Settings pages, because the portal keeps those in its SQLite volume. To go back to it, see `./deploy.sh` (`infra`, `all`, `keys`, `status`).
 
 ## Layout
 
 | Folder | What's in it |
 |---|---|
-| `infra/` | Terraform for everything on Google Cloud (`main.tf`: services, data, secrets; `lb.tf`: load balancer, IAP, routing, Cloud Armor). |
-| `services/portal/` | The home page. To add a tool: add it to `TOOLS` in `app/main.py`, add a service in `infra/main.tf` and its paths in `infra/lb.tf`. |
-| `services/elevation/` | The elevation log: ingest API, merge rules (`app/records.py`), storage, page, tests. |
-| `deploy.sh`, `cloudbuild.yaml` | Build and roll out; manage device keys. |
+| `docker-compose.yml`, `.env.example` | The Portainer stack and its settings. |
+| `proxy/` | Caddy: routing and the sign-in check in front of each tool. |
+| `services/portal/` | Home page, sign-in (`cloudflare.py`, passwords in `db.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match. To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
+| `services/notifications/`, `services/elevation/`, `services/restart/` | The tools, each with its page, API and tests. |
+| `infra/`, `deploy.sh`, `cloudbuild.yaml` | Google Cloud (paused). |
