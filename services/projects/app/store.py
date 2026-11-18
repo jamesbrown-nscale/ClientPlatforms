@@ -3,6 +3,7 @@
     projects  one row per project (name, description, status, currency, approved budget)
     members   who can see each project, and as what: Owner, Editor or Viewer
     items     every record in every section, as JSON, with its reference number (RSK-001 …)
+    tasks, task_activity   the Tasks tool (tasks.py)
 """
 import json
 import sqlite3
@@ -33,6 +34,23 @@ class Store:
                     module TEXT NOT NULL, ref TEXT, data TEXT NOT NULL, source TEXT,
                     created_at TEXT, created_by TEXT, updated_at TEXT, updated_by TEXT);
                 CREATE INDEX IF NOT EXISTS items_project ON items(project_id, module);
+            """)
+            # Tasks (see tasks.py), in the same database so a task can belong to a project.
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY, ref TEXT, title TEXT NOT NULL, description TEXT DEFAULT '',
+                status TEXT NOT NULL, priority TEXT NOT NULL, assignee TEXT DEFAULT '', assignee_name TEXT DEFAULT '',
+                due TEXT DEFAULT '', progress INTEGER, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+                created_by TEXT NOT NULL, created_by_name TEXT, created_at TEXT, updated_at TEXT, done_at TEXT);
+            CREATE INDEX IF NOT EXISTS tasks_assignee ON tasks(assignee);
+            CREATE INDEX IF NOT EXISTS tasks_project ON tasks(project_id);
+            CREATE TABLE IF NOT EXISTS task_activity (
+                id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL, author TEXT, author_name TEXT, body TEXT DEFAULT '', progress INTEGER,
+                waiting_on TEXT, answers TEXT, answered_at TEXT, answered_by TEXT, mentions TEXT DEFAULT '[]',
+                data TEXT, created_at TEXT);
+            CREATE INDEX IF NOT EXISTS activity_task ON task_activity(task_id, created_at);
+            CREATE INDEX IF NOT EXISTS activity_waiting ON task_activity(waiting_on);
             """)
 
     def db(self):

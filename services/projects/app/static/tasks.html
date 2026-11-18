@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/nav.js" defer></script>
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --muted: #6B7080; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --page: #F3F5FB; --soft: #F7F9FE;
+    --ok-fill: #D6FAEE; --ok-text: #006B4A; --err-fill: #FDECEC; --err: #B42318;
+    --warn-fill: #FFF1D6; --warn: #8A5300; --grey-fill: #ECEEF3; --violet-fill: #ECE8FD; --violet: #4A3AB0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--primary); }
+  [hidden] { display: none !important; }
+  header.top { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .bar img { height: 16px; display: block; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; white-space: nowrap; }
+  main { padding: 24px; display: grid; grid-template-columns: minmax(340px, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; }
+  .btn { height: 34px; border-radius: 8px; padding: 0 12px; border: 1px solid var(--border); background: transparent; cursor: pointer;
+         white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--surface); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--bg); font-weight: 600; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.danger { color: var(--err); border-color: #F7B4B4; }
+  .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .muted { color: var(--text2); font-size: 12.5px; }
+  .notice { border-radius: 8px; padding: 9px 12px; background: var(--err-fill); color: var(--err); margin: 10px 0; }
+
+  .list .head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+  .list h1 { font-size: 20px; margin: 0; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 10px; }
+  .tabs button { border: 1px solid var(--surface); background: transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .tabs button[aria-pressed="true"] { background: var(--surface); color: var(--primary); border-color: var(--surface); font-weight: 600; }
+  .tabs .n { color: var(--text2); font-weight: 400; margin-left: 2px; }
+  .filters { display: flex; gap: 8px; padding: 0 16px 12px; }
+  .filters input, .filters select { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; min-width: 0; }
+  .filters input { flex: 1; }
+  .rows { border-top: 1px solid var(--surface); }
+  .trow { display: flex; gap: 10px; align-items: flex-start; padding: 11px 16px; border-bottom: 1px solid var(--surface); cursor: pointer; }
+  .trow:hover { background: var(--soft); }
+  .trow[aria-current="true"] { background: var(--surface); }
+  .trow:last-child { border-bottom: 0; }
+  .check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--muted); background: #fff; cursor: pointer; flex-shrink: 0; margin-top: 1px;
+           display: grid; place-items: center; padding: 0; color: transparent; font-size: 12px; }
+  .check:hover { border-color: var(--ok-text); color: var(--ok-text); }
+  .check.done { background: #12A26F; border-color: #12A26F; color: #fff; }
+  .check.prog { border-color: var(--primary); background: conic-gradient(var(--primary) var(--p), #fff 0); }
+  .tmain { flex: 1; min-width: 0; }
+  .ttitle { font-weight: 600; overflow-wrap: anywhere; }
+  .done .ttitle, .trow.isdone .ttitle { text-decoration: line-through; color: var(--text2); font-weight: 400; }
+  .tmeta { font-size: 12.5px; color: var(--text2); display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+  .late { color: var(--err); font-weight: 600; }
+  .q { color: var(--warn); font-weight: 600; }
+  .av { width: 26px; height: 26px; border-radius: 50%; background: var(--violet-fill); color: var(--violet); display: grid; place-items: center;
+        font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .av.me { background: var(--ok-fill); color: var(--ok-text); }
+  .av.none { background: var(--grey-fill); color: var(--muted); }
+  .empty { color: var(--text2); text-align: center; padding: 40px 16px; }
+
+  .detail { padding: 20px; position: sticky; top: 16px; }
+  .detail .tref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text2); }
+  .titlein { width: 100%; font-size: 20px; font-weight: 600; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; margin: 2px -6px 8px; background: transparent; outline: none; }
+  .titlein:hover:not(:disabled) { border-color: var(--surface); }
+  .titlein:focus { border-color: var(--primary); background: #fff; }
+  .fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-bottom: 12px; }
+  .fields label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .fields input, .fields select, .desc, .composer textarea, .composer input, .composer select {
+    width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; outline: none; }
+  .fields input, .fields select { height: 36px; }
+  .fields .wide { grid-column: span 3; }
+  .fields .two { grid-column: span 2; }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .desc { min-height: 80px; resize: vertical; }
+  .bigbar { height: 8px; border-radius: 4px; background: var(--grey-fill); overflow: hidden; margin: 6px 0 14px; }
+  .bigbar i { display: block; height: 100%; background: var(--primary); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 18px 0 8px; }
+  .feed { border-left: 2px solid var(--surface); margin-left: 6px; padding-left: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .ev { position: relative; }
+  .ev .who2 { font-weight: 600; }
+  .ev .when { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .ev .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ev.change { color: var(--text2); font-size: 13px; }
+  .ev.box { border-radius: 8px; padding: 8px 10px; }
+  .ev.question { background: var(--warn-fill); color: var(--warn); }
+  .ev.question.answered { background: var(--grey-fill); color: var(--text2); }
+  .ev.update { background: var(--surface); color: #0B2A99; }
+  .ev.answer { border-left: 3px solid #E39B12; padding-left: 10px; border-radius: 0; }
+  .ev .act { font-size: 12px; margin-top: 4px; display: flex; gap: 10px; }
+  .ev .act button { border: 0; background: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font-size: 12px; }
+  .mention { background: var(--surface); color: var(--primary); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+  .composer { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--soft); }
+  .kinds { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
+  .kinds button { border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 3px 10px; cursor: pointer; font-size: 13px; }
+  .kinds button[aria-pressed="true"] { background: var(--surface); color: var(--primary); border-color: var(--primary); font-weight: 600; }
+  .composer textarea { min-height: 64px; resize: vertical; }
+  .composer .opts { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .composer .opts input[type=range] { width: 160px; padding: 0; border: 0; background: none; box-shadow: none; }
+  .composer .opts input.ask { max-width: 260px; height: 32px; }
+  .replying { font-size: 12.5px; color: var(--warn); margin-bottom: 6px; }
+
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .detail { position: static; } }
+  @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
+    .fields { grid-template-columns: 1fr 1fr; } .fields .wide, .fields .two { grid-column: span 2; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Tasks</span>
+  <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+</div></header>
+
+<main>
+  <section class="card list" aria-label="Tasks">
+    <div class="head"><h1>Tasks</h1><span style="flex:1"></span><button class="btn primary" id="newBtn">New task</button></div>
+    <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
+    <div class="filters">
+      <input type="search" id="q" placeholder="Search tasks" aria-label="Search">
+      <select id="proj" aria-label="Project"><option value="">All projects</option></select>
+    </div>
+    <div class="rows" id="rows"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card detail" id="detail" aria-label="Task">
+    <div class="empty">Pick a task to see it here, or create a new one.</div>
+  </section>
+</main>
+
+<datalist id="people"></datalist>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
+let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) { location.reload(); throw new Error('Signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const d = data.detail; throw new Error(Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || res.statusText)); }
+  return data;
+}
+const send = (p, body, method = 'POST') => api(p, { method, body: JSON.stringify(body ?? {}) });
+
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+function ago(s) {
+  if (!s) return '';
+  const d = new Date(s), mins = (Date.now() - d) / 6e4;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${Math.round(mins)} min ago`;
+  if (mins < 60 * 24 && d.getDate() === new Date().getDate()) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+const initials = n => String(n || '?').split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+const personName = email => (PEOPLE.find(p => p.email === email) || {}).name || (email ? email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '');
+function avatar(t) {
+  if (!t.assignee) return '<span class="av none" title="Unassigned">–</span>';
+  return `<span class="av ${t.assignee === ME.email ? 'me' : ''}" title="${esc(t.assigneeName || t.assignee)}">${esc(initials(t.assigneeName || t.assignee))}</span>`;
+}
+function withMentions(text) {
+  return esc(text).replace(/@([\w.+-]+@[\w-]+\.[\w.-]+|[\w.-]+)/g, (m) => `<span class="mention">${m}</span>`);
+}
+
+/* ---------- List ---------- */
+function drawTabs() {
+  $('tabs').innerHTML = TABS.map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${k === VIEW}">${esc(label)}${COUNTS[k] != null && k !== 'done' ? `<span class="n">${COUNTS[k]}</span>` : ''}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { VIEW = b.dataset.view; save(); load(); });
+}
+
+async function load() {
+  const params = new URLSearchParams({ view: VIEW, project: $('proj').value });
+  try {
+    const r = await api('tasks?' + params);
+    TASKS = r.tasks; COUNTS = r.counts;
+    drawTabs(); drawRows();
+    window.cpNavRefreshTasks?.();
+  } catch (e) { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+}
+
+function drawRows() {
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = TASKS.filter(t => !words.length || words.every(w => `${t.ref} ${t.title} ${t.description} ${t.assigneeName} ${t.project?.name || ''}`.toLowerCase().includes(w)));
+  const empty = { mine: 'Nothing assigned to you. Nice.', asked: "You haven't given anyone a task.", waiting: 'No questions waiting on you.',
+                  mentioned: 'Nobody has mentioned you.', all: 'No open tasks.', done: 'Nothing done yet.' }[VIEW];
+  if (!rows.length) { $('rows').innerHTML = `<div class="empty">${TASKS.length ? 'Nothing matches.' : esc(empty)}</div>`; return; }
+  $('rows').innerHTML = rows.map(t => {
+    const done = t.status === 'Done', late = !done && t.due && t.due < today();
+    const meta = [
+      t.due ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : 'Due '}${esc(fmtDay(t.due))}</span>` : '',
+      t.status !== 'To do' && !done ? `<span>${esc(t.status)}${t.progress != null ? ' · ' + t.progress + '%' : ''}</span>` : '',
+      t.waitingOnMe ? '<span class="q">Question for you</span>' : t.openQuestions ? `<span class="q">${t.openQuestions} open question${t.openQuestions > 1 ? 's' : ''}</span>` : '',
+      t.comments ? `<span>${t.comments} comment${t.comments > 1 ? 's' : ''}</span>` : '',
+      t.project ? `<span>${esc(t.project.name)}</span>` : '',
+      t.priority === 'Urgent' || t.priority === 'High' ? `<span class="${t.priority === 'Urgent' ? 'late' : ''}">${esc(t.priority)}</span>` : '',
+    ].filter(Boolean).join('');
+    const prog = !done && t.progress ? ` prog" style="--p:${t.progress}%` : '';
+    return `<div class="trow ${done ? 'isdone' : ''}" data-id="${esc(t.id)}" aria-current="${OPEN?.id === t.id}" tabindex="0">
+      <button type="button" class="check ${done ? 'done' : ''}${prog}" data-done="${esc(t.id)}" title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(t.title)}">✓</button>
+      <div class="tmain"><div class="ttitle">${esc(t.title)}</div><div class="tmeta">${meta}</div></div>${avatar(t)}</div>`;
+  }).join('');
+  $('rows').querySelectorAll('.trow').forEach(r => {
+    r.onclick = e => { if (!e.target.closest('[data-done]')) openTask(r.dataset.id); };
+    r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.id); };
+  });
+  $('rows').querySelectorAll('[data-done]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const t = TASKS.find(x => x.id === b.dataset.done);
+    try { const r = await send('tasks/' + t.id, { status: t.status === 'Done' ? 'To do' : 'Done' }, 'PATCH');
+      if (OPEN?.id === t.id) { OPEN = r; drawDetail(); } load(); }
+    catch (err) { alert(err.message); }
+  });
+}
+
+/* ---------- One task ---------- */
+async function openTask(id) {
+  try { OPEN = await api('tasks/' + id); KIND = 'comment'; ANSWERING = null; drawDetail(); drawRows(); save(); }
+  catch (e) { $('detail').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+}
+
+function projectOptions(selected) {
+  const list = [...PROJECTS];
+  if (selected && !list.some(p => p.id === selected.id)) list.unshift(selected);   // keep the current one even if you can't add to it
+  return `<option value="">No project</option>` + list.map(p => `<option value="${esc(p.id)}" ${selected?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+
+function drawDetail() {
+  const t = OPEN, ro = !t.canChange ? 'disabled' : '';
+  const opt = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  $('detail').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px"><span class="tref">${esc(t.ref)}</span>
+      <span class="muted">Created by ${esc(t.createdByName || t.createdBy)} · ${esc(ago(t.createdAt))}</span><span style="flex:1"></span>
+      ${t.canDelete ? '<button class="btn small danger" id="del">Delete</button>' : ''}<button class="btn small" id="closeT">Close</button></div>
+    <input class="titlein" id="fTitle" value="${esc(t.title)}" aria-label="Title" maxlength="200" ${ro}>
+    <div class="fields">
+      <div><label for="fStatus">Status</label><select id="fStatus" ${ro}>${opt(ME.statuses, t.status)}</select></div>
+      <div><label for="fPriority">Priority</label><select id="fPriority" ${ro}>${opt(ME.priorities, t.priority)}</select></div>
+      <div><label for="fDue">Due</label><input type="date" id="fDue" value="${esc(t.due)}" ${ro}></div>
+      <div class="two"><label for="fAssignee">Assigned to</label><input id="fAssignee" list="people" value="${esc(t.assignee)}" placeholder="Pick someone or type their email" ${ro}></div>
+      <div><label for="fProject">Project</label><select id="fProject" ${ro}>${projectOptions(t.project)}</select></div>
+      <div class="wide"><label for="fDesc">Description</label><textarea class="desc" id="fDesc" placeholder="What needs doing, and what done looks like" ${ro}>${esc(t.description)}</textarea></div>
+    </div>
+    ${t.progress != null && t.status !== 'Done' ? `<div class="muted">Progress ${t.progress}%</div><div class="bigbar"><i style="width:${t.progress}%"></i></div>` : ''}
+    <div id="dNotice" class="notice" hidden></div>
+    <h2>Activity</h2>
+    <div class="feed">${t.activity.map(ev).join('') || '<div class="muted">Nothing yet.</div>'}</div>
+    <div class="composer" id="composer">
+      <div class="kinds" id="kinds">
+        ${[['comment', 'Comment'], ['question', 'Question'], ['update', 'Update']].filter(([k]) => k !== 'update' || t.canChange)
+          .map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${k === KIND && !ANSWERING}">${l}</button>`).join('')}
+      </div>
+      <div class="replying" id="replying" ${ANSWERING ? '' : 'hidden'}>Answering: “${esc(ANSWERING?.body.slice(0, 80) || '')}” · <a href="#" id="cancelAnswer">cancel</a></div>
+      <textarea id="cBody" placeholder="${KIND === 'question' ? 'What do you need to know?' : KIND === 'update' ? 'Where it stands' : 'Write a comment. @name to mention someone.'}"></textarea>
+      <div class="opts">
+        ${KIND === 'question' && !ANSWERING ? `<label class="muted" for="cTo">Ask</label><input class="ask" id="cTo" list="people" placeholder="${esc(defaultAsk())}">` : ''}
+        ${KIND === 'update' && !ANSWERING ? `<label class="muted" for="cProg">Progress</label><input type="range" id="cProg" min="0" max="100" step="10" value="${t.progress ?? 0}"><span id="cProgV" class="muted">${t.progress ?? 0}%</span>` : ''}
+        <span style="flex:1"></span><button class="btn primary" id="cSend">${ANSWERING ? 'Answer' : KIND === 'question' ? 'Ask' : KIND === 'update' ? 'Post update' : 'Comment'}</button>
+      </div>
+    </div>`;
+  wireDetail();
+}
+
+function defaultAsk() {
+  const t = OPEN, to = ME.email === t.assignee || !t.assignee ? t.createdBy : t.assignee;
+  return to === ME.email ? 'Their email' : personName(to);
+}
+
+function ev(a) {
+  const when = `<span class="when">${esc(ago(a.createdAt))}</span>`;
+  const mine = a.author === ME.email || ME.admin;
+  const del = mine && a.kind !== 'change' ? `<button type="button" data-del="${esc(a.id)}">Delete</button>` : '';
+  if (a.kind === 'change') {
+    const d = a.data || {}, label = { title: 'renamed it', status: 'set status', priority: 'set priority', due: 'set the due date', assignee: 'assigned it', project: 'moved it' }[d.field] || 'changed ' + d.field;
+    let to = d.to || 'nothing';
+    if (d.field === 'due') to = d.to ? fmtDay(d.to) : 'no date';
+    if (d.field === 'assignee') to = d.to || 'nobody';
+    if (d.field === 'project') to = d.to ? 'to ' + d.to : 'out of its project';
+    return `<div class="ev change"><span class="who2">${esc(a.authorName)}</span> ${esc(label)} ${d.field === 'project' ? esc(to) : '→ <b>' + esc(to) + '</b>'} ${when}</div>`;
+  }
+  if (a.kind === 'question') {
+    const open = !a.answeredAt, forMe = a.waitingOn === ME.email;
+    return `<div class="ev box question ${open ? '' : 'answered'}"><div style="font-size:12px"><b>Question</b> from ${esc(a.authorName)} ${when}</div>
+      <div class="body">${withMentions(a.body)}</div>
+      <div class="act">${open ? `<span>Waiting on <b>${esc(forMe ? 'you' : personName(a.waitingOn))}</b></span><button type="button" data-answer="${esc(a.id)}">Answer</button>` : `<span>Answered by ${esc(a.answeredBy)}</span>`}${del}</div></div>`;
+  }
+  if (a.kind === 'update') {
+    return `<div class="ev box update"><div style="font-size:12px"><b>Update</b> from ${esc(a.authorName)}${a.progress != null ? ' · ' + a.progress + '%' : ''} ${when}</div>
+      ${a.body ? `<div class="body">${withMentions(a.body)}</div>` : ''}<div class="act">${del}</div></div>`;
+  }
+  return `<div class="ev ${a.kind === 'answer' ? 'answer' : ''}"><span class="who2">${esc(a.authorName)}</span>${a.kind === 'answer' ? ' <span class="muted">answered</span>' : ''} ${when}
+    <div class="body">${withMentions(a.body)}</div>${del ? `<div class="act">${del}</div>` : ''}</div>`;
+}
+
+async function patch(body) {
+  try { OPEN = await send('tasks/' + OPEN.id, body, 'PATCH'); drawDetail(); load(); }
+  catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; }
+}
+
+function wireDetail() {
+  $('closeT').onclick = () => { OPEN = null; $('detail').innerHTML = '<div class="empty">Pick a task to see it here, or create a new one.</div>'; drawRows(); save(); };
+  if ($('del')) $('del').onclick = async () => {
+    if (!confirm(`Delete ${OPEN.ref} and its activity? This can't be undone.`)) return;
+    try { await api('tasks/' + OPEN.id, { method: 'DELETE' }); $('closeT').click(); load(); } catch (e) { alert(e.message); }
+  };
+  const on = (id, ev, fn) => $(id) && $(id).addEventListener(ev, fn);
+  on('fTitle', 'change', e => patch({ title: e.target.value }));
+  on('fTitle', 'keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+  on('fStatus', 'change', e => patch({ status: e.target.value }));
+  on('fPriority', 'change', e => patch({ priority: e.target.value }));
+  on('fDue', 'change', e => patch({ due: e.target.value }));
+  on('fProject', 'change', e => patch({ projectId: e.target.value || null }));
+  on('fDesc', 'change', e => patch({ description: e.target.value }));
+  on('fAssignee', 'change', e => {
+    const v = e.target.value.trim(), p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());
+    patch({ assignee: p ? p.email : v, assigneeName: p ? p.name : '' });
+  });
+  $('kinds').querySelectorAll('button').forEach(b => b.onclick = () => { KIND = b.dataset.kind; ANSWERING = null; drawDetail(); $('cBody').focus(); });
+  on('cProg', 'input', e => { $('cProgV').textContent = e.target.value + '%'; });
+  on('cancelAnswer', 'click', e => { e.preventDefault(); ANSWERING = null; drawDetail(); });
+  $('detail').querySelectorAll('[data-answer]').forEach(b => b.onclick = () => {
+    ANSWERING = OPEN.activity.find(a => a.id === b.dataset.answer); KIND = 'comment'; drawDetail(); $('cBody').focus();
+  });
+  $('detail').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if (!confirm('Delete this?')) return;
+    try { OPEN = await api(`tasks/${OPEN.id}/activity/${b.dataset.del}`, { method: 'DELETE' }); drawDetail(); load(); } catch (e) { alert(e.message); }
+  });
+  $('cSend').onclick = async () => {
+    const body = { kind: ANSWERING ? 'answer' : KIND, body: $('cBody').value };
+    if (ANSWERING) body.answers = ANSWERING.id;
+    if (KIND === 'question' && !ANSWERING && $('cTo').value.trim()) {
+      const v = $('cTo').value.trim(), p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());
+      body.to = p ? p.email : v;
+    }
+    if (KIND === 'update' && !ANSWERING) body.progress = Number($('cProg').value);
+    $('cSend').disabled = true;
+    try { OPEN = await send(`tasks/${OPEN.id}/activity`, body); ANSWERING = null; KIND = 'comment'; drawDetail(); load(); }
+    catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; $('cSend').disabled = false; }
+  };
+  $('cBody').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('cSend').click(); });
+}
+
+/* ---------- New task ---------- */
+function newTask() {
+  OPEN = null; drawRows();
+  const proj = $('proj').value;
+  $('detail').innerHTML = `
+    <div style="display:flex;align-items:center"><b style="font-size:17px">New task</b><span style="flex:1"></span><button class="btn small" id="closeT">Close</button></div>
+    <input class="titlein" id="nTitle" placeholder="What needs doing?" aria-label="Title" maxlength="200" style="margin-top:10px">
+    <div class="fields">
+      <div class="two"><label for="nAssignee">Assign to</label><input id="nAssignee" list="people" placeholder="Pick someone or type their email" value="${VIEW === 'mine' ? esc(ME.email) : ''}"></div>
+      <div><label for="nDue">Due</label><input type="date" id="nDue"></div>
+      <div><label for="nPriority">Priority</label><select id="nPriority">${ME.priorities.map(p => `<option ${p === 'Medium' ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+      <div class="two"><label for="nProject">Project</label><select id="nProject">${projectOptions(PROJECTS.find(p => p.id === proj))}</select></div>
+      <div class="wide"><label for="nDesc">Description</label><textarea class="desc" id="nDesc" placeholder="What needs doing, and what done looks like"></textarea></div>
+    </div>
+    <div id="nNotice" class="notice" hidden></div>
+    <button class="btn primary" id="nCreate">Create task</button>`;
+  $('closeT').onclick = () => { $('detail').innerHTML = '<div class="empty">Pick a task to see it here, or create a new one.</div>'; };
+  $('nTitle').focus();
+  $('nTitle').onkeydown = e => { if (e.key === 'Enter') $('nCreate').click(); };
+  $('nCreate').onclick = async () => {
+    const v = $('nAssignee').value.trim(), p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());
+    try {
+      const t = await send('tasks', { title: $('nTitle').value, assignee: p ? p.email : v, assigneeName: p ? p.name : '', due: $('nDue').value,
+        priority: $('nPriority').value, description: $('nDesc').value, projectId: $('nProject').value || null });
+      await load(); openTask(t.id);
+    } catch (e) { $('nNotice').hidden = false; $('nNotice').textContent = e.message; }
+  };
+}
+
+/* ---------- Where you were (address bar) ---------- */
+function save() {
+  const p = new URLSearchParams();
+  if (VIEW !== 'mine') p.set('view', VIEW);
+  if ($('proj').value) p.set('project', $('proj').value);
+  if (OPEN) p.set('task', OPEN.id);
+  history.replaceState(null, '', '#' + p.toString());
+}
+
+/* ---------- Start ---------- */
+(async () => {
+  ME = await api('me');
+  $('who').textContent = ME.email;
+  const fromHash = new URLSearchParams(location.hash.slice(1));
+  VIEW = TABS.some(([k]) => k === fromHash.get('view')) ? fromHash.get('view') : 'mine';
+  // People to assign to: the portal's accounts with the Tasks tool; otherwise whoever Tasks already knows.
+  const portal = await fetch('/api/people?tool=tasks', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+  PEOPLE = portal?.people?.length ? portal.people : (await api('people')).people;
+  $('people').innerHTML = PEOPLE.map(p => `<option value="${esc(p.email)}">${esc(p.name)}</option>`).join('');
+  const [{ projects }, all] = await Promise.all([api('projects'), api('tasks?view=all')]);
+  PROJECTS = projects;
+  const seen = new Map(PROJECTS.map(p => [p.id, p.name]));
+  all.tasks.forEach(t => t.project && seen.set(t.project.id, t.project.name));
+  $('proj').innerHTML += [...seen].sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('');
+  if (fromHash.get('project')) $('proj').value = fromHash.get('project');
+  $('proj').onchange = () => { save(); load(); };
+  $('q').oninput = drawRows;
+  $('newBtn').onclick = newTask;
+  await load();
+  if (fromHash.get('task')) openTask(fromHash.get('task'));
+})().catch(e => { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

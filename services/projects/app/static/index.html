@@ -319,6 +319,7 @@ function projectNav(active) {
   return `<nav class="pnav" aria-label="Project sections"><div class="pname">${esc(P.name)}</div>
     ${link('dashboard', 'dashboard', 'Project Dashboard')}
     ${groups.map(g => `<div class="grp">${esc(g.name)}</div>` + g.mods.map(m => link(m.key, m.icon, m.label, count(m.key))).join('')).join('')}
+    <div class="grp">Tasks</div><a href="/tasks/#project=${esc(P.id)}&view=all">${svg('actions')}<span>Project tasks</span>${SUMMARY?.tasks?.open ? `<span class="n">${SUMMARY.tasks.open}</span>` : ''}</a>
     <div class="grp">Access</div>${link('members', 'members', 'Members')}</nav>`;
 }
 

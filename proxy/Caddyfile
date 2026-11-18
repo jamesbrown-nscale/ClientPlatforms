@@ -1,7 +1,7 @@
 # Client Platforms front door (Docker / Portainer).
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
-#   /restart/*        Restart Reminder      /projects/*   Projects
+#   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks
 #   everything else: the portal (home, sign-in, settings)
 #
 # Before a request reaches a tool, Caddy asks the portal (/auth/check) whether the person is signed
@@ -73,6 +73,12 @@
 	}
 	@projects path /projects /projects/*
 	handle @projects {
+		import signed_in
+		import to projects
+	}
+	# Tasks runs in the projects service (same database, so tasks can belong to projects).
+	@tasks path /tasks /tasks/*
+	handle @tasks {
 		import signed_in
 		import to projects
 	}

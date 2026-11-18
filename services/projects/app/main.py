@@ -27,12 +27,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, modules
+from . import access, auth, modules, tasks
 from .auth import User, require_user
 from .modules import BY_KEY, ValidationError
 from .store import Store
 
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
+TASKS_PATH = os.environ.get("TASKS_PATH", "/tasks").rstrip("/")
 PORTAL_URL = os.environ.get("PORTAL_URL", "/")
 STATIC = Path(__file__).parent / "static"
 ROLES = ["Owner", "Editor", "Viewer"]
@@ -40,6 +41,7 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 auth.check_settings()
 store = Store(os.environ.get("DATABASE_PATH", "/data/projects.db"))
+tasks.setup(store, STATIC)
 app = FastAPI(title="Nscale Projects", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -175,7 +177,11 @@ def delete_project(pid: str, user: User = Depends(require_user)):
 @app.get("/api/projects/{pid}/summary")
 def summary(pid: str, user: User = Depends(require_user)):
     need(pid, user, *ROLES)
-    return modules.summarize(store.items(pid), modules.today(), store.project(pid))
+    s = modules.summarize(store.items(pid), modules.today(), store.project(pid))
+    with store.db() as db:   # tasks in this project (see tasks.py)
+        r = db.execute("SELECT COUNT(*) AS n, SUM(status != 'Done') AS open FROM tasks WHERE project_id = ?", (pid,)).fetchone()
+    s["tasks"] = {"total": r["n"] or 0, "open": r["open"] or 0}
+    return s
 
 
 @app.get("/api/projects/{pid}/status-draft")
@@ -400,16 +406,25 @@ def _http_error(request: Request, exc: HTTPException):
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
 
-# ---------- Serving under a path on a shared host ----------
-if BASE_PATH:
-    _app = app
-    app = FastAPI(title="Nscale Projects", docs_url=None, redoc_url=None, openapi_url=None)
-    app.mount(BASE_PATH, _app)
+# ---------- Serving under paths on a shared host ----------
+# Projects at BASE_PATH (/projects) and Tasks at TASKS_PATH (/tasks), from the same process and database.
+tasks_app = FastAPI(title="Nscale Tasks", docs_url=None, redoc_url=None, openapi_url=None)
+tasks_app.mount("/static", StaticFiles(directory=STATIC), name="static")
+tasks_app.include_router(tasks.router)
+tasks_app.add_exception_handler(HTTPException, _http_error)
 
-    @app.get(BASE_PATH, include_in_schema=False)
-    def _add_slash():
-        return RedirectResponse(BASE_PATH + "/")
+_projects = app
+app = FastAPI(title="Nscale Projects and Tasks", docs_url=None, redoc_url=None, openapi_url=None)
 
-    @app.get("/healthz", include_in_schema=False)
-    def _healthz():
-        return {"ok": True}
+
+@app.get("/healthz", include_in_schema=False)
+def _healthz():
+    return {"ok": True}
+
+
+for _path, _sub in ((TASKS_PATH, tasks_app), (BASE_PATH, _projects)):
+    if _path:
+        app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
+        app.mount(_path, _sub)
+    else:
+        app.mount("/", _sub)

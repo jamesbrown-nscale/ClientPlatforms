@@ -1,4 +1,4 @@
-"""Who is signed in to Projects.
+"""Who is signed in to Projects and Tasks (one service, two tools on the site).
 
 The front door does the signing in (the portal's accounts, Cloudflare Access, or Google IAP) and
 vouches for the person on every request; access.py checks that. Which projects they can see is
@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request
 from . import access
 
 TOOL = "projects"
+TASKS = "tasks"
 
 
 @dataclass
@@ -24,15 +25,23 @@ def check_settings() -> None:
     access.check_settings()
 
 
-def current_user(request: Request) -> User | None:
-    who = access.identity(request, TOOL)
+def current_user(request: Request, tool: str = TOOL) -> User | None:
+    who = access.identity(request, tool)
     if not who:
         return None
     return User(who["email"], who["name"], bool(who.get("admin")))
 
 
 def require_user(request: Request) -> User:
-    user = current_user(request)
+    return _require(request, TOOL)
+
+
+def require_task_user(request: Request) -> User:
+    return _require(request, TASKS)
+
+
+def _require(request: Request, tool: str) -> User:
+    user = current_user(request, tool)
     if not user:
         raise HTTPException(401, access.sign_in_message())
     if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") != "nscale-admin":

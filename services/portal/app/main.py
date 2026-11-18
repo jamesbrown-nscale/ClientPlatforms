@@ -348,6 +348,18 @@ def put_settings(body: Settings, request: Request, user: dict = Depends(require_
     return get_settings(request, user)
 
 
+@app.get("/api/people")
+def people(tool: str = "", user: dict = Depends(require_user)):
+    """Who can be assigned or mentioned: the switched-on accounts (with that tool, if one is given).
+    Any signed-in person can read it; it's names and emails only."""
+    if not ACCOUNTS:
+        return {"people": []}
+    if tool and tool not in TOOL_IDS:
+        raise HTTPException(404, "No such tool.")
+    rows = [u for u in db.list_users() if not u["disabled"] and (not tool or u["admin"] or tool in u["tools"])]
+    return {"people": sorted(({"email": u["email"], "name": u["name"]} for u in rows), key=lambda p: p["name"].lower())}
+
+
 @app.get("/api/device-config")
 def device_config(request: Request):
     """Public: where devices should send to. Lets the device server move without repackaging apps
@@ -479,6 +491,7 @@ def _value_error(request: Request, exc: ValueError):
 ICONS = {
     "bell": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
     "shield": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+    "tasks": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/></svg>',
     "projects": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/></svg>',
     "restart": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
 }

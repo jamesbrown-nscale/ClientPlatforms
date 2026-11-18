@@ -14,6 +14,7 @@
     home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    tasks: '<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/>',
     projects: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/>',
     restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -39,6 +40,13 @@
   .cp-side button.cp-label[aria-expanded="false"] svg { transform: rotate(-90deg); }
   .cp-side .cp-items { display: flex; flex-direction: column; gap: 2px; }
   .cp-side .cp-items[hidden] { display: none; }
+  .cp-side .cp-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #0F41F3; color: #fff;
+    font-size: 11.5px; font-weight: 700; display: inline-grid; place-items: center; letter-spacing: 0; }
+  .cp-side .cp-badge.late { background: #D92D20; }
+  .cp-side button.cp-label > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .cp-side .cp-dot { width: 8px; height: 8px; border-radius: 50%; background: #0F41F3; flex-shrink: 0; }
+  .cp-side .cp-dot.late { background: #D92D20; }
+  .cp-side button.cp-label[aria-expanded="true"] .cp-dot { display: none; }
   .cp-side a.cp-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: #3B404E; text-decoration: none; }
   .cp-side a.cp-item svg { width: 18px; height: 18px; flex-shrink: 0; }
   .cp-side a.cp-item:hover { background: #F3F5FB; color: #040E27; }
@@ -68,10 +76,11 @@
     } catch { return false; }
   }
 
-  function item(href, icon, label, external) {
+  function item(href, icon, label, external, tool) {
     const cur = current(href) ? ' aria-current="page"' : '';
     const ext = external ? ' target="_blank" rel="noopener"' : '';
-    return `<a class="cp-item" href="${esc(href)}"${cur}${ext}>${svg(icon)}<span>${esc(label)}</span></a>`;
+    const id = tool ? ` data-tool="${esc(tool)}"` : '';
+    return `<a class="cp-item" href="${esc(href)}"${cur}${ext}${id}>${svg(icon)}<span>${esc(label)}</span></a>`;
   }
 
   async function build() {
@@ -93,7 +102,7 @@
       let g = groups.find(x => x.name === name);
       if (!g) groups.push(g = { name, items: [] });
       const external = /^https?:\/\//i.test(t.url) && new URL(t.url).origin !== location.origin;
-      g.items.push(item(t.url, t.icon, t.name, external));
+      g.items.push(item(t.url, t.icon, t.name, external, t.id));
     }
     // Each heading folds; closed unless it holds the page you're on or you opened it before.
     const opened = (() => { try { return JSON.parse(localStorage.getItem('cp-nav-open') || '{}'); } catch { return {}; } })();
@@ -127,8 +136,38 @@
       document.getElementById(b.getAttribute('aria-controls')).hidden = !open;
       try { localStorage.setItem('cp-nav-open', JSON.stringify({ ...opened, [b.dataset.group]: open })); opened[b.dataset.group] = open; } catch {}
     }));
-    document.body.prepend(side);   // first in the page, so each tool's own panels and overlays sit above it
+    document.body.prepend(side);
+    if ((me.tools || []).some(t => t.id === 'tasks')) {
+      taskBadge(side);
+      window.cpNavRefreshTasks = () => taskBadge(side);   // the Tasks page calls this after changes
+    }   // first in the page, so each tool's own panels and overlays sit above it
     document.body.classList.add('cp-has-side');
+  }
+
+  /** How many tasks are assigned to you and questions are waiting on you, beside Tasks (and its heading). */
+  async function taskBadge(side) {
+    try {
+      const r = await fetch('/tasks/api/counts', { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
+      if (!r.ok) return;
+      const c = await r.json();
+      side.querySelectorAll('.cp-badge, .cp-dot').forEach(b => b.remove());
+      if (!c.badge) return;
+      const title = `${c.mine} assigned to you${c.overdue ? `, ${c.overdue} overdue` : ''}${c.waiting ? `, ${c.waiting} question${c.waiting > 1 ? 's' : ''} waiting on you` : ''}`;
+      const badge = () => { const b = document.createElement('span'); b.className = 'cp-badge' + (c.overdue || c.waiting ? ' late' : '');
+        b.textContent = c.badge > 99 ? '99+' : String(c.badge); b.title = title; return b; };
+      const link = side.querySelector('a[data-tool="tasks"]');
+      if (!link) return;
+      link.append(badge());
+      link.setAttribute('aria-label', `Tasks: ${title}`);
+      // A folded heading gets a dot, so the count isn't hidden away.
+      const heading = side.querySelector(`button.cp-label[aria-controls="${link.parentElement.id}"]`);
+      if (heading) {
+        const dot = document.createElement('span');
+        dot.className = 'cp-dot' + (c.overdue || c.waiting ? ' late' : '');
+        dot.title = title;
+        heading.querySelector('span').after(dot);
+      }
+    } catch { /* no badge */ }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);

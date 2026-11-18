@@ -9,6 +9,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
+| `/tasks/` | Tasks: a shared task list with assignees, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
 
 ```
  people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
@@ -137,6 +138,21 @@ Small project workspaces with the sections of TechOps' Project Management worksp
 | **Access** | Members |
 
 **Who sees what.** Give people the **Projects** tool under Settings → People. Anyone with it can create a project and becomes its owner. Each project's **Members** list decides who else sees it: *Owners* change everything, including members and the project's details; *Editors* add and change records; *Viewers* only look. A project always keeps at least one owner. Client Platforms admins can open every project as an owner.
+
+## Tasks
+
+A shared task list. Each task has a title, description, assignee, due date, priority, status (To do, In progress, Blocked, Done) and optionally a project. Its activity is one thread:
+
+| Entry | What it does |
+|---|---|
+| **Comment** | Discussion. `@first.last` (or `@first`, or a full email) mentions someone; it shows under their **Mentions**. |
+| **Question** | Waits on one person (the assignee, or the creator if the assignee asks, or whoever you pick) until someone answers. It's highlighted until then and listed under **Waiting on me**. |
+| **Update** | A progress note with an optional percentage. It sets the task's progress, and starts a task that was still *To do*. |
+| *Changes* | Recorded by the app: assigned, status, priority, due date, project. |
+
+The list's views are **Mine**, **I asked** (tasks you gave someone else), **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. The sidebar shows how many tasks are assigned to you plus questions waiting on you (red when something's overdue or a question is waiting).
+
+**Who sees what.** A task with no project: everyone with the **Tasks** tool. A task in a project: that project's members, plus whoever created it or is assigned it. In a project, viewers can comment but not change the task. Only its creator, a project owner or an admin can delete it. People to assign come from the portal's accounts that have the Tasks tool. Tasks runs inside the projects service (same database), so each project links to its tasks.
 
 ## Running locally and tests
 

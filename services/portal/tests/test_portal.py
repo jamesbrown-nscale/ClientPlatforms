@@ -141,7 +141,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "restart", "projects"]
+    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "restart", "projects", "tasks"]
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},
@@ -178,3 +178,19 @@ def test_access_module_is_the_same_everywhere():
         pytest.skip("only this service is here (Docker build)")
     for other in others:
         assert other.read_text() == here.read_text(), f"{other} differs from {here}"
+
+
+def test_people_list_for_assigning(c):
+    sign_in(c)
+    add(c, "ann@nscale.com", tools=["tasks"])
+    add(c, "ben@nscale.com", tools=["restart"])
+    add(c, "off@nscale.com", tools=["tasks"])
+    c.patch("/api/users/off@nscale.com", headers=H, json={"disabled": True})
+    emails = [p["email"] for p in c.get("/api/people?tool=tasks").json()["people"]]
+    assert "ann@nscale.com" in emails and "james.brown@nscale.com" in emails   # admins can use every tool
+    assert "ben@nscale.com" not in emails and "off@nscale.com" not in emails
+    assert "ben@nscale.com" in [p["email"] for p in c.get("/api/people").json()["people"]]
+    assert set(c.get("/api/people").json()["people"][0]) == {"email", "name"}   # nothing else about them
+    assert c.get("/api/people?tool=nope").status_code == 404
+    c.cookies.clear()
+    assert c.get("/api/people").status_code == 401

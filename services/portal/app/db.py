@@ -24,6 +24,8 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",
      "about": "Small project workspaces: status reports, timeline, RAID, actions, decisions, budget and closure."},
+    {"id": "tasks", "group": "Project Management", "name": "Tasks", "icon": "tasks", "url": "/tasks/",
+     "about": "A shared task list: assign work, ask questions, post updates and see who's waiting on whom."},
 ]
 TOOL_IDS = [t["id"] for t in TOOLS]
 
