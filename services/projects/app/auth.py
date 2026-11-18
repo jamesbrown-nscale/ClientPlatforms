@@ -1,4 +1,4 @@
-"""Who is signed in to Projects and Tasks (one service, two tools on the site).
+"""Who is signed in to Projects, Tasks and Team (one service, three tools on the site).
 
 The front door does the signing in (the portal's accounts, Cloudflare Access, or Google IAP) and
 vouches for the person on every request; access.py checks that. Which projects they can see is
@@ -12,6 +12,7 @@ from . import access
 
 TOOL = "projects"
 TASKS = "tasks"
+TEAM = "team"
 
 
 @dataclass
@@ -38,6 +39,10 @@ def require_user(request: Request) -> User:
 
 def require_task_user(request: Request) -> User:
     return _require(request, TASKS)
+
+
+def require_team_user(request: Request) -> User:
+    return _require(request, TEAM)
 
 
 def _require(request: Request, tool: str) -> User:

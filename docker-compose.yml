@@ -10,7 +10,7 @@
 #   notifications  IT Notifications            /notifications/
 #   elevation      admin elevation log         /elevation/
 #   restart        Restart Reminder report     /restart/
-#   projects       Projects and Tasks          /projects/ and /tasks/
+#   projects       Projects, Tasks and Team    /projects/, /tasks/ and /team/
 #
 # Open it at http://<host>:${HTTP_PORT:-8080}. For Cloudflare Tunnel as well, add
 # docker-compose.cloudflare.yml under "Additional paths" in Portainer.

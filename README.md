@@ -10,6 +10,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Tasks: a shared task list with assignees, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
+| `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 
 ```
  people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
@@ -153,6 +154,24 @@ A shared task list. Each task has a title, description, assignee, due date, prio
 The list's views are **Mine**, **I asked** (tasks you gave someone else), **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. The sidebar shows how many tasks are assigned to you plus questions waiting on you (red when something's overdue or a question is waiting).
 
 **Who sees what.** A task with no project: everyone with the **Tasks** tool. A task in a project: that project's members, plus whoever created it or is assigned it. In a project, viewers can comment but not change the task. Only its creator, a project owner or an admin can delete it. People to assign come from the portal's accounts that have the Tasks tool. Tasks runs inside the projects service (same database), so each project links to its tasks.
+
+## Team
+
+Everyone on the team, grouped by team, with their role, manager, start date, location and a short "about". Each person's page has:
+
+| Tab | What's on it | Who sees it |
+|---|---|---|
+| **Overview** | About, responsibilities, figures at a glance (projects, open and overdue tasks, done recently), who reports to them, when their last and next 1-2-1 are | Everyone with Team (1-2-1 dates: as below) |
+| **Work** | Their projects (RAG, role, phase, next milestone), their open tasks, and what they've done in projects and tasks over the last 30, 90 or 365 days | Everyone with Team, but only the projects and tasks *the viewer* can see |
+| **1-2-1s** | Date, how they're doing (1-5), what was discussed, actions with owners and due dates (tick them off), next 1-2-1 | The person, their manager and admins |
+| **Feedback** | *What's going well* and *Needs improvement*, side by side | The person, their manager and admins |
+| **Manager notes** | Private notes | Their manager and admins only. **Never the person.** |
+
+Only their manager or an admin adds or changes anything about someone (the person reads their own 1-2-1s and feedback but can't change them). Admins add anyone and set managers; anyone else on the team can add people who report to them. Only admins take someone off the team.
+
+## Dialogs
+
+Every confirmation, prompt and error on the site uses one branded dialog (`services/portal/app/static/dialog.js`, loaded like the sidebar): red for deleting, with the thing's name and what happens; Escape or Cancel backs out, and deleting a project asks you to type its name. The portal serves its shared scripts with `Cache-Control: no-cache`, so changes reach everyone on their next page load.
 
 ## Running locally and tests
 

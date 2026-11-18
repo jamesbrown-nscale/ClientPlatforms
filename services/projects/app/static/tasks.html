@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tasks · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -218,7 +219,7 @@ function drawRows() {
     const t = TASKS.find(x => x.id === b.dataset.done);
     try { const r = await send('tasks/' + t.id, { status: t.status === 'Done' ? 'To do' : 'Done' }, 'PATCH');
       if (OPEN?.id === t.id) { OPEN = r; drawDetail(); } load(); }
-    catch (err) { alert(err.message); }
+    catch (err) { cp.alert(err.message); }
   });
 }
 
@@ -309,8 +310,8 @@ async function patch(body) {
 function wireDetail() {
   $('closeT').onclick = () => { OPEN = null; $('detail').innerHTML = '<div class="empty">Pick a task to see it here, or create a new one.</div>'; drawRows(); save(); };
   if ($('del')) $('del').onclick = async () => {
-    if (!confirm(`Delete ${OPEN.ref} and its activity? This can't be undone.`)) return;
-    try { await api('tasks/' + OPEN.id, { method: 'DELETE' }); $('closeT').click(); load(); } catch (e) { alert(e.message); }
+    if (!(await cp.confirm({ title: `Delete ${OPEN.ref}?`, message: `“${OPEN.title}” and all its comments, questions and updates are deleted. This can't be undone.`, confirm: 'Delete task', danger: true }))) return;
+    try { await api('tasks/' + OPEN.id, { method: 'DELETE' }); $('closeT').click(); load(); } catch (e) { cp.alert(e.message); }
   };
   const on = (id, ev, fn) => $(id) && $(id).addEventListener(ev, fn);
   on('fTitle', 'change', e => patch({ title: e.target.value }));
@@ -331,8 +332,9 @@ function wireDetail() {
     ANSWERING = OPEN.activity.find(a => a.id === b.dataset.answer); KIND = 'comment'; drawDetail(); $('cBody').focus();
   });
   $('detail').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!confirm('Delete this?')) return;
-    try { OPEN = await api(`tasks/${OPEN.id}/activity/${b.dataset.del}`, { method: 'DELETE' }); drawDetail(); load(); } catch (e) { alert(e.message); }
+    const what = OPEN.activity.find(a => a.id === b.dataset.del)?.kind || 'comment';
+    if (!(await cp.confirm({ title: `Delete this ${what}?`, message: what === 'answer' ? 'The question it answered opens again.' : "This can't be undone.", confirm: 'Delete', danger: true }))) return;
+    try { OPEN = await api(`tasks/${OPEN.id}/activity/${b.dataset.del}`, { method: 'DELETE' }); drawDetail(); load(); } catch (e) { cp.alert(e.message); }
   });
   $('cSend').onclick = async () => {
     const body = { kind: ANSWERING ? 'answer' : KIND, body: $('cBody').value };

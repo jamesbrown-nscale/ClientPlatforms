@@ -4,6 +4,7 @@
     members   who can see each project, and as what: Owner, Editor or Viewer
     items     every record in every section, as JSON, with its reference number (RSK-001 …)
     tasks, task_activity   the Tasks tool (tasks.py)
+    team_*    the Team tool (team.py): people, responsibilities, 1-2-1s, feedback, manager notes
 """
 import json
 import sqlite3
@@ -51,6 +52,22 @@ class Store:
                 data TEXT, created_at TEXT);
             CREATE INDEX IF NOT EXISTS activity_task ON task_activity(task_id, created_at);
             CREATE INDEX IF NOT EXISTS activity_waiting ON task_activity(waiting_on);
+            """)
+            # Team (see team.py).
+            db.executescript("""
+            CREATE TABLE IF NOT EXISTS team_members (
+                email TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT DEFAULT '', team TEXT DEFAULT '', manager TEXT DEFAULT '',
+                start_date TEXT DEFAULT '', location TEXT DEFAULT '', about TEXT DEFAULT '',
+                created_at TEXT, updated_at TEXT, updated_by TEXT);
+            CREATE INDEX IF NOT EXISTS team_manager ON team_members(manager);
+            CREATE TABLE IF NOT EXISTS team_responsibilities (
+                id TEXT PRIMARY KEY, member TEXT NOT NULL REFERENCES team_members(email) ON DELETE CASCADE ON UPDATE CASCADE,
+                title TEXT NOT NULL, detail TEXT DEFAULT '', position INTEGER DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS team_entries (
+                id TEXT PRIMARY KEY, member TEXT NOT NULL REFERENCES team_members(email) ON DELETE CASCADE ON UPDATE CASCADE,
+                kind TEXT NOT NULL, date TEXT, body TEXT DEFAULT '', data TEXT,
+                author TEXT, author_name TEXT, created_at TEXT, updated_at TEXT);
+            CREATE INDEX IF NOT EXISTS team_entries_member ON team_entries(member, kind, date);
             """)
 
     def db(self):

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Projects · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -392,8 +393,9 @@ function renderDashboard() {
     } catch (e) { $('pdNotice').hidden = false; $('pdNotice').textContent = e.message; }
   };
   $('pdDelete').onclick = async () => {
-    if (prompt(`This deletes "${P.name}" and everything in it, for good. Type the project name to confirm.`) !== P.name) return;
-    try { await api(`projects/${P.id}`, { method: 'DELETE' }); location.hash = '#/'; } catch (e) { alert(e.message); }
+    const typed = await cp.prompt({ title: `Delete ${P.name}?`, message: 'Every record, report and member in it is deleted for good. Its tasks stay, without a project.', label: 'Project name', match: P.name, confirm: 'Delete project', danger: true });
+    if (typed === null) return;
+    try { await api(`projects/${P.id}`, { method: 'DELETE' }); location.hash = '#/'; } catch (e) { cp.alert(e.message); }
   };
   api(`projects/${P.id}/items/statusReports`).then(({ items }) => {
     const r = items.sort((a, b) => (b.data.periodEnding || '').localeCompare(a.data.periodEnding || ''))[0];
@@ -436,9 +438,11 @@ async function renderSection(mod, my = ROUTE) {
   if ($('add')) $('add').onclick = () => openRecord(mod, null);
   if ($('tpl')) $('tpl').onclick = async () => {
     let start = null;
-    if (mod.template.kind === 'phasePlan') { start = prompt('Start the plan on (YYYY-MM-DD):', today()); if (!start) return; }
-    else if (!confirm(`Add the ${mod.template.label.replace(/^Add /, '')}?`)) return;
-    try { await post(`projects/${P.id}/items/${mod.key}/template`, { start }); renderProject(mod.key); } catch (e) { alert(e.message); }
+    if (mod.template.kind === 'phasePlan') {
+      start = await cp.prompt({ title: 'Add the standard phase plan', message: 'Every phase and its milestones, back to back from this date.', label: 'Start date', type: 'date', value: today(), confirm: 'Add plan' });
+      if (!start) return;
+    } else if (!(await cp.confirm({ title: mod.template.label, message: `Adds the standard ${mod.label.toLowerCase()} items. You can edit or remove any of them afterwards.`, confirm: 'Add them' }))) return;
+    try { await post(`projects/${P.id}/items/${mod.key}/template`, { start }); renderProject(mod.key); } catch (e) { cp.alert(e.message); }
   };
   draw();
 }
@@ -485,7 +489,7 @@ function drawList(mod) {
   $('list').querySelectorAll('[data-id]').forEach(tr => tr.onclick = e => { if (!e.target.closest('button,a')) openRecord(mod, ITEMS.find(i => i.id === tr.dataset.id)); });
   $('list').querySelectorAll('[data-quick]').forEach(b => b.onclick = async e => {
     e.stopPropagation(); b.disabled = true;
-    try { await post(`projects/${P.id}/items/${mod.key}/${b.dataset.quick}/quick`); renderProject(mod.key); } catch (err) { alert(err.message); b.disabled = false; }
+    try { await post(`projects/${P.id}/items/${mod.key}/${b.dataset.quick}/quick`); renderProject(mod.key); } catch (err) { cp.alert(err.message); b.disabled = false; }
   });
 }
 
@@ -619,9 +623,9 @@ async function save() {
   finally { $('dSave').disabled = false; }
 }
 
-function closeDrawer(force) {
+async function closeDrawer(force) {
   const dirty = OPEN && canEdit() && JSON.stringify(collect(OPEN.mod)) !== OPEN.initial;
-  if (!force && dirty && !confirm('Close without saving your changes?')) return;
+  if (!force && dirty && !(await cp.confirm({ title: 'Discard your changes?', message: "You've changed this record but not saved it.", confirm: 'Discard', cancel: 'Keep editing', danger: true }))) return;
   OPEN = null; $('drawer').classList.remove('open'); $('scrim').classList.remove('open');
 }
 $('dSave').onclick = save;
@@ -631,7 +635,7 @@ $('scrim').onclick = () => closeDrawer(!canEdit());
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN) closeDrawer(!canEdit()); });
 $('dDelete').onclick = async () => {
   const { mod, item } = OPEN;
-  if (!confirm(`Delete ${item.ref || 'this ' + (mod.singular || 'record').toLowerCase()}? This can't be undone.`)) return;
+  if (!(await cp.confirm({ title: `Delete ${item.ref || 'this ' + (mod.singular || 'record').toLowerCase()}?`, message: `“${titleOf(mod, item) || mod.singular}” is deleted. This can't be undone.`, confirm: 'Delete', danger: true }))) return;
   try { await api(`projects/${P.id}/items/${mod.key}/${item.id}`, { method: 'DELETE' }); closeDrawer(true); renderProject(mod.key); }
   catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; }
 };
@@ -664,7 +668,8 @@ async function renderMembers() {
   });
   document.querySelectorAll('[data-remove]').forEach(b => b.onclick = async () => {
     const leaving = b.dataset.remove === ME.email;
-    if (!confirm(leaving ? 'Leave this project? You will lose access unless someone adds you back.' : `Remove ${b.dataset.remove} from this project?`)) return;
+    if (!(await cp.confirm(leaving ? { title: 'Leave this project?', message: "You'll lose access unless an owner adds you back.", confirm: 'Leave', danger: true }
+      : { title: `Remove ${b.dataset.remove}?`, message: 'They lose access to this project straight away.', confirm: 'Remove', danger: true }))) return;
     try { await api(`projects/${P.id}/members/${encodeURIComponent(b.dataset.remove)}`, { method: 'DELETE' });
       if (leaving && !ME.admin) { location.hash = '#/'; } else { await refreshRole(); renderProject('members'); } } catch (e) { fail(e); }
   });

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --muted: #6B7080; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --page: #F3F5FB; --soft: #F7F9FE;
+    --ok-fill: #D6FAEE; --ok-text: #006B4A; --err-fill: #FDECEC; --err: #B42318;
+    --warn-fill: #FFF1D6; --warn: #8A5300; --grey-fill: #ECEEF3; --violet-fill: #ECE8FD; --violet: #4A3AB0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--primary); }
+  [hidden] { display: none !important; }
+  header.top { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .bar img { height: 16px; display: block; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; white-space: nowrap; }
+  main { padding: 24px; display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; }
+  .btn { height: 34px; border-radius: 8px; padding: 0 12px; border: 1px solid var(--border); background: transparent; cursor: pointer;
+         white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); }
+  .btn:hover { background: var(--surface); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--bg); font-weight: 600; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.danger { color: var(--err); border-color: #F7B4B4; }
+  .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .muted { color: var(--text2); font-size: 12.5px; }
+  .notice { border-radius: 8px; padding: 9px 12px; background: var(--err-fill); color: var(--err); margin: 10px 0; }
+  .empty { color: var(--text2); text-align: center; padding: 32px 16px; }
+  .av { width: 38px; height: 38px; border-radius: 50%; background: var(--violet-fill); color: var(--violet); display: grid; place-items: center;
+        font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .av.big { width: 64px; height: 64px; font-size: 22px; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 11px; background: var(--grey-fill); color: var(--text2); white-space: nowrap; }
+  .chip.blue { background: var(--surface); color: var(--primary); }
+  .chip.green { background: var(--ok-fill); color: var(--ok-text); }
+  .chip.amber { background: var(--warn-fill); color: var(--warn); }
+  .chip.red { background: var(--err-fill); color: var(--err); }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--grey-fill); vertical-align: middle; }
+  .dot.Green { background: #12A26F; } .dot.Amber { background: #E39B12; } .dot.Red { background: #D92D20; }
+
+  .list .head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+  .list h1 { font-size: 20px; margin: 0; }
+  .filters { display: flex; gap: 8px; padding: 0 16px 12px; }
+  .filters input, .filters select { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; min-width: 0; }
+  .filters input { flex: 1; }
+  .grp { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 12px 16px 6px; border-top: 1px solid var(--surface); }
+  .prow { display: flex; gap: 12px; align-items: center; padding: 10px 16px; cursor: pointer; }
+  .prow:hover { background: var(--soft); }
+  .prow[aria-current="true"] { background: var(--surface); }
+  .prow .pname { font-weight: 600; }
+  .prow .pmeta { font-size: 12.5px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .person { padding: 22px 24px 28px; min-height: 400px; }
+  .phead { display: flex; gap: 16px; align-items: center; }
+  .phead h2 { margin: 0; font-size: 22px; }
+  .phead .role { color: var(--text2); }
+  .facts { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 4px; font-size: 13px; color: var(--text2); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--surface); margin: 18px 0 18px; overflow-x: auto; }
+  .tabs button { border: 0; background: none; padding: 9px 12px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tabs button[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .tabs .lock { font-size: 11px; margin-left: 4px; color: var(--muted); }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 20px 0 10px; display: flex; align-items: center; gap: 10px; }
+  h3:first-child { margin-top: 0; }
+  h3 .sp { flex: 1; }
+  .about { white-space: pre-wrap; }
+  .resp { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .resp .r { border: 1px solid var(--surface); border-radius: 10px; padding: 10px 12px; background: #fff; }
+  .resp .r b { display: block; }
+  .resp .r span { color: var(--text2); font-size: 13px; white-space: pre-wrap; }
+  .redit { display: grid; grid-template-columns: 1fr 1.6fr 32px; gap: 8px; margin-bottom: 8px; }
+  .projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .proj { border: 1px solid var(--surface); border-radius: 10px; padding: 12px; text-decoration: none; color: inherit; background: #fff; display: flex; flex-direction: column; gap: 4px; }
+  .proj:hover { border-color: var(--primary); }
+  .proj .pm { font-size: 12.5px; color: var(--text2); }
+  .tlist .t { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--surface); text-decoration: none; color: inherit; align-items: baseline; }
+  .tlist .t:last-child { border-bottom: 0; }
+  .tlist .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text2); }
+  .late { color: var(--err); font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 6px; }
+  .stat { background: var(--soft); border-radius: 10px; padding: 10px 12px; }
+  .stat .v { font-size: 20px; font-weight: 600; }
+  .stat .k { font-size: 12px; color: var(--text2); }
+
+  .form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px 12px; }
+  .fld { grid-column: span 3; }
+  .fld.full { grid-column: span 6; } .fld.third { grid-column: span 2; }
+  .fld label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .fld input, .fld select, .fld textarea, .redit input { width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; outline: none; }
+  .fld input, .fld select, .redit input { height: 36px; }
+  .fld textarea { min-height: 90px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .x { width: 32px; height: 36px; border: 0; background: transparent; cursor: pointer; color: var(--text2); font-size: 18px; border-radius: 8px; }
+  .x:hover { background: var(--err-fill); color: var(--err); }
+
+  .entries { display: flex; flex-direction: column; gap: 10px; }
+  .entry { border: 1px solid var(--surface); border-radius: 10px; padding: 12px 14px; background: #fff; }
+  .entry .eh { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .entry .eh b { font-size: 15px; }
+  .entry .body { white-space: pre-wrap; margin-top: 6px; overflow-wrap: anywhere; }
+  .entry .acts { list-style: none; padding: 0; margin: 8px 0 0; }
+  .entry .acts li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+  .entry .acts li.done span { text-decoration: line-through; color: var(--text2); }
+  .entry .tools { margin-left: auto; display: flex; gap: 6px; }
+  .feedback { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .fcol { border-radius: 12px; padding: 14px; }
+  .fcol.well { background: #EEFBF5; border: 1px solid #BDEBD6; }
+  .fcol.improve { background: #FFF8EA; border: 1px solid #F5DDA8; }
+  .fcol h3 { margin-top: 0; }
+  .fcol.well h3 { color: var(--ok-text); } .fcol.improve h3 { color: var(--warn); }
+  .fcol .entry { border-color: transparent; }
+  .addbox { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .addbox textarea { width: 100%; min-height: 64px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: #fff; resize: vertical; outline: none; }
+  .private { display: flex; gap: 10px; align-items: center; background: var(--violet-fill); color: var(--violet); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
+  .wb { display: inline-flex; gap: 3px; }
+  .wb i { width: 10px; height: 10px; border-radius: 3px; background: var(--grey-fill); display: inline-block; }
+  .wb i.on { background: #12A26F; }
+  .wb.low i.on { background: #E39B12; } .wb.bad i.on { background: #D92D20; }
+  .feed { border-left: 2px solid var(--surface); margin-left: 6px; padding-left: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .feed a { color: inherit; text-decoration: none; }
+  .feed a:hover .what { text-decoration: underline; }
+  .feed .when { color: var(--muted); font-size: 12px; }
+
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
+    .feedback, .stats { grid-template-columns: 1fr 1fr; } .feedback { grid-template-columns: 1fr; } .fld, .fld.third { grid-column: span 6; } .person { padding: 18px; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Team</span>
+  <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+</div></header>
+
+<main>
+  <section class="card list" aria-label="Team members">
+    <div class="head"><h1>Team</h1><span style="flex:1"></span><button class="btn primary" id="addBtn" hidden>Add person</button></div>
+    <div class="filters">
+      <input type="search" id="q" placeholder="Search name, role or responsibility" aria-label="Search">
+      <select id="teamF" aria-label="Team"><option value="">All teams</option></select>
+    </div>
+    <div id="people"><div class="empty">Loading…</div></div>
+  </section>
+  <section class="card person" id="person" aria-label="Person"><div class="empty">Pick someone to see their role, responsibilities, projects and 1-2-1s.</div></section>
+</main>
+
+<datalist id="accounts"></datalist>
+<datalist id="teams"></datalist>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let ME = null, MEMBERS = [], TEAMS = [], ACCOUNTS = [], CUR = null, TAB = 'overview', ENTRIES = null, WORK = null, EDIT = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) { location.reload(); throw new Error('Signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const d = data.detail; throw new Error(Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || res.statusText)); }
+  return data;
+}
+const send = (p, body, method = 'POST') => api(p, { method, body: JSON.stringify(body ?? {}) });
+const enc = encodeURIComponent;
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = s => s ? new Date(s + (s.length === 10 ? 'T00:00:00' : '')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const ago = s => { if (!s) return ''; const days = Math.round((Date.now() - new Date(s)) / 864e5);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? `${days} days ago` : fmtDate(s.slice(0, 10)); };
+const initials = n => String(n || '?').split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+const first = n => String(n || '').split(' ')[0];
+const WB = { 1: 'Struggling', 2: 'Not great', 3: 'OK', 4: 'Good', 5: 'Great' };
+function wellbeing(n) {
+  if (!n) return '';
+  return `<span class="wb ${n <= 2 ? 'bad' : n === 3 ? 'low' : ''}" title="How they're doing: ${n}/5">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span> <span class="muted">${esc(WB[n])}</span>`;
+}
+
+/* ---------- The list ---------- */
+async function loadList() {
+  const r = await api('members');
+  MEMBERS = r.members; TEAMS = r.teams;
+  const keep = $('teamF').value;
+  $('teamF').innerHTML = '<option value="">All teams</option>' + TEAMS.map(t => `<option>${esc(t)}</option>`).join('');
+  $('teamF').value = keep;
+  $('teams').innerHTML = TEAMS.map(t => `<option value="${esc(t)}">`).join('');
+  drawList();
+}
+
+function drawList() {
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), tf = $('teamF').value;
+  const rows = MEMBERS.filter(m => (!tf || m.team === tf) && (!words.length || words.every(w => `${m.name} ${m.email} ${m.title} ${m.team} ${m.managerName}`.toLowerCase().includes(w))));
+  if (!MEMBERS.length) { $('people').innerHTML = `<div class="empty">No one on the team yet.${ME.canAdd ? ' Add the first person.' : ''}</div>`; return; }
+  if (!rows.length) { $('people').innerHTML = '<div class="empty">Nobody matches.</div>'; return; }
+  const groups = {};
+  for (const m of rows) (groups[m.team || 'No team'] ||= []).push(m);
+  $('people').innerHTML = Object.keys(groups).sort((a, b) => (a === 'No team') - (b === 'No team') || a.localeCompare(b)).map(g => `<div class="grp">${esc(g)}</div>` +
+    groups[g].map(m => `<div class="prow" data-email="${esc(m.email)}" aria-current="${CUR?.email === m.email}" tabindex="0">
+      <span class="av">${esc(initials(m.name))}</span>
+      <div style="min-width:0"><div class="pname">${esc(m.name)}${m.email === ME.email ? ' <span class="chip blue">You</span>' : ''}</div>
+        <div class="pmeta"><span>${esc(m.title || 'No role set')}</span>${m.managerName ? `<span>· reports to ${esc(m.managerName)}</span>` : ''}</div>
+        <div class="pmeta"><span>${m.projects} project${m.projects === 1 ? '' : 's'}</span><span>${m.openTasks} open task${m.openTasks === 1 ? '' : 's'}</span>
+          ${m.rights.personal && (m.lastOneToOne || m.manager) ? `<span>${m.lastOneToOne ? 'Last 1-2-1 ' + esc(ago(m.lastOneToOne)) : '<span class="late">No 1-2-1 yet</span>'}</span>` : ''}</div></div></div>`).join('')).join('');
+  $('people').querySelectorAll('.prow').forEach(r => { r.onclick = () => openPerson(r.dataset.email); r.onkeydown = e => { if (e.key === 'Enter') openPerson(r.dataset.email); }; });
+}
+
+/* ---------- One person ---------- */
+async function openPerson(email, tab) {
+  try {
+    CUR = await api('members/' + enc(email)); EDIT = null;
+    TAB = tab || 'overview';
+    if (!tabs().some(t => t[0] === TAB)) TAB = 'overview';
+    [WORK, ENTRIES] = await Promise.all([api(`members/${enc(email)}/work`),
+      CUR.rights.personal ? api(`members/${enc(email)}/entries`) : Promise.resolve(null)]);
+    drawPerson(); drawList(); remember();
+  } catch (e) { $('person').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+}
+
+function tabs() {
+  const r = CUR.rights, them = CUR.email === ME.email ? 'you' : first(CUR.name);
+  return [['overview', 'Overview'], ['work', 'Work'],
+    r.personal && ['one_to_one', '1-2-1s'], r.personal && ['feedback', 'Feedback'],
+    r.managerNotes && ['manager_note', 'Manager notes', `Not shown to ${them}`]].filter(Boolean);
+}
+
+function drawPerson() {
+  const m = CUR, r = m.rights;
+  const n = k => ENTRIES?.entries?.[k]?.length || 0;
+  $('person').innerHTML = `
+    <div class="phead"><span class="av big">${esc(initials(m.name))}</span>
+      <div style="flex:1;min-width:0"><h2>${esc(m.name)}</h2><div class="role">${esc(m.title || 'No role set')}${m.team ? ' · ' + esc(m.team) : ''}</div>
+        <div class="facts">${m.manager ? `<span>Reports to <a href="#" data-go="${esc(m.manager)}">${esc(m.managerName)}</a></span>` : '<span>No manager set</span>'}
+          ${m.startDate ? `<span>Started ${esc(fmtDate(m.startDate))}</span>` : ''}${m.location ? `<span>${esc(m.location)}</span>` : ''}<span>${esc(m.email)}</span></div></div>
+      <div style="display:flex;gap:8px">${r.edit ? '<button class="btn small" id="editP">Edit</button>' : ''}${r.delete ? '<button class="btn small danger" id="delP">Remove</button>' : ''}</div></div>
+    <div id="editBox"></div>
+    <div class="tabs" role="tablist">${tabs().map(([k, l, lock]) => `<button role="tab" data-tab="${k}" aria-selected="${k === TAB}">${esc(l)}${['one_to_one', 'manager_note'].includes(k) && n(k) ? ` <span class="muted">${n(k)}</span>` : ''}${lock ? `<span class="lock" title="${esc(lock)}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>` : ''}</button>`).join('')}</div>
+    <div id="tabBody"></div>`;
+  $('person').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { TAB = b.dataset.tab; drawPerson(); remember(); });
+  $('person').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); openPerson(a.dataset.go); });
+  if ($('editP')) $('editP').onclick = () => profileForm();
+  if ($('delP')) $('delP').onclick = async () => {
+    if (!(await cp.confirm({ title: `Take ${m.name} off the team?`, message: 'Their role, responsibilities, 1-2-1s, feedback and manager notes are deleted. Their projects and tasks stay.', confirm: 'Remove', danger: true }))) return;
+    try { await api('members/' + enc(m.email), { method: 'DELETE' }); CUR = null; $('person').innerHTML = '<div class="empty">Removed.</div>'; loadList(); } catch (e) { cp.alert(e.message); }
+  };
+  ({ overview: drawOverview, work: drawWork, one_to_one: drawOneToOnes, feedback: drawFeedback, manager_note: drawNotes })[TAB]();
+}
+
+function drawOverview() {
+  const m = CUR, r = m.rights, w = WORK;
+  $('tabBody').innerHTML = `
+    ${m.about ? `<h3>About</h3><div class="about">${esc(m.about)}</div>` : ''}
+    <h3>Responsibilities<span class="sp"></span>${r.edit ? `<button class="btn small" id="editR">${m.responsibilities.length ? 'Edit' : 'Add'}</button>` : ''}</h3>
+    <div id="respBox">${m.responsibilities.length ? `<div class="resp">${m.responsibilities.map(x => `<div class="r"><b>${esc(x.title)}</b>${x.detail ? `<span>${esc(x.detail)}</span>` : ''}</div>`).join('')}</div>`
+      : '<div class="muted">None recorded yet.</div>'}</div>
+    <h3>At a glance</h3>
+    <div class="stats">
+      <div class="stat"><div class="v">${w.projects.length}</div><div class="k">Projects</div></div>
+      <div class="stat"><div class="v">${w.openTasks.length}</div><div class="k">Open tasks</div></div>
+      <div class="stat"><div class="v ${w.overdue ? 'late' : ''}">${w.overdue}</div><div class="k">Overdue</div></div>
+      <div class="stat"><div class="v">${w.doneRecently}</div><div class="k">Done in ${w.days} days</div></div>
+    </div>
+    ${m.reports.length ? `<h3>Reports to ${m.email === ME.email ? 'you' : first(m.name)}</h3><div class="muted">${m.reports.map(x => `<a href="#" data-go="${esc(x.email)}">${esc(x.name)}</a>${x.title ? ' (' + esc(x.title) + ')' : ''}`).join(', ')}</div>` : ''}
+    ${r.personal && ENTRIES?.entries?.one_to_one ? (() => { const last = ENTRIES.entries.one_to_one[0];
+      return `<h3>1-2-1s</h3><div class="muted">${last ? `Last one ${esc(ago(last.date))}${last.data?.next ? ` · next ${esc(fmtDate(last.data.next))}` : ''}` : 'None recorded yet.'}</div>`; })() : ''}`;
+  $('tabBody').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); openPerson(a.dataset.go); });
+  if ($('editR')) $('editR').onclick = respEditor;
+}
+
+function respEditor() {
+  const rows = CUR.responsibilities.length ? CUR.responsibilities : [{ title: '', detail: '' }];
+  const row = x => `<div class="redit"><input data-c="title" value="${esc(x.title)}" placeholder="Responsibility, e.g. Intune" maxlength="200"><input data-c="detail" value="${esc(x.detail)}" placeholder="What it covers" maxlength="2000"><button class="x" type="button" title="Remove">×</button><input type="hidden" data-c="id" value="${esc(x.id || '')}"></div>`;
+  $('respBox').innerHTML = `<div id="rRows">${rows.map(row).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:4px"><button class="btn small" id="rAdd">Add another</button><span style="flex:1"></span><button class="btn small" id="rCancel">Cancel</button><button class="btn small primary" id="rSave">Save</button></div>`;
+  const wire = () => $('rRows').querySelectorAll('.x').forEach(b => b.onclick = () => b.parentElement.remove());
+  wire();
+  $('rAdd').onclick = () => { $('rRows').insertAdjacentHTML('beforeend', row({ title: '', detail: '' })); wire(); $('rRows').lastElementChild.querySelector('input').focus(); };
+  $('rCancel').onclick = drawOverview;
+  $('rSave').onclick = async () => {
+    const items = [...$('rRows').children].map(r => Object.fromEntries([...r.querySelectorAll('[data-c]')].map(i => [i.dataset.c, i.value.trim()]))).filter(x => x.title);
+    try { const res = await send(`members/${enc(CUR.email)}/responsibilities`, { items }, 'PUT'); CUR.responsibilities = res.responsibilities; drawOverview(); loadList(); }
+    catch (e) { cp.alert(e.message); }
+  };
+  $('rRows').querySelector('input').focus();
+}
+
+function drawWork() {
+  const w = WORK, them = CUR.email === ME.email ? 'you' : first(CUR.name);
+  $('tabBody').innerHTML = `
+    <h3>Projects</h3>
+    ${w.projects.length ? `<div class="projects">${w.projects.map(p => `<a class="proj" href="/projects/#/p/${esc(p.id)}">
+      <div><span class="dot ${esc(p.rag)}" title="RAG: ${esc(p.rag || 'no status report yet')}"></span> <b>${esc(p.name)}</b></div>
+      <div class="pm">${esc(p.role)}${p.status !== 'active' ? ' · ' + esc(p.status) : ''}${p.phase ? ' · ' + esc(p.phase) : ''}</div>
+      <div class="pm">${p.openActions} open actions · ${p.openRisks} risks</div>
+      ${p.next ? `<div class="pm">Next: ${esc(p.next.title)} · ${esc(fmtDate(p.next.endDate))}</div>` : ''}</a>`).join('')}</div>`
+      : `<div class="muted">Not on any project you can see.</div>`}
+    <h3>Open tasks</h3>
+    ${w.openTasks.length ? `<div class="tlist">${w.openTasks.map(t => { const late = t.due && t.due < today();
+      return `<a class="t" href="/tasks/#view=all&task=${esc(t.id)}"><span class="ref">${esc(t.ref)}</span><span style="flex:1">${esc(t.title)}${t.project ? ` <span class="muted">· ${esc(t.project.name)}</span>` : ''}</span>
+        <span class="${late ? 'late' : 'muted'}">${t.due ? (late ? 'Overdue ' : 'Due ') + esc(fmtDate(t.due)) : ''}</span><span class="chip ${t.status === 'Blocked' ? 'red' : t.status === 'In progress' ? 'blue' : ''}">${esc(t.status)}${t.progress ? ' ' + t.progress + '%' : ''}</span></a>`; }).join('')}</div>`
+      : '<div class="muted">No open tasks.</div>'}
+    <h3>Recent activity<span class="sp"></span><select id="days" class="btn small" aria-label="Period">${[30, 90, 365].map(d => `<option value="${d}" ${d === w.days ? 'selected' : ''}>Last ${d} days</option>`).join('')}</select></h3>
+    ${w.activity.length ? `<div class="feed">${w.activity.map(a => `<a href="${esc(a.link)}"><div><span class="what">${esc(first(CUR.name))} ${esc(a.text)}</span>${a.where ? ` <span class="muted">· ${esc(a.where)}</span>` : ''}</div><div class="when">${esc(new Date(a.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}</div></a>`).join('')}</div>`
+      : `<div class="muted">Nothing in projects or tasks that you can see, in this period.</div>`}`;
+  $('days').onchange = async e => { WORK = await api(`members/${enc(CUR.email)}/work?days=${e.target.value}`); drawWork(); };
+}
+
+/* ----- 1-2-1s ----- */
+function drawOneToOnes() {
+  const list = ENTRIES.entries.one_to_one, can = ENTRIES.canWrite, who = CUR.email === ME.email ? 'your' : first(CUR.name) + "'s";
+  $('tabBody').innerHTML = `
+    ${!can ? `<div class="private">You can read ${who} 1-2-1s. Only ${CUR.email === ME.email ? 'your manager' : 'their manager'} and admins add or change them.</div>` : ''}
+    ${can ? `<div style="margin-bottom:14px"><button class="btn primary" id="new121">Record a 1-2-1</button></div><div id="form121"></div>` : ''}
+    <div class="entries">${list.map(e => {
+      const d = e.data || {};
+      return `<div class="entry" data-id="${esc(e.id)}"><div class="eh"><b>${esc(fmtDate(e.date))}</b>${wellbeing(d.wellbeing)}<span class="muted">by ${esc(e.authorName)}</span>
+          ${can ? `<span class="tools"><button class="btn small" data-edit="${esc(e.id)}">Edit</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></span>` : ''}</div>
+        ${e.body ? `<div class="body">${esc(e.body)}</div>` : ''}
+        ${d.actions?.length ? `<div class="muted" style="margin-top:8px;font-weight:600">Actions</div><ul class="acts">${d.actions.map(a => `<li class="${a.done ? 'done' : ''}">
+          <input type="checkbox" ${a.done ? 'checked' : ''} ${can ? '' : 'disabled'} data-tick="${esc(e.id)}" data-act="${esc(a.id)}" aria-label="Done: ${esc(a.text)}">
+          <span>${esc(a.text)}${a.owner ? ` <span class="muted">· ${esc(a.owner)}</span>` : ''}${a.due ? ` <span class="${!a.done && a.due < today() ? 'late' : 'muted'}">· ${esc(fmtDate(a.due))}</span>` : ''}</span></li>`).join('')}</ul>` : ''}
+        ${d.next ? `<div class="muted" style="margin-top:8px">Next 1-2-1: ${esc(fmtDate(d.next))}</div>` : ''}</div>`; }).join('') || '<div class="muted">No 1-2-1s recorded yet.</div>'}</div>`;
+  if (!can) return;
+  $('new121').onclick = () => form121(null);
+  $('tabBody').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => form121(list.find(e => e.id === b.dataset.edit)));
+  $('tabBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => delEntry(b.dataset.del, '1-2-1'));
+  $('tabBody').querySelectorAll('[data-tick]').forEach(cb => cb.onchange = async () => {
+    const e = list.find(x => x.id === cb.dataset.tick);
+    const data = { ...e.data, actions: e.data.actions.map(a => a.id === cb.dataset.act ? { ...a, done: cb.checked } : a) };
+    try { ENTRIES = await send(`members/${enc(CUR.email)}/entries/${e.id}`, { data }, 'PUT'); drawOneToOnes(); } catch (err) { cp.alert(err.message); }
+  });
+}
+
+function form121(e) {
+  const d = e?.data || {};
+  const actRow = a => `<div class="redit" style="grid-template-columns: 1.6fr 1fr 150px 32px"><input data-c="text" value="${esc(a.text || '')}" placeholder="Action"><input data-c="owner" value="${esc(a.owner || '')}" placeholder="Who" list="accounts"><input type="date" data-c="due" value="${esc(a.due || '')}"><button class="x" type="button" title="Remove">×</button><input type="hidden" data-c="id" value="${esc(a.id || '')}"><input type="hidden" data-c="done" value="${a.done ? '1' : ''}"></div>`;
+  $('form121').innerHTML = `<div class="entry" style="border-color:var(--border);margin-bottom:14px">
+    <div class="form">
+      <div class="fld third"><label for="o_date">Date</label><input type="date" id="o_date" value="${esc(e?.date || today())}"></div>
+      <div class="fld third"><label for="o_wb">How ${CUR.email === ME.email ? "you're" : first(CUR.name) + ' is'} doing</label><select id="o_wb"><option value="">Not recorded</option>${[5, 4, 3, 2, 1].map(n => `<option value="${n}" ${d.wellbeing === n ? 'selected' : ''}>${n} · ${WB[n]}</option>`).join('')}</select></div>
+      <div class="fld third"><label for="o_next">Next 1-2-1</label><input type="date" id="o_next" value="${esc(d.next || '')}"></div>
+      <div class="fld full"><label for="o_body">What you talked about</label><textarea id="o_body" placeholder="Wins, blockers, wellbeing, development, anything they raised" style="min-height:120px">${esc(e?.body || '')}</textarea></div>
+      <div class="fld full"><label>Actions</label><div id="o_acts">${(d.actions?.length ? d.actions : [{}]).map(actRow).join('')}</div><button class="btn small" id="o_addAct" type="button">Add an action</button></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1"></span><button class="btn" id="o_cancel">Cancel</button><button class="btn primary" id="o_save">${e ? 'Save' : 'Save 1-2-1'}</button></div></div>`;
+  const wire = () => $('o_acts').querySelectorAll('.x').forEach(b => b.onclick = () => b.parentElement.remove());
+  wire();
+  $('o_addAct').onclick = () => { $('o_acts').insertAdjacentHTML('beforeend', actRow({})); wire(); };
+  $('o_cancel').onclick = () => { $('form121').innerHTML = ''; };
+  $('o_save').onclick = async () => {
+    const actions = [...$('o_acts').children].map(r => Object.fromEntries([...r.querySelectorAll('[data-c]')].map(i => [i.dataset.c, i.value.trim()])))
+      .filter(a => a.text).map(a => ({ ...a, done: !!a.done }));
+    const body = { kind: 'one_to_one', date: $('o_date').value, body: $('o_body').value, data: { wellbeing: $('o_wb').value ? Number($('o_wb').value) : null, next: $('o_next').value, actions } };
+    try { ENTRIES = e ? await send(`members/${enc(CUR.email)}/entries/${e.id}`, body, 'PUT') : await send(`members/${enc(CUR.email)}/entries`, body);
+      drawPerson(); loadList(); }
+    catch (err) { cp.alert(err.message); }
+  };
+  $('o_body').focus();
+}
+
+/* ----- Going well / needs improvement, manager notes ----- */
+function entryList(kind, empty) {
+  const list = ENTRIES.entries[kind] || [], can = ENTRIES.canWrite;
+  return list.map(e => `<div class="entry"><div class="eh"><span class="muted">${esc(fmtDate(e.date))} · ${esc(e.authorName)}</span>
+      ${can ? `<span class="tools"><button class="btn small" data-editk="${esc(kind)}" data-edit="${esc(e.id)}">Edit</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></span>` : ''}</div>
+      <div class="body">${esc(e.body)}</div></div>`).join('') || `<div class="muted">${esc(empty)}</div>`;
+}
+function addBox(kind, placeholder) {
+  return ENTRIES.canWrite ? `<div class="addbox"><textarea id="add_${kind}" placeholder="${esc(placeholder)}"></textarea><div style="display:flex;justify-content:flex-end"><button class="btn small primary" data-add="${kind}">Add</button></div></div>` : '';
+}
+function wireEntries(redraw) {
+  $('tabBody').querySelectorAll('[data-add]').forEach(b => b.onclick = async () => {
+    const t = $('add_' + b.dataset.add);
+    try { ENTRIES = await send(`members/${enc(CUR.email)}/entries`, { kind: b.dataset.add, body: t.value }); redraw(); } catch (e) { cp.alert(e.message); }
+  });
+  $('tabBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => delEntry(b.dataset.del, 'entry'));
+  $('tabBody').querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => {
+    const e = ENTRIES.entries[b.dataset.editk].find(x => x.id === b.dataset.edit);
+    const text = await cp.prompt({ title: 'Edit', label: 'Text', value: e.body, confirm: 'Save' });
+    if (text === null) return;
+    try { ENTRIES = await send(`members/${enc(CUR.email)}/entries/${e.id}`, { body: text }, 'PUT'); redraw(); } catch (err) { cp.alert(err.message); }
+  });
+}
+function drawFeedback() {
+  const self = CUR.email === ME.email;
+  $('tabBody').innerHTML = `
+    ${!ENTRIES.canWrite ? `<div class="private">You can read this. Only ${self ? 'your manager' : 'their manager'} and admins add or change it.</div>` : ''}
+    <div class="feedback">
+      <div class="fcol well"><h3>What's going well</h3>${addBox('well', 'Something they did well, with an example')}<div class="entries">${entryList('well', 'Nothing yet.')}</div></div>
+      <div class="fcol improve"><h3>Needs improvement</h3>${addBox('improve', 'Something to work on, and what good looks like')}<div class="entries">${entryList('improve', 'Nothing yet.')}</div></div>
+    </div>`;
+  wireEntries(drawFeedback);
+}
+function drawNotes() {
+  const them = first(CUR.name);
+  $('tabBody').innerHTML = `<div class="private"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Only ${CUR.manager === ME.email ? 'you' : esc(CUR.managerName || 'their manager')} and admins can see manager notes. ${esc(them)} never sees them.</div>
+    ${addBox('manager_note', 'A private note: context, concerns, plans')}<div class="entries">${entryList('manager_note', 'No notes yet.')}</div>`;
+  wireEntries(drawNotes);
+}
+async function delEntry(id, what) {
+  if (!(await cp.confirm({ title: `Delete this ${what}?`, message: "This can't be undone.", confirm: 'Delete', danger: true }))) return;
+  try { ENTRIES = await api(`members/${enc(CUR.email)}/entries/${id}`, { method: 'DELETE' }); drawPerson(); loadList(); } catch (e) { cp.alert(e.message); }
+}
+
+/* ---------- Add or edit a person ---------- */
+function profileForm(add) {
+  const m = add ? {} : CUR;
+  const box = add ? $('person') : $('editBox');
+  const mgrField = ME.admin ? `<div class="fld third"><label for="p_manager">Manager</label><input id="p_manager" list="accounts" value="${esc(m.manager || (add ? '' : ''))}" placeholder="Their manager's email"></div>`
+    : add ? `<div class="fld third"><label>Manager</label><input value="You" disabled></div>` : '';
+  box.innerHTML = `${add ? '<h2 style="margin:0 0 14px;font-size:20px">Add someone to the team</h2>' : '<div style="height:16px"></div>'}
+    <div class="form">
+      ${add ? `<div class="fld"><label for="p_email">Email</label><input id="p_email" type="email" list="accounts" placeholder="name@nscale.com"></div>` : ''}
+      <div class="fld${add ? '' : ' third'}"><label for="p_name">Name</label><input id="p_name" value="${esc(m.name || '')}" placeholder="From the email if empty" maxlength="100"></div>
+      <div class="fld third"><label for="p_title">Role</label><input id="p_title" value="${esc(m.title || '')}" placeholder="Endpoint Engineer" maxlength="120"></div>
+      <div class="fld third"><label for="p_team">Team</label><input id="p_team" list="teams" value="${esc(m.team || '')}" placeholder="Client Platforms" maxlength="80"></div>
+      ${mgrField}
+      <div class="fld third"><label for="p_start">Start date</label><input id="p_start" type="date" value="${esc(m.startDate || '')}"></div>
+      <div class="fld third"><label for="p_loc">Location</label><input id="p_loc" value="${esc(m.location || '')}" placeholder="London" maxlength="80"></div>
+      <div class="fld full"><label for="p_about">About</label><textarea id="p_about" placeholder="What they work on, strengths, how they like to work" maxlength="2000">${esc(m.about || '')}</textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1"></span><button class="btn" id="p_cancel">Cancel</button><button class="btn primary" id="p_save">${add ? 'Add to team' : 'Save'}</button></div>`;
+  $('p_cancel').onclick = () => add ? ($('person').innerHTML = '<div class="empty">Pick someone to see their role, responsibilities, projects and 1-2-1s.</div>') : drawPerson();
+  if (add) $('p_email').oninput = e => { const a = ACCOUNTS.find(x => x.email === e.target.value.trim().toLowerCase()); if (a && !$('p_name').value) $('p_name').value = a.name; };
+  $('p_save').onclick = async () => {
+    const body = { name: $('p_name').value, title: $('p_title').value, team: $('p_team').value, startDate: $('p_start').value,
+      location: $('p_loc').value, about: $('p_about').value };
+    if ($('p_manager')) body.manager = $('p_manager').value;
+    try {
+      if (add) { body.email = $('p_email').value; const r = await send('members', body); await loadList(); openPerson(r.email); }
+      else { CUR = { ...CUR, ...(await send('members/' + enc(CUR.email), body, 'PATCH')) }; drawPerson(); loadList(); }
+    } catch (e) { cp.alert(e.message); }
+  };
+  (add ? $('p_email') : $('p_title')).focus();
+}
+
+/* ---------- Where you were ---------- */
+function remember() {
+  const p = new URLSearchParams();
+  if (CUR) p.set('person', CUR.email);
+  if (CUR && TAB !== 'overview') p.set('tab', TAB);
+  history.replaceState(null, '', '#' + p.toString());
+}
+
+(async () => {
+  ME = await api('me');
+  $('who').textContent = ME.email;
+  $('addBtn').hidden = !ME.canAdd;
+  $('addBtn').onclick = () => { CUR = null; drawList(); profileForm(true); };
+  $('q').oninput = drawList; $('teamF').onchange = drawList;
+  const people = await fetch('/api/people', { cache: 'no-store' }).then(r => r.ok ? r.json() : { people: [] }).catch(() => ({ people: [] }));
+  ACCOUNTS = people.people || [];
+  $('accounts').innerHTML = ACCOUNTS.map(a => `<option value="${esc(a.email)}">${esc(a.name)}</option>`).join('');
+  await loadList();
+  const h = new URLSearchParams(location.hash.slice(1));
+  const start = h.get('person') || (MEMBERS.some(m => m.email === ME.email) ? ME.email : null);
+  if (start) openPerson(start, h.get('tab'));
+})().catch(e => { $('people').innerHTML = `<div class="notice">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nscale IT Notifications</title>
 <link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -414,7 +415,7 @@ form.addEventListener('submit', async e => {
   n.className = 'notice';
   if (!$('pf-windows').checked && !$('pf-macos').checked) { n.className = 'notice err'; n.textContent = 'Pick at least one platform.'; return; }
   if (d.linkUrl && !d.linkText) d.linkText = 'Open link';
-  if (d.priority === 'critical' && !confirm('Send a critical notification? It opens on screen immediately and stays on top until each person confirms they have read it.')) return;
+  if (d.priority === 'critical' && !(await cp.confirm({ title: 'Send a critical notification?', message: 'It opens on screen straight away and stays on top until each person confirms they have read it.', confirm: 'Send now', danger: true, icon: 'warn' }))) return;
   $('sendBtn').disabled = true;
   try {
     const r = await api('api/admin/messages', { method: 'POST', body: JSON.stringify(d) });
@@ -648,9 +649,9 @@ function closePanel() { $('panel').classList.remove('open'); $('scrim').classLis
 $('dClose').addEventListener('click', closePanel); $('scrim').addEventListener('click', closePanel);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
 $('dWithdraw').addEventListener('click', async () => {
-  if (!openId || !confirm('Withdraw this message? Devices that have not received it yet will not get it. It stays on screens that already show it.')) return;
+  if (!openId || !(await cp.confirm({ title: 'Withdraw this message?', message: 'Devices that have not received it yet will not get it. It stays on screens that already show it.', confirm: 'Withdraw', danger: true }))) return;
   try { await api(`api/admin/messages/${encodeURIComponent(openId)}/withdraw`, { method: 'POST' }); await openMessage(openId); loadMessages(); }
-  catch (e) { alert(e.message); }
+  catch (e) { cp.alert(e.message); }
 });
 
 /* ---------- Devices ---------- */

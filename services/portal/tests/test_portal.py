@@ -49,6 +49,7 @@ def test_first_admin_and_sign_in(c):
     assert "Hi James" in home.text and 'href="/settings"' in home.text
     assert 'href="/notifications/"' in home.text and 'href="/elevation/"' in home.text and 'href="/restart/"' in home.text
     assert c.get("/static/nscale-wordmark.svg").status_code == 200
+    assert c.get("/static/dialog.js").headers["cache-control"] == "no-cache"   # updates reach everyone at once
     out = c.get("/logout", follow_redirects=False)
     assert out.headers["location"] == "/login"
     assert c.get("/api/me").status_code == 401
@@ -141,7 +142,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "restart", "projects", "tasks"]
+    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "restart", "projects", "tasks", "team"]
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},

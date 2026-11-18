@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Settings · Nscale Client Platforms</title>
 <link rel="icon" href="/static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -254,7 +255,7 @@ async function change(u, body) {
 }
 
 async function removeUser(u) {
-  if (!confirm(`Delete ${u.email}? They're signed out at once and can't sign in again.`)) return;
+  if (!(await cp.confirm({ title: `Delete ${u.name || u.email}?`, message: `${u.email} is signed out at once and can't sign in again.`, confirm: 'Delete account', danger: true }))) return;
   try { await api('/api/users/' + encodeURIComponent(u.email), { method: 'DELETE' }); await loadUsers(); notice($('userNotice'), ''); }
   catch (err) { notice($('userNotice'), err.message); }
 }

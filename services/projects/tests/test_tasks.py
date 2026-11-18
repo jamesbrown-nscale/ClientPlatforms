@@ -22,6 +22,7 @@ def c(tmp_path, monkeypatch):
     s = store_mod.Store(str(tmp_path / "t.db"))
     monkeypatch.setattr(main, "store", s)
     tasks.setup(s, main.STATIC)
+    main.team.setup(s, main.STATIC)
     with TestClient(main.app) as client:
         yield client
 

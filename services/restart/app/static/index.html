@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Restart reminder · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -259,9 +260,9 @@ async function openDevice(key) {
       <p class="muted">It comes back if it reports again.</p>`;
     $('p-body').innerHTML = html;
     $('forget').onclick = async () => {
-      if (!confirm(`Remove ${d.deviceName} and its history?`)) return;
+      if (!(await cp.confirm({ title: `Remove ${d.deviceName}?`, message: 'Its history goes too. It comes back if it reports again.', confirm: 'Remove', danger: true }))) return;
       try { await api('api/devices/' + encodeURIComponent(key), { method: 'DELETE' }); closePanel(); load(); }
-      catch (e) { alert(e.message); }
+      catch (e) { cp.alert(e.message); }
     };
   } catch (e) { $('p-title').textContent = 'Could not load this device'; $('p-sub').textContent = e.message; }
 }
