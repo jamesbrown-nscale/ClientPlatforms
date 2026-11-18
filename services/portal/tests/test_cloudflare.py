@@ -14,14 +14,15 @@ from app import access, cloudflare, main
 TEAM, AUD = "nscale.cloudflareaccess.com", "a" * 64
 
 
-@pytest.fixture
-def cf(monkeypatch, tmp_path):
-    monkeypatch.setenv("AUTH_MODE", "cloudflare")
+@pytest.fixture(params=["cloudflare"])
+def cf(request, monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTH_MODE", request.param)
     monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", TEAM)
     monkeypatch.setenv("CF_ACCESS_AUD", AUD)
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "cf.db"))
     monkeypatch.setenv("ADMIN_EMAIL", "james.brown@nscale.com")
-    monkeypatch.delenv("ADMIN_PASSWORD")
+    if request.param == "cloudflare":
+        monkeypatch.delenv("ADMIN_PASSWORD")
     for m in (access, cloudflare, main):
         importlib.reload(m)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -67,3 +68,32 @@ def test_cloudflare_identity_and_people_list(cf):
     assert cf.post("/login", data={"email": "amy.chen@nscale.com", "password": "x"}, follow_redirects=False).status_code == 401
     assert cf.post("/api/me/password", headers={**h(), **base.H}, json={"current": "x", "new": "y" * 12}).status_code == 400
     assert cf.get("/api/me", headers=h()).json()["passwords"] is False
+
+
+@pytest.mark.parametrize("cf", ["local"], indirect=True)
+def test_by_ip_with_a_password_and_through_cloudflare(cf):
+    """AUTH_MODE=local with Cloudflare set up too: the same site by IP (password) and through Cloudflare."""
+    h = cf.h
+    assert cf.get("/api/me").status_code == 401
+    assert cf.get("/", follow_redirects=False).headers["location"] == "/login"
+    # Through Cloudflare: signed in by it.
+    me = cf.get("/api/me", headers=h()).json()
+    assert me["email"] == "james.brown@nscale.com" and me["passwords"] and me["cloudflare"]
+    # A Cloudflare-only person needs no password; someone not on the list still gets nothing.
+    assert cf.post("/api/users", headers={**h(), **base.H}, json={"email": "amy.chen@nscale.com", "tools": ["restart"]}).status_code == 200
+    assert cf.get("/auth/check", headers={**h("amy.chen@nscale.com"), "x-forwarded-uri": "/restart/"}).status_code == 200
+    assert cf.get("/", headers=h("bob@nscale.com")).status_code == 403
+    assert cf.get("/logout", headers=h(), follow_redirects=False).headers["location"] == "/cdn-cgi/access/logout"
+    # By IP: the password works.
+    r = cf.post("/login", data={"email": "james.brown@nscale.com", "password": "first-admin-password"}, follow_redirects=False)
+    assert r.status_code == 303 and cf.get("/api/me").json()["email"] == "james.brown@nscale.com"
+    assert cf.get("/logout", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_placeholders_mean_not_set_up(monkeypatch):
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "REPLACE.cloudflareaccess.com")
+    monkeypatch.setenv("CF_ACCESS_AUD", "REPLACE_WITH_APPLICATION_AUD_TAG")
+    importlib.reload(cloudflare)
+    assert cloudflare.TEAM == "" and cloudflare.AUD == ""
+    monkeypatch.undo()
+    importlib.reload(cloudflare)

@@ -10,7 +10,9 @@
 #   notifications  IT Notifications            /notifications/
 #   elevation      admin elevation log         /elevation/
 #   restart        Restart Reminder report     /restart/
-#   cloudflared    Cloudflare Tunnel to the proxy (public hostname → http://proxy:80)
+#
+# Open it at http://<host>:${HTTP_PORT:-8080}. For Cloudflare Tunnel as well, add
+# docker-compose.cloudflare.yml under "Additional paths" in Portainer.
 #
 # Data is kept in one Docker volume per service (SQLite). Back them up.
 name: client-platforms
@@ -25,7 +27,7 @@ x-service: &service
     start_period: 10s
 
 x-auth: &auth
-  AUTH_MODE: ${AUTH_MODE:-cloudflare}
+  AUTH_MODE: ${AUTH_MODE:-local}
   AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a long random string (openssl rand -hex 32)}
   PORTAL_URL: /
 
@@ -37,7 +39,7 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
-      # For the local network and testing. With Cloudflare Tunnel only, you can remove this.
+      # http://<host>:8080 on your network (sign in with a password).
       - "${HTTP_PORT:-8080}:80"
     depends_on: [portal, notifications, elevation, restart]
 
@@ -91,14 +93,6 @@ services:
       LATEST_SCHEDULE_TIME: ${LATEST_SCHEDULE_TIME:-17:00}
     volumes:
       - restart-data:/data
-
-  cloudflared:
-    image: cloudflare/cloudflared:2024.12.2
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN, or remove the cloudflared service}
-    depends_on: [proxy]
 
 volumes:
   portal-data:

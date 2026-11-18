@@ -263,7 +263,7 @@ function openUser(u) {
   $('udTitle').textContent = u ? 'Edit ' + u.email : 'Add person';
   $('udEmail').value = u ? u.email : ''; $('udEmail').disabled = !!u;
   $('udName').value = u ? u.name : '';
-  $('udPwWrap').hidden = !!u || !me.passwords; $('udPw').required = !u && me.passwords; $('udPw').value = '';
+  $('udPwWrap').hidden = !!u || !me.passwords; $('udPw').required = !u && me.passwords && !me.cloudflare; $('udPw').value = '';
   $('udAdmin').checked = u ? u.admin : false;
   $('udAdmin').disabled = !!u && u.email === me.email;
   const box = $('udTools'); box.replaceChildren();
@@ -306,7 +306,8 @@ $('resetForm').addEventListener('submit', async e => {
   me = await api('/api/me');
   $('who').textContent = me.email;
   const hint = `At least ${me.minPassword} characters.`;
-  $('pwHint').textContent = hint; $('udPwHint').textContent = hint;
+  $('pwHint').textContent = hint;
+  $('udPwHint').textContent = me.cloudflare ? hint + ' Leave it empty if they only sign in through Cloudflare.' : hint;
   $('pwNew').minLength = me.minPassword; $('udPw').minLength = me.minPassword; $('rpPw').minLength = me.minPassword;
   if (me.passwords) { $('account').hidden = false; $('accountSub').textContent = `${me.name} · ${me.email}`; }
   if (!me.admin) { $('title').textContent = 'Your account'; return; }

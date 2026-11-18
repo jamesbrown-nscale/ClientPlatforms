@@ -1,0 +1,12 @@
+# Optional: Cloudflare Tunnel to the proxy. In Portainer add this file under "Additional paths"
+# (next to docker-compose.yml) and set CLOUDFLARE_TUNNEL_TOKEN. In Zero Trust, point the tunnel's
+# public hostname at http://proxy:80, and set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD so the
+# portal accepts Cloudflare Access sign-ins.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN from Zero Trust, Networks, Tunnels}
+    depends_on: [proxy]

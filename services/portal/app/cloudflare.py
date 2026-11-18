@@ -15,6 +15,8 @@ import time
 
 TEAM = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "").strip().removeprefix("https://").rstrip("/")
 AUD = os.environ.get("CF_ACCESS_AUD", "").strip()
+if TEAM.upper().startswith("REPLACE") or AUD.upper().startswith("REPLACE"):   # .env placeholders: not set up yet
+    TEAM = AUD = ""
 HEADER = "cf-access-jwt-assertion"
 
 

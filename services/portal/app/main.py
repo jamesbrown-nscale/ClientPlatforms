@@ -5,7 +5,10 @@ door (Caddy, see /Caddyfile) asks /auth/check before every request to a tool, an
 signed X-CP-User token this answers with (see access.py). Admins manage people, which tools each
 can use, the tool links and the site and device addresses on /settings.
 
-AUTH_MODE=cloudflare: as local, but Cloudflare Access signs people in (see cloudflare.py), so there
+If CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are also set, people coming in through Cloudflare Access
+are signed in by it as well, so the same site works by IP (password) and through Cloudflare (SSO).
+
+AUTH_MODE=cloudflare: as local, but only Cloudflare Access signs people in (see cloudflare.py), so there
 are no passwords here. Admins still list who may use which tool; someone Cloudflare lets in who isn't
 on that list gets nothing.
 
@@ -41,6 +44,7 @@ MIN_PASSWORD = 10
 MODE = "dev" if access.DEV_USER else access.AUTH_MODE
 ACCOUNTS = MODE in ("local", "cloudflare")     # the people list is kept here
 PASSWORDS = MODE == "local"
+CLOUDFLARE = MODE == "cloudflare" or (MODE == "local" and bool(cloudflare.TEAM and cloudflare.AUD))
 
 access.check_settings()
 if MODE == "cloudflare":
@@ -72,7 +76,8 @@ def current(request: Request) -> dict | None:
         if not who:
             return None
         return {**who, "admin": who["email"] in ADMIN_EMAILS, "tools": TOOL_IDS}
-    if MODE == "cloudflare":
+    user = db.session_user(request.cookies.get(COOKIE, "")) if PASSWORDS else None
+    if not user and CLOUDFLARE:
         email = cloudflare.email(request)
         user = db.get_user(email) if email else None
         if not user or user["disabled"]:
@@ -80,20 +85,19 @@ def current(request: Request) -> dict | None:
         if (user["lastSignIn"] or "")[:13] != iso(now())[:13]:
             db.signed_in(email)   # "last seen", to the hour
             user["lastSignIn"] = iso(now())
-        return user
-    return db.session_user(request.cookies.get(COOKIE, ""))
+    return user
 
 
 def not_signed_in(request: Request, nxt: str = "/") -> Response:
     """The page for someone with no (usable) sign-in."""
-    if MODE == "local":
-        nxt = safe_next(nxt)
-        return RedirectResponse("/login" if nxt == "/" else "/login?next=" + quote(nxt, safe="/"))
-    if MODE == "cloudflare":
+    if CLOUDFLARE:
         email = cloudflare.email(request)
         if email:
             return message_page(f"{email} doesn't have an account on Client Platforms yet, or it's turned off. "
                                 "Ask a Client Platforms admin.", 403, "Sign out", "/logout")
+    if PASSWORDS:
+        nxt = safe_next(nxt)
+        return RedirectResponse("/login" if nxt == "/" else "/login?next=" + quote(nxt, safe="/"))
     return message_page(access.sign_in_message(), 403)
 
 
@@ -190,8 +194,13 @@ async def login(request: Request):
 def logout(request: Request):
     if MODE == "iap":
         return RedirectResponse("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE")
-    if MODE == "cloudflare":
-        return RedirectResponse("/cdn-cgi/access/logout")   # Cloudflare's own sign-out
+    if MODE == "cloudflare" or (CLOUDFLARE and request.headers.get(cloudflare.HEADER)):
+        token = request.cookies.get(COOKIE)
+        if token:
+            db.end_session(token)
+        r = RedirectResponse("/cdn-cgi/access/logout")   # Cloudflare's own sign-out
+        r.delete_cookie(COOKIE, path="/")
+        return r
     token = request.cookies.get(COOKIE)
     if token:
         db.end_session(token)
@@ -259,7 +268,7 @@ def settings_page(request: Request):
 def me(user: dict = Depends(require_user)):
     tools = [t for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "tools": tools,
-            "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "minPassword": MIN_PASSWORD}
+            "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "cloudflare": CLOUDFLARE, "minPassword": MIN_PASSWORD}
 
 
 class PasswordChange(BaseModel):
@@ -405,9 +414,12 @@ def list_users(user: dict = Depends(require_admin)):
 def create_user(body: NewUser, user: dict = Depends(require_admin)):
     if db.get_user(body.email):
         raise HTTPException(409, f"{body.email} already has an account.")
-    if PASSWORDS and len(body.password) < MIN_PASSWORD:
+    if PASSWORDS and not (body.password or CLOUDFLARE):
+        raise HTTPException(422, "Give them a password.")
+    if PASSWORDS and body.password and len(body.password) < MIN_PASSWORD:
         raise HTTPException(422, f"The password needs at least {MIN_PASSWORD} characters.")
-    password = body.password if PASSWORDS else secrets.token_urlsafe(32)   # never used to sign in
+    # Without a password (Cloudflare only) they get a random one nobody knows.
+    password = body.password if PASSWORDS and body.password else secrets.token_urlsafe(32)
     u = db.create_user(body.email, body.name.strip() or access.display_name(body.email), password,
                        body.admin, body.tools)
     return db.public(u)

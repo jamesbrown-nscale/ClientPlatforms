@@ -10,7 +10,8 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 
 ```
- people ──► Cloudflare Access (sign-in) ──► Cloudflare Tunnel ──► cloudflared ──► proxy (Caddy)
+ people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
+ people ──► Cloudflare Access (optional) ──► Cloudflare Tunnel ──► cloudflared ──►    │
                                                                                      │
        every request to a tool: proxy asks portal /auth/check ──► 200 + X-CP-User ───┤
                                                                                      ├─► /               portal
@@ -22,43 +23,41 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 
 ## How sign-in works
 
-- **Cloudflare Access signs people in** (`AUTH_MODE=cloudflare`, the default). Cloudflare adds a signed header (`Cf-Access-Jwt-Assertion`) to every request. The portal checks that header against your team's keys, issuer and the application's AUD tag before it believes the email in it.
-- **The portal decides who gets which tool.** Being let in by Cloudflare isn't enough: the person must also be on the portal's **People** list, which sets the tools each person can use. Admins can use every tool and change Settings.
+- **By IP, with a password** (`AUTH_MODE=local`, the default). Open `http://<host>:8080` and sign in with an email and password the portal keeps (scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords).
+- **Through Cloudflare as well, if you set it up.** When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are set, people coming in through Cloudflare Access are signed in by it, with no password. The portal checks Cloudflare's signed header (`Cf-Access-Jwt-Assertion`) against your team's keys, issuer and the application's AUD tag before it believes the email in it. `AUTH_MODE=cloudflare` turns passwords off, leaving Cloudflare as the only way in (and no sign-in by IP).
+- **The portal decides who gets which tool.** Signing in isn't enough: the person must also be on the portal's **People** list, which sets the tools each person can use. Admins can use every tool and change Settings.
 - **The tools trust only the portal.** Before any request reaches a tool, Caddy asks the portal (`forward_auth` to `/auth/check`). If the person may use that tool, the portal answers with `X-CP-User`: a 2-minute token signed with `AUTH_SECRET`, naming the person and the tool. The tool checks the signature, the tool name and the expiry. Caddy removes any `X-CP-User` a client sends, and a token for one tool is refused by the others.
 - **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these.
-- **Passwords instead.** With `AUTH_MODE=local` the portal shows its own sign-in page (email and password, scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords). Use it if you aren't putting Cloudflare Access in front.
 
 ## Running it in Portainer
 
-### 1. Cloudflare (once)
+### 1. The stack
+
+In Portainer: **Stacks → Add stack → Repository**. Point it at this repo (`refs/heads/main`), with compose path `docker-compose.yml`. Then set the environment variables listed in [`.env.example`](.env.example), or use **Load variables from .env file**:
+
+| Variable | What |
+|---|---|
+| `AUTH_SECRET` | `openssl rand -hex 32`. Shared by every service. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The first admin. Only used while the portal has no accounts; change the password after signing in. |
+| `ENROLLMENT_KEY` | IT Notifications device key. |
+| `ELEVATION_INGEST_KEYS`, `RESTART_INGEST_KEYS` | `label:key` pairs, comma separated, keys 24+ characters. Each label is shown against what its devices send, so give each group of devices its own key. |
+| `HTTP_PORT` | The port on the host (default 8080). |
+
+Deploy. **Every image runs its tests while it builds**, so if a test fails the stack doesn't deploy. That is the "check" step. To roll out a change, use **Pull and redeploy** on the stack (tick *Re-pull image and redeploy*), or turn on Portainer's GitOps updates to redeploy when `main` changes.
+
+### 2. Cloudflare (optional, any time later)
 
 1. **Tunnel.** In Zero Trust → Networks → Tunnels, create a tunnel and copy its token. Add a public hostname, e.g. `clientplatforms.nscale.com`, with service `http://proxy:80`.
 2. **Access application.** In Zero Trust → Access → Applications, add a self-hosted app for that hostname with an *Allow* policy for your people (e.g. emails ending `@nscale.com`). Copy the **Application Audience (AUD) tag** from its overview.
 3. **Let devices through.** Devices can't sign in, so add a second application (or a policy with action **Bypass**) for these paths on the same hostname:
    `/notifications/api/v1/checkin`, `/elevation/api/elevations/ingest`, `/restart/api/reports`, `/restart/api/policy`, `/api/device-config`.
-
-### 2. The stack
-
-In Portainer: **Stacks → Add stack → Repository**. Point it at this repo, with compose path `docker-compose.yml`. Then set the environment variables listed in [`.env.example`](.env.example):
-
-| Variable | What |
-|---|---|
-| `AUTH_SECRET` | `openssl rand -hex 32`. Shared by every service. |
-| `ADMIN_EMAIL` | The first admin. It's only used while the portal has no accounts. |
-| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | From step 1, e.g. `nscale.cloudflareaccess.com`. |
-| `CLOUDFLARE_TUNNEL_TOKEN` | From step 1. If you don't use a tunnel, remove the `cloudflared` service. |
-| `ENROLLMENT_KEY` | IT Notifications device key. |
-| `ELEVATION_INGEST_KEYS`, `RESTART_INGEST_KEYS` | `label:key` pairs, comma separated, keys 24+ characters. Each label is shown against what its devices send, so give each group of devices its own key. |
-
-Deploy. **Every image runs its tests while it builds**, so if a test fails the stack doesn't deploy. That is the "check" step. To roll out a change, use **Pull and redeploy** on the stack (tick *Re-pull image and redeploy*), or turn on Portainer's GitOps updates to redeploy when `main` changes.
-
-The `proxy` also listens on `HTTP_PORT` (default 8080) on the host, for the local network. In `cloudflare` mode a request there without Cloudflare's header just sees "not signed in". Remove the port if you only want the tunnel.
+4. **The stack.** Add `docker-compose.cloudflare.yml` under **Additional paths**, and set `CLOUDFLARE_TUNNEL_TOKEN`, `CF_ACCESS_TEAM_DOMAIN` (e.g. `nscale.cloudflareaccess.com`) and `CF_ACCESS_AUD`. Redeploy. Sign-in by IP keeps working.
 
 ### 3. First sign-in
 
-Open the site; Cloudflare signs you in as `ADMIN_EMAIL`. Then go to **Settings**:
+Open `http://<host>:8080` and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Change the password (Settings → Your account), then:
 
-- **People**: add each person (the email Cloudflare signs them in with) and tick their tools.
+- **People**: add each person and tick their tools. Give them a password for sign-in by IP; with Cloudflare set up, leave it empty for people who only come in through Cloudflare (use the email Cloudflare signs them in with).
 - **Addresses**: the *site address* (what people open) and the *device server address* (what devices send to, if it's different). Devices and installers can read the current addresses from `/api/device-config`.
 - **Tools**: where each home page tile links to, and whether it's shown. Point one at another server if that tool runs somewhere else.
 - **Device settings**: the exact installer values for each app, built from the device server address.
@@ -140,7 +139,7 @@ Every service runs the same way. `DEV_USER` skips sign-in, so never set it on a 
 
 | Folder | What's in it |
 |---|---|
-| `docker-compose.yml`, `.env.example` | The Portainer stack and its settings. |
+| `docker-compose.yml`, `.env.example` | The Portainer stack and its settings. `docker-compose.cloudflare.yml` adds the Cloudflare Tunnel. |
 | `proxy/` | Caddy: routing and the sign-in check in front of each tool. |
 | `services/portal/` | Home page, sign-in (`cloudflare.py`, passwords in `db.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match. To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
 | `services/notifications/`, `services/elevation/`, `services/restart/` | The tools, each with its page, API and tests. |
