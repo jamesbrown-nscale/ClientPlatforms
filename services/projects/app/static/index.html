@@ -145,6 +145,13 @@
   .sub-row.upd { grid-template-columns: 140px 1fr 160px 32px; }
   .sub-row.act { grid-template-columns: 1fr 150px 140px 130px 32px; }
   .sub-row textarea { min-height: 38px; height: 38px; }
+  select.pick { height: 32px; min-width: 120px; padding: 0 30px 0 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer;
+    appearance: none; -webkit-appearance: none; font-weight: 600; color: var(--text); outline: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233B404E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+  select.pick:hover { border-color: var(--primary); }
+  select.pick:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .rolechip { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 11px; background: var(--surface); color: var(--primary); }
   .x { width: 32px; height: 38px; border: 0; background: transparent; cursor: pointer; color: var(--text2); font-size: 18px; border-radius: 8px; }
   .x:hover { background: var(--err-fill); color: var(--err); }
   .add-row { padding: 8px 10px; }
@@ -655,7 +662,7 @@ async function renderMembers() {
     </div><div class="row" style="margin-top:12px"><button class="btn primary" id="mAdd">Add member</button></div></div>` : ''}
     <div class="card"><div class="tablewrap"><table><thead><tr><th>Person</th><th>Role</th><th>Added</th><th></th></tr></thead><tbody>
       ${members.map(m => `<tr><td><b>${esc(m.name || m.email)}</b><div class="muted">${esc(m.email)}</div></td>
-        <td>${owner ? `<select data-role="${esc(m.email)}">${META.roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}</select>` : esc(m.role)}</td>
+        <td>${owner ? `<select class="pick" data-role="${esc(m.email)}" aria-label="Role for ${esc(m.name || m.email)}">${META.roles.map(r => `<option ${r === m.role ? 'selected' : ''}>${r}</option>`).join('')}</select>` : `<span class="rolechip">${esc(m.role)}</span>`}</td>
         <td class="muted">${esc(fmtDate((m.addedAt || '').slice(0, 10)))}${m.addedBy ? ' by ' + esc(m.addedBy) : ''}</td>
         <td style="text-align:right">${owner || m.email === ME.email ? `<button class="btn small danger" data-remove="${esc(m.email)}">${m.email === ME.email ? 'Leave' : 'Remove'}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div></div>`;

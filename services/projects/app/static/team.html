@@ -129,6 +129,21 @@
   .feed a:hover .what { text-decoration: underline; }
   .feed .when { color: var(--muted); font-size: 12px; }
 
+  .lblrow { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; position: relative; }
+  .lblrow label { margin: 0 !important; }
+  .info { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--primary); background: #fff; color: var(--primary); cursor: pointer;
+    font: italic 700 12px/1 Georgia, "Times New Roman", serif; display: inline-grid; place-items: center; padding: 0; }
+  .info:hover, .info[aria-expanded="true"] { background: var(--primary); color: #fff; }
+  .info:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(15,65,243,.3); }
+  .tips { position: absolute; top: 28px; left: 0; z-index: 20; width: min(420px, calc(100vw - 48px)); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: 0 16px 40px rgba(4,14,39,.18); padding: 14px 16px 12px; }
+  .tips h4 { margin: 0 0 2px; font-size: 14px; }
+  .tips .muted { margin: 0 0 10px; }
+  .tips .tg { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); margin: 10px 0 4px; }
+  .tips button.tip { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 8px; border-radius: 6px; cursor: pointer; color: var(--text); }
+  .tips button.tip:hover, .tips button.tip:focus-visible { background: var(--surface); color: var(--primary); outline: none; }
+  .tips button.tip::before { content: "+"; display: inline-block; width: 16px; color: var(--primary); font-weight: 700; }
+  .tips .tfoot { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--surface); }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
   @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
     .feedback, .stats { grid-template-columns: 1fr 1fr; } .feedback { grid-template-columns: 1fr; } .fld, .fld.third { grid-column: span 6; } .person { padding: 18px; } }
@@ -176,6 +191,15 @@ const ago = s => { if (!s) return ''; const days = Math.round((Date.now() - new 
   return days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 30 ? `${days} days ago` : fmtDate(s.slice(0, 10)); };
 const initials = n => String(n || '?').split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 const first = n => String(n || '').split(' ')[0];
+// Talking points for a 1-2-1: the ⓘ beside "What you talked about" lists these; clicking one adds it to the notes.
+const TALK = [
+  ['Check in', ['How are you doing, honestly?', 'Workload: too much, too little, about right?']],
+  ['Since last time', ['Actions from last time', 'Wins and what went well']],
+  ['Right now', ["What's blocking you, and what would help?", 'Priorities for the next two weeks']],
+  ['Growing', ['What do you want to learn or get better at?', 'Career: where do you want to be in a year?']],
+  ['Feedback', ['Feedback for you', 'Feedback for me, as your manager']],
+  ['The team', ["Anything about the team, process or tools you'd change?"]],
+];
 const WB = { 1: 'Struggling', 2: 'Not great', 3: 'OK', 4: 'Good', 5: 'Great' };
 function wellbeing(n) {
   if (!n) return '';
@@ -344,13 +368,33 @@ function form121(e) {
       <div class="fld third"><label for="o_date">Date</label><input type="date" id="o_date" value="${esc(e?.date || today())}"></div>
       <div class="fld third"><label for="o_wb">How ${CUR.email === ME.email ? "you're" : first(CUR.name) + ' is'} doing</label><select id="o_wb"><option value="">Not recorded</option>${[5, 4, 3, 2, 1].map(n => `<option value="${n}" ${d.wellbeing === n ? 'selected' : ''}>${n} · ${WB[n]}</option>`).join('')}</select></div>
       <div class="fld third"><label for="o_next">Next 1-2-1</label><input type="date" id="o_next" value="${esc(d.next || '')}"></div>
-      <div class="fld full"><label for="o_body">What you talked about</label><textarea id="o_body" placeholder="Wins, blockers, wellbeing, development, anything they raised" style="min-height:120px">${esc(e?.body || '')}</textarea></div>
+      <div class="fld full"><div class="lblrow"><label for="o_body">What you talked about</label>
+          <button type="button" class="info" id="o_tipsBtn" aria-expanded="false" aria-controls="o_tips" title="Things to talk about">i</button>
+          <div class="tips" id="o_tips" role="dialog" aria-label="Things to talk about" hidden>
+            <h4>Things to talk about</h4><p class="muted">Pick any to add them to your notes as headings.</p>
+            ${TALK.map(([g, items]) => `<div class="tg">${esc(g)}</div>` + items.map(t => `<button type="button" class="tip" data-tip="${esc(t)}">${esc(t)}</button>`).join('')).join('')}
+            <div class="tfoot"><button type="button" class="btn small" id="o_tipsAll">Add them all as an agenda</button><span style="flex:1"></span><button type="button" class="btn small" id="o_tipsClose">Close</button></div>
+          </div></div>
+        <textarea id="o_body" placeholder="Wins, blockers, wellbeing, development, anything they raised" style="min-height:120px">${esc(e?.body || '')}</textarea></div>
       <div class="fld full"><label>Actions</label><div id="o_acts">${(d.actions?.length ? d.actions : [{}]).map(actRow).join('')}</div><button class="btn small" id="o_addAct" type="button">Add an action</button></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1"></span><button class="btn" id="o_cancel">Cancel</button><button class="btn primary" id="o_save">${e ? 'Save' : 'Save 1-2-1'}</button></div></div>`;
   const wire = () => $('o_acts').querySelectorAll('.x').forEach(b => b.onclick = () => b.parentElement.remove());
   wire();
   $('o_addAct').onclick = () => { $('o_acts').insertAdjacentHTML('beforeend', actRow({})); wire(); };
+  const tips = $('o_tips'), tipsBtn = $('o_tipsBtn');
+  const showTips = open => { tips.hidden = !open; tipsBtn.setAttribute('aria-expanded', String(open)); if (open) tips.querySelector('.tip').focus(); };
+  const addHeading = t => {   // a heading line in the notes, with the cursor ready under it
+    const ta = $('o_body'), sep = ta.value && !ta.value.endsWith('\n\n') ? (ta.value.endsWith('\n') ? '\n' : '\n\n') : '';
+    ta.value += `${sep}${t}\n`;
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight;
+  };
+  tipsBtn.onclick = () => showTips(tips.hidden);
+  $('o_tipsClose').onclick = () => { showTips(false); tipsBtn.focus(); };
+  tips.querySelectorAll('[data-tip]').forEach(b => b.onclick = () => { addHeading(b.dataset.tip); b.disabled = true; b.style.opacity = .45; });
+  $('o_tipsAll').onclick = () => { TALK.flatMap(([, items]) => items).forEach(t => addHeading(t)); showTips(false); };
+  tips.addEventListener('keydown', ev => { if (ev.key === 'Escape') { showTips(false); tipsBtn.focus(); } });
+  document.addEventListener('click', ev => { if (!tips.hidden && !tips.contains(ev.target) && ev.target !== tipsBtn) showTips(false); });
   $('o_cancel').onclick = () => { $('form121').innerHTML = ''; };
   $('o_save').onclick = async () => {
     const actions = [...$('o_acts').children].map(r => Object.fromEntries([...r.querySelectorAll('[data-c]')].map(i => [i.dataset.c, i.value.trim()])))
