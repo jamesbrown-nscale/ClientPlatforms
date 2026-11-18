@@ -14,14 +14,15 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 
-TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) and its access entry
-    {"id": "notifications", "name": "IT Notifications", "icon": "bell", "url": "/notifications/",
+TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) and its access entry.
+    # group is the heading it's listed under in the sidebar.
+    {"id": "notifications", "group": "Device Management", "name": "IT Notifications", "icon": "bell", "url": "/notifications/",
      "about": "Send branded notifications to Windows and Mac devices, and see who has read them."},
-    {"id": "elevation", "name": "Admin elevation log", "icon": "shield", "url": "/elevation/",
+    {"id": "elevation", "group": "Device Management", "name": "Admin elevation log", "icon": "shield", "url": "/elevation/",
      "about": "Every Windows admin elevation request: who, which device, why, and how it ended."},
-    {"id": "restart", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
+    {"id": "restart", "group": "Device Management", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
-    {"id": "projects", "name": "Projects", "icon": "projects", "url": "/projects/",
+    {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",
      "about": "Small project workspaces: status reports, timeline, RAID, actions, decisions, budget and closure."},
 ]
 TOOL_IDS = [t["id"] for t in TOOLS]
