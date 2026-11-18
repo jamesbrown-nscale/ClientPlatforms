@@ -10,6 +10,7 @@
 #   notifications  IT Notifications            /notifications/
 #   elevation      admin elevation log         /elevation/
 #   restart        Restart Reminder report     /restart/
+#   projects       Projects                    /projects/
 #
 # Open it at http://<host>:${HTTP_PORT:-8080}. For Cloudflare Tunnel as well, add
 # docker-compose.cloudflare.yml under "Additional paths" in Portainer.
@@ -41,7 +42,7 @@ services:
     ports:
       # http://<host>:8080 on your network (sign in with a password).
       - "${HTTP_PORT:-8080}:80"
-    depends_on: [portal, notifications, elevation, restart]
+    depends_on: [portal, notifications, elevation, restart, projects]
 
   portal:
     <<: *service
@@ -94,8 +95,18 @@ services:
     volumes:
       - restart-data:/data
 
+  projects:
+    <<: *service
+    build: ./services/projects
+    pull_policy: build   # rebuild from the repo on every (re)deploy
+    environment:
+      <<: *auth
+    volumes:
+      - projects-data:/data
+
 volumes:
   portal-data:
   notifications-data:
   elevation-data:
   restart-data:
+  projects-data:

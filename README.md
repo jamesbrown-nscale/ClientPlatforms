@@ -8,6 +8,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/notifications/` | IT Notifications: send branded notifications to Windows and Mac devices | [`services/notifications`](services/notifications) (apps: [ITNotifications](https://github.com/jamesbrown-nscale/ITNotifications)) |
 | `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
+| `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 
 ```
  people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
@@ -120,6 +121,23 @@ The answer is `{"results": [{"reportId", "status": "created" | "updated" | "dupl
 
 **Before the page has data,** the WindowsRestart app needs to send these reports (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker).
 
+## Projects
+
+Small project workspaces with the sections of TechOps' Project Management workspace. Their definitions (fields, columns, statuses, standard records) are in `services/projects/app/modules.json`, taken from TechOps' `src/modules.js`, and the page draws every list and form from them.
+
+| Group | Sections |
+|---|---|
+| **Overview** | Project Dashboard (overall RAG, current phase, next milestone, key figures) · Status Reports (a new one is filled in from the project as it stands) · Timeline (phases and milestones as a Gantt chart, with a standard phase plan in one click) |
+| **RAID** | Risk Register (likelihood × impact) · Assumptions · Issues Log · Dependencies |
+| **Delivery** | Action Log · Decision Log · Change Log · Reminders · Meeting Notes (each meeting action is also on the Action Log, kept in step both ways) |
+| **People** | Stakeholders · Communications Plan |
+| **Finance** | Budget & Costs (planned vs actual against the approved budget) |
+| **Knowledge** | Document Library |
+| **Closure** | Lessons Learned · Closure & Handover checklist (standard set in one click) |
+| **Access** | Members |
+
+**Who sees what.** Give people the **Projects** tool under Settings → People. Anyone with it can create a project and becomes its owner. Each project's **Members** list decides who else sees it: *Owners* change everything, including members and the project's details; *Editors* add and change records; *Viewers* only look. A project always keeps at least one owner. Client Platforms admins can open every project as an owner.
+
 ## Running locally and tests
 
 ```bash
@@ -142,5 +160,5 @@ Every service runs the same way. `DEV_USER` skips sign-in, so never set it on a 
 | `docker-compose.yml`, `.env.example` | The Portainer stack and its settings. `docker-compose.cloudflare.yml` adds the Cloudflare Tunnel. |
 | `proxy/` | Caddy: routing and the sign-in check in front of each tool. |
 | `services/portal/` | Home page, sign-in (`cloudflare.py`, passwords in `db.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match. To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
-| `services/notifications/`, `services/elevation/`, `services/restart/` | The tools, each with its page, API and tests. |
+| `services/notifications/`, `services/elevation/`, `services/restart/`, `services/projects/` | The tools, each with its page, API and tests. |
 | `infra/`, `deploy.sh`, `cloudbuild.yaml` | Google Cloud (paused). |

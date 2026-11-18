@@ -1,0 +1,1826 @@
+{
+ "phases": [
+  "Discovery",
+  "Pilot",
+  "Waves",
+  "Hypercare",
+  "Close",
+  "Post-Migration Delivery & Technical Implementation"
+ ],
+ "modules": [
+  {
+   "key": "statusReports",
+   "navGroup": "Overview",
+   "label": "Status Reports",
+   "singular": "Status Report",
+   "icon": "status",
+   "description": "Weekly highlight reports with an overall RAG status. The latest report sets the project’s RAG.",
+   "titleField": "periodEnding",
+   "refPrefix": "SR-",
+   "columns": [
+    "ref",
+    "periodEnding",
+    "overallRag",
+    "scheduleRag",
+    "budgetRag",
+    "scopeRag",
+    "risksRag",
+    "phase",
+    "author"
+   ],
+   "fields": [
+    {
+     "key": "periodEnding",
+     "label": "Week ending",
+     "type": "date",
+     "required": true,
+     "defaultToday": true
+    },
+    {
+     "key": "phase",
+     "label": "Current phase",
+     "type": "select",
+     "options": [
+      "Discovery",
+      "Pilot",
+      "Waves",
+      "Hypercare",
+      "Close",
+      "Post-Migration Delivery & Technical Implementation"
+     ]
+    },
+    {
+     "key": "overallRag",
+     "label": "Overall RAG",
+     "type": "rag",
+     "options": [
+      "Green",
+      "Amber",
+      "Red"
+     ],
+     "required": true,
+     "default": "Green",
+     "width": "full"
+    },
+    {
+     "key": "scheduleRag",
+     "label": "Schedule",
+     "type": "rag",
+     "options": [
+      "Green",
+      "Amber",
+      "Red"
+     ],
+     "default": "Green"
+    },
+    {
+     "key": "budgetRag",
+     "label": "Budget",
+     "type": "rag",
+     "options": [
+      "Green",
+      "Amber",
+      "Red"
+     ],
+     "default": "Green"
+    },
+    {
+     "key": "scopeRag",
+     "label": "Scope",
+     "type": "rag",
+     "options": [
+      "Green",
+      "Amber",
+      "Red"
+     ],
+     "default": "Green"
+    },
+    {
+     "key": "risksRag",
+     "label": "Risks & issues",
+     "type": "rag",
+     "options": [
+      "Green",
+      "Amber",
+      "Red"
+     ],
+     "default": "Green"
+    },
+    {
+     "key": "summary",
+     "label": "Executive summary",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "Where the project stands this week, in two or three sentences…"
+    },
+    {
+     "key": "achievements",
+     "label": "Achieved this period",
+     "type": "textarea",
+     "placeholder": "Milestones reached, actions completed…"
+    },
+    {
+     "key": "nextSteps",
+     "label": "Planned next period",
+     "type": "textarea",
+     "placeholder": "What happens next…"
+    },
+    {
+     "key": "keyRisks",
+     "label": "Key risks & issues",
+     "type": "textarea",
+     "placeholder": "Anything threatening delivery…"
+    },
+    {
+     "key": "decisionsNeeded",
+     "label": "Decisions / help needed",
+     "type": "textarea",
+     "placeholder": "Escalations for the sponsor or board…"
+    },
+    {
+     "key": "author",
+     "label": "Author",
+     "type": "user",
+     "placeholder": "Who wrote this report"
+    }
+   ]
+  },
+  {
+   "key": "milestones",
+   "navGroup": "Overview",
+   "label": "Timeline",
+   "singular": "Milestone",
+   "icon": "timeline",
+   "description": "Phases and key dates from Discovery through Pilot, Waves, Hypercare and Close to post-migration delivery.",
+   "titleField": "title",
+   "refPrefix": "MS-",
+   "view": "timeline",
+   "template": {
+    "label": "Add standard phase plan",
+    "kind": "phasePlan"
+   },
+   "quickAction": {
+    "field": "status",
+    "value": "Complete",
+    "label": "Complete",
+    "hideWhen": [
+     "Complete"
+    ]
+   },
+   "columns": [
+    "ref",
+    "title",
+    "phase",
+    "type",
+    "startDate",
+    "endDate",
+    "owner",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Pilot go / no-go"
+    },
+    {
+     "key": "phase",
+     "label": "Phase",
+     "type": "select",
+     "options": [
+      "Discovery",
+      "Pilot",
+      "Waves",
+      "Hypercare",
+      "Close",
+      "Post-Migration Delivery & Technical Implementation"
+     ],
+     "required": true,
+     "default": "Discovery",
+     "width": "third"
+    },
+    {
+     "key": "type",
+     "label": "Type",
+     "type": "select",
+     "options": [
+      "Milestone",
+      "Phase"
+     ],
+     "default": "Milestone",
+     "width": "third"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Not Started",
+      "In Progress",
+      "Complete",
+      "At Risk",
+      "Delayed"
+     ],
+     "default": "Not Started",
+     "width": "third"
+    },
+    {
+     "key": "startDate",
+     "label": "Start date",
+     "type": "date",
+     "hint": "Leave empty for a single key date."
+    },
+    {
+     "key": "endDate",
+     "label": "End / due date",
+     "type": "date",
+     "required": true
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "width": "full",
+     "placeholder": "Who is accountable"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "placeholder": "Scope, entry and exit criteria…"
+    },
+    {
+     "key": "order",
+     "label": "Order",
+     "type": "number",
+     "hidden": true
+    }
+   ]
+  },
+  {
+   "key": "risks",
+   "navGroup": "RAID",
+   "label": "Risk Register",
+   "singular": "Risk",
+   "icon": "risks",
+   "description": "Potential problems scored by likelihood × impact (critical ≥ 20, high 12–19).",
+   "titleField": "title",
+   "refPrefix": "RSK-",
+   "filters": [
+    "category",
+    "status",
+    "owner"
+   ],
+   "columns": [
+    "ref",
+    "title",
+    "category",
+    "likelihood",
+    "impact",
+    "score",
+    "owner",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "Short summary of the risk"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "Describe the risk…"
+    },
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "options": [
+      "Technical",
+      "Security",
+      "Compliance",
+      "Schedule",
+      "Budget",
+      "Resource",
+      "Vendor",
+      "Operational"
+     ],
+     "default": "Technical"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Open",
+      "Mitigating",
+      "Accepted",
+      "Closed"
+     ],
+     "default": "Open"
+    },
+    {
+     "key": "likelihood",
+     "label": "Likelihood (1–5)",
+     "type": "scale",
+     "options": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ],
+     "default": "3",
+     "required": true,
+     "width": "third"
+    },
+    {
+     "key": "impact",
+     "label": "Impact (1–5)",
+     "type": "scale",
+     "options": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ],
+     "default": "3",
+     "required": true,
+     "width": "third"
+    },
+    {
+     "key": "score",
+     "label": "Risk Score",
+     "type": "computed",
+     "width": "third"
+    },
+    {
+     "key": "raisedBy",
+     "label": "Raised By",
+     "type": "user",
+     "placeholder": "Who identified it"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Risk owner name"
+    },
+    {
+     "key": "mitigation",
+     "label": "Mitigation",
+     "type": "textarea",
+     "placeholder": "Steps to reduce likelihood/impact…"
+    },
+    {
+     "key": "contingency",
+     "label": "Contingency",
+     "type": "textarea",
+     "placeholder": "Steps to take if the risk occurs…"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "assumptions",
+   "navGroup": "RAID",
+   "label": "Assumptions",
+   "singular": "Assumption",
+   "icon": "assumptions",
+   "description": "Things the plan takes as true, e.g. “Intune licences procured before the pilot”. Validate them before they bite.",
+   "titleField": "title",
+   "refPrefix": "ASM-",
+   "quickAction": {
+    "field": "status",
+    "value": "Validated",
+    "label": "Validate",
+    "hideWhen": [
+     "Validated",
+     "Invalid",
+     "Closed"
+    ]
+   },
+   "columns": [
+    "ref",
+    "title",
+    "category",
+    "owner",
+    "validateBy",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Assumption",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Intune licences procured before the pilot"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "placeholder": "Background and why we believe it holds…"
+    },
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "options": [
+      "Technical",
+      "Licensing",
+      "Commercial",
+      "Resource",
+      "Schedule",
+      "Business"
+     ],
+     "default": "Technical",
+     "width": "third"
+    },
+    {
+     "key": "validateBy",
+     "label": "Validate by",
+     "type": "date",
+     "width": "third"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Open",
+      "Validated",
+      "Invalid",
+      "Closed"
+     ],
+     "default": "Open",
+     "width": "third"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "width": "full",
+     "placeholder": "Who will confirm it"
+    },
+    {
+     "key": "impactIfWrong",
+     "label": "Impact if wrong",
+     "type": "textarea",
+     "placeholder": "What happens to the plan if this turns out to be false…"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "issues",
+   "navGroup": "RAID",
+   "label": "Issues Log",
+   "singular": "Issue",
+   "icon": "issues",
+   "description": "Problems affecting the project that need resolution.",
+   "titleField": "title",
+   "refPrefix": "ISS-",
+   "filters": [
+    "priority",
+    "status",
+    "owner"
+   ],
+   "columns": [
+    "ref",
+    "title",
+    "category",
+    "priority",
+    "status",
+    "owner",
+    "dueDate",
+    "updates"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "Short summary of the issue"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "placeholder": "Full detail of the issue…"
+    },
+    {
+     "key": "dateRaised",
+     "label": "Date Raised",
+     "type": "date",
+     "defaultToday": true
+    },
+    {
+     "key": "raisedBy",
+     "label": "Raised By",
+     "type": "user",
+     "placeholder": "Who identified it"
+    },
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Technical",
+      "Process",
+      "People",
+      "Vendor",
+      "Security",
+      "Other"
+     ],
+     "default": "Technical"
+    },
+    {
+     "key": "priority",
+     "label": "Priority",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Low",
+      "Medium",
+      "High",
+      "Critical"
+     ],
+     "default": "Medium"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Open",
+      "In Progress",
+      "Resolved",
+      "Closed"
+     ],
+     "default": "Open"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Who is responsible"
+    },
+    {
+     "key": "dueDate",
+     "label": "Due Date",
+     "type": "date"
+    },
+    {
+     "key": "resolution",
+     "label": "Resolution",
+     "type": "textarea",
+     "placeholder": "How it was / will be fixed…"
+    },
+    {
+     "key": "dateResolved",
+     "label": "Date Resolved",
+     "type": "date"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "dependencies",
+   "navGroup": "RAID",
+   "label": "Dependencies",
+   "singular": "Dependency",
+   "icon": "dependencies",
+   "description": "Things the project needs from others, e.g. “ABM tokens renewed before Wave 1”.",
+   "titleField": "title",
+   "refPrefix": "DEP-",
+   "quickAction": {
+    "field": "status",
+    "value": "Met",
+    "label": "Mark met",
+    "hideWhen": [
+     "Met",
+     "Missed"
+    ]
+   },
+   "columns": [
+    "ref",
+    "title",
+    "type",
+    "provider",
+    "owner",
+    "requiredBy",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Dependency",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. ABM tokens renewed before Wave 1"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "placeholder": "What exactly is needed…"
+    },
+    {
+     "key": "type",
+     "label": "Type",
+     "type": "select",
+     "options": [
+      "Internal",
+      "External",
+      "Vendor",
+      "Licensing",
+      "Hardware",
+      "Technical"
+     ],
+     "default": "Internal",
+     "width": "third"
+    },
+    {
+     "key": "requiredBy",
+     "label": "Required by",
+     "type": "date",
+     "width": "third"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Pending",
+      "On Track",
+      "At Risk",
+      "Met",
+      "Missed"
+     ],
+     "default": "Pending",
+     "width": "third"
+    },
+    {
+     "key": "provider",
+     "label": "Dependent on",
+     "type": "text",
+     "placeholder": "Team or supplier that must deliver it"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Who chases it"
+    },
+    {
+     "key": "impact",
+     "label": "Impact if not met",
+     "type": "textarea",
+     "placeholder": "What slips if this isn’t delivered…"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "actions",
+   "navGroup": "Delivery",
+   "label": "Action Log",
+   "singular": "Action",
+   "icon": "actions",
+   "description": "Tasks with an owner, due date and status. Actions raised in meetings appear here and link back to the meeting.",
+   "titleField": "description",
+   "refPrefix": "ACT-",
+   "quickAction": {
+    "field": "status",
+    "value": "Completed",
+    "label": "Complete",
+    "hideWhen": [
+     "Completed",
+     "Cancelled"
+    ]
+   },
+   "columns": [
+    "ref",
+    "description",
+    "owner",
+    "dueDate",
+    "priority",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "description",
+     "label": "Action",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "What needs to be done…"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "— Unassigned —"
+    },
+    {
+     "key": "dueDate",
+     "label": "Due Date",
+     "type": "date"
+    },
+    {
+     "key": "priority",
+     "label": "Priority",
+     "type": "select",
+     "options": [
+      "Low",
+      "Medium",
+      "High",
+      "Critical"
+     ],
+     "default": "Medium",
+     "width": "third"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Open",
+      "In Progress",
+      "Blocked",
+      "Completed",
+      "Cancelled"
+     ],
+     "default": "Open",
+     "width": "third"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Progress updates, context…"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "decisions",
+   "navGroup": "Delivery",
+   "label": "Decision Log",
+   "singular": "Decision",
+   "icon": "decisions",
+   "description": "Key decisions, who made them and why.",
+   "titleField": "title",
+   "refPrefix": "DEC-",
+   "columns": [
+    "ref",
+    "title",
+    "dateMade",
+    "decisionMaker",
+    "madeBy",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Decision Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Migrate to Azure over AWS"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "Full detail of what was decided…"
+    },
+    {
+     "key": "dateMade",
+     "label": "Date Made",
+     "type": "date"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Proposed",
+      "Approved",
+      "Rejected",
+      "Superseded"
+     ],
+     "default": "Proposed"
+    },
+    {
+     "key": "decisionMaker",
+     "label": "Decision Maker",
+     "type": "user",
+     "placeholder": "Person / role with authority"
+    },
+    {
+     "key": "madeBy",
+     "label": "Made By",
+     "type": "users",
+     "placeholder": "Individuals who contributed / agreed"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Background, alternatives considered, follow-ups…"
+    }
+   ]
+  },
+  {
+   "key": "changes",
+   "navGroup": "Delivery",
+   "label": "Change Log",
+   "singular": "Change",
+   "icon": "changes",
+   "description": "Change requests and their approval status.",
+   "titleField": "title",
+   "refPrefix": "CHG-",
+   "columns": [
+    "ref",
+    "title",
+    "type",
+    "priority",
+    "status",
+    "owner",
+    "dateRaised"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "Short summary of the change"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "Full detail of what is changing"
+    },
+    {
+     "key": "dateRaised",
+     "label": "Date Raised",
+     "type": "date"
+    },
+    {
+     "key": "raisedBy",
+     "label": "Raised By",
+     "type": "user",
+     "placeholder": "Who requested it"
+    },
+    {
+     "key": "type",
+     "label": "Change Type",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Scope",
+      "Schedule",
+      "Budget",
+      "Technical",
+      "Resource",
+      "Process"
+     ],
+     "default": "Scope"
+    },
+    {
+     "key": "priority",
+     "label": "Priority",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Low",
+      "Medium",
+      "High",
+      "Critical"
+     ],
+     "default": "Medium"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "width": "third",
+     "options": [
+      "Requested",
+      "Under Review",
+      "Approved",
+      "Rejected",
+      "Implemented",
+      "Deferred"
+     ],
+     "default": "Requested"
+    },
+    {
+     "key": "impact",
+     "label": "Impact",
+     "type": "textarea",
+     "placeholder": "What is affected by this change"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Who implements it"
+    },
+    {
+     "key": "approvedBy",
+     "label": "Approved By",
+     "type": "user",
+     "placeholder": "Who signed it off"
+    },
+    {
+     "key": "approvalDate",
+     "label": "Approval Date",
+     "type": "date"
+    },
+    {
+     "key": "implementationDate",
+     "label": "Implementation Date",
+     "type": "date"
+    },
+    {
+     "key": "updates",
+     "label": "Updates",
+     "type": "updates",
+     "width": "full"
+    }
+   ]
+  },
+  {
+   "key": "reminders",
+   "navGroup": "Delivery",
+   "label": "Reminders",
+   "singular": "Reminder",
+   "icon": "reminders",
+   "description": "Follow-ups and deadlines to keep on track. Your open actions from the Action Log are listed too.",
+   "titleField": "description",
+   "quickAction": {
+    "field": "status",
+    "value": "Completed",
+    "label": "Complete",
+    "hideWhen": [
+     "Completed"
+    ]
+   },
+   "columns": [
+    "description",
+    "assignedTo",
+    "priority",
+    "dueDate",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "dateCreated",
+     "label": "Date Created",
+     "type": "date",
+     "readOnly": true,
+     "defaultToday": true,
+     "width": "full"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "Describe this reminder…"
+    },
+    {
+     "key": "assignedTo",
+     "label": "Assigned To",
+     "type": "user",
+     "placeholder": "— Unassigned —"
+    },
+    {
+     "key": "priority",
+     "label": "Priority",
+     "type": "select",
+     "options": [
+      "Low",
+      "Medium",
+      "High",
+      "Critical"
+     ],
+     "default": "Medium"
+    },
+    {
+     "key": "dueDate",
+     "label": "Due Date",
+     "type": "date",
+     "width": "full"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Additional notes or context…"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Open",
+      "In Progress",
+      "Completed"
+     ],
+     "default": "Open",
+     "editOnly": true
+    }
+   ]
+  },
+  {
+   "key": "meetings",
+   "navGroup": "Delivery",
+   "label": "Meeting Notes",
+   "singular": "Meeting",
+   "icon": "meetings",
+   "description": "Minutes, attendees and actions from project meetings. Actions go to the Action Log.",
+   "titleField": "title",
+   "columns": [
+    "title",
+    "date",
+    "attendees",
+    "actions"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Weekly migration stand-up"
+    },
+    {
+     "key": "date",
+     "label": "Date",
+     "type": "date",
+     "required": true,
+     "defaultToday": true
+    },
+    {
+     "key": "attendees",
+     "label": "Attendees",
+     "type": "users",
+     "placeholder": "Add attendees…"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "What was discussed…"
+    },
+    {
+     "key": "actions",
+     "label": "Actions",
+     "type": "actions",
+     "width": "full",
+     "options": [
+      "Open",
+      "In Progress",
+      "Blocked",
+      "Completed",
+      "Cancelled"
+     ]
+    }
+   ]
+  },
+  {
+   "key": "stakeholders",
+   "navGroup": "People",
+   "label": "Stakeholders",
+   "singular": "Stakeholder",
+   "icon": "stakeholders",
+   "description": "People and teams affected by or influencing the project, and who is Responsible, Accountable, Consulted or Informed for each workstream.",
+   "titleField": "name",
+   "groupBy": "category",
+   "columns": [
+    "name",
+    "category",
+    "email",
+    "department"
+   ],
+   "fields": [
+    {
+     "key": "category",
+     "label": "Stakeholder role",
+     "type": "select",
+     "required": true,
+     "width": "full",
+     "options": [
+      "Project Sponsor",
+      "Project Manager",
+      "IT Lead",
+      "Migration Engineer",
+      "HR/Legal",
+      "Communications Lead",
+      "Helpdesk Lead",
+      "Department Heads"
+     ],
+     "optionDescriptions": {
+      "Project Sponsor": "Business sign-off, budget approval",
+      "Project Manager": "Day-to-day management, timeline",
+      "IT Lead": "Technical decisions, architecture",
+      "Migration Engineer": "Running tools, scripts, technical execution",
+      "HR/Legal": "Data privacy, GDPR compliance",
+      "Communications Lead": "User comms, training",
+      "Helpdesk Lead": "Support during cutover",
+      "Department Heads": "Sign off per-department readiness"
+     }
+    },
+    {
+     "key": "name",
+     "label": "Name",
+     "type": "user",
+     "required": true,
+     "placeholder": "Select a member or type a name"
+    },
+    {
+     "key": "email",
+     "label": "Email",
+     "type": "text",
+     "placeholder": "name@company.com"
+    },
+    {
+     "key": "department",
+     "label": "Department / Team",
+     "type": "text",
+     "width": "full",
+     "placeholder": "e.g. Enterprise Security"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Interests, concerns, how to engage…"
+    }
+   ]
+  },
+  {
+   "key": "communications",
+   "navGroup": "People",
+   "label": "Communications Plan",
+   "singular": "Communication",
+   "icon": "communications",
+   "description": "Which audience gets what message, when, and through which channel.",
+   "titleField": "subject",
+   "refPrefix": "COM-",
+   "quickAction": {
+    "field": "status",
+    "value": "Sent",
+    "label": "Mark sent",
+    "hideWhen": [
+     "Sent",
+     "Cancelled"
+    ]
+   },
+   "columns": [
+    "ref",
+    "subject",
+    "audience",
+    "channel",
+    "sendDate",
+    "owner",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "subject",
+     "label": "Message / subject",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Your laptop is moving to Intune next week"
+    },
+    {
+     "key": "audience",
+     "label": "Audience",
+     "type": "text",
+     "required": true,
+     "placeholder": "Who receives it",
+     "suggestions": [
+      "All staff",
+      "Pilot users",
+      "Wave 1 users",
+      "Wave 2 users",
+      "Wave 3 users",
+      "IT team",
+      "Service desk",
+      "Leadership team",
+      "Department heads",
+      "Remote workers"
+     ]
+    },
+    {
+     "key": "channel",
+     "label": "Channel",
+     "type": "select",
+     "options": [
+      "Email",
+      "Teams",
+      "Slack",
+      "Video",
+      "Other"
+     ],
+     "default": "Email"
+    },
+    {
+     "key": "sendDate",
+     "label": "Send date",
+     "type": "date",
+     "width": "third"
+    },
+    {
+     "key": "phase",
+     "label": "Phase",
+     "type": "select",
+     "options": [
+      "Discovery",
+      "Pilot",
+      "Waves",
+      "Hypercare",
+      "Close",
+      "Post-Migration Delivery & Technical Implementation"
+     ],
+     "width": "third"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Pending",
+      "Scheduled",
+      "Sent",
+      "Cancelled"
+     ],
+     "default": "Pending",
+     "width": "third"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Who sends it"
+    },
+    {
+     "key": "sentDate",
+     "label": "Date sent",
+     "type": "date",
+     "editOnly": true
+    },
+    {
+     "key": "message",
+     "label": "Key message / content",
+     "type": "textarea",
+     "placeholder": "What the audience needs to know or do…"
+    }
+   ]
+  },
+  {
+   "key": "budget",
+   "navGroup": "Finance",
+   "label": "Budget & Costs",
+   "singular": "Cost Line",
+   "icon": "budget",
+   "description": "Planned vs actual spend on hardware, licences, contractor days and services.",
+   "titleField": "description",
+   "columns": [
+    "category",
+    "description",
+    "supplier",
+    "planned",
+    "actual",
+    "variance",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "required": true,
+     "options": [
+      "Hardware",
+      "Licences",
+      "Contractor days",
+      "Professional services",
+      "Training",
+      "Other"
+     ],
+     "default": "Hardware"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Estimated",
+      "Committed",
+      "Invoiced",
+      "Paid"
+     ],
+     "default": "Estimated"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. 250 × Surface Laptop 6, or 40 days Intune consultant"
+    },
+    {
+     "key": "supplier",
+     "label": "Supplier",
+     "type": "text",
+     "placeholder": "Vendor or contractor"
+    },
+    {
+     "key": "reference",
+     "label": "PO / invoice ref",
+     "type": "text",
+     "placeholder": "e.g. PO-10432"
+    },
+    {
+     "key": "quantity",
+     "label": "Quantity / days",
+     "type": "number",
+     "width": "third"
+    },
+    {
+     "key": "unitCost",
+     "label": "Unit cost / day rate",
+     "type": "currency",
+     "width": "third"
+    },
+    {
+     "key": "planned",
+     "label": "Planned",
+     "type": "currency",
+     "width": "third",
+     "hint": "Leave empty to use quantity × unit cost."
+    },
+    {
+     "key": "actual",
+     "label": "Actual",
+     "type": "currency",
+     "width": "third"
+    },
+    {
+     "key": "date",
+     "label": "Date",
+     "type": "date",
+     "width": "third"
+    },
+    {
+     "key": "variance",
+     "label": "Variance",
+     "type": "computed",
+     "width": "third"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Assumptions behind the estimate, approvals…"
+    }
+   ]
+  },
+  {
+   "key": "documents",
+   "navGroup": "Knowledge",
+   "label": "Document Library",
+   "singular": "Document",
+   "icon": "documents",
+   "description": "Links to the business case, designs, SOWs, approvals and other key documents.",
+   "titleField": "title",
+   "columns": [
+    "title",
+    "type",
+    "version",
+    "owner",
+    "status",
+    "approvalDate"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Intune migration business case"
+    },
+    {
+     "key": "url",
+     "label": "Link",
+     "type": "url",
+     "required": true,
+     "width": "full",
+     "placeholder": "https://contoso.sharepoint.com/…"
+    },
+    {
+     "key": "type",
+     "label": "Type",
+     "type": "select",
+     "options": [
+      "Business case",
+      "Design",
+      "SOW",
+      "Approval",
+      "Plan",
+      "Test evidence",
+      "Report",
+      "Contract",
+      "Runbook",
+      "Other"
+     ],
+     "default": "Design",
+     "width": "third"
+    },
+    {
+     "key": "version",
+     "label": "Version",
+     "type": "text",
+     "width": "third",
+     "placeholder": "e.g. v1.2"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Draft",
+      "In Review",
+      "Approved",
+      "Superseded"
+     ],
+     "default": "Draft",
+     "width": "third"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Document owner"
+    },
+    {
+     "key": "approvedBy",
+     "label": "Approved by",
+     "type": "user",
+     "placeholder": "Who approved it"
+    },
+    {
+     "key": "approvalDate",
+     "label": "Approval date",
+     "type": "date"
+    },
+    {
+     "key": "description",
+     "label": "Description",
+     "type": "textarea",
+     "placeholder": "What the document covers…"
+    }
+   ]
+  },
+  {
+   "key": "lessons",
+   "navGroup": "Closure",
+   "label": "Lessons Learned",
+   "singular": "Lesson",
+   "icon": "lessons",
+   "description": "What went well and what to do differently next time.",
+   "titleField": "title",
+   "refPrefix": "LL-",
+   "columns": [
+    "ref",
+    "title",
+    "type",
+    "category",
+    "phase",
+    "status"
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Lesson",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Start app packaging during Discovery"
+    },
+    {
+     "key": "type",
+     "label": "Type",
+     "type": "select",
+     "options": [
+      "Went well",
+      "To improve"
+     ],
+     "default": "To improve",
+     "width": "third"
+    },
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "options": [
+      "Planning",
+      "Technical",
+      "Communication",
+      "Vendor",
+      "People",
+      "Process",
+      "Tooling"
+     ],
+     "default": "Process",
+     "width": "third"
+    },
+    {
+     "key": "phase",
+     "label": "Phase",
+     "type": "select",
+     "options": [
+      "Discovery",
+      "Pilot",
+      "Waves",
+      "Hypercare",
+      "Close",
+      "Post-Migration Delivery & Technical Implementation"
+     ],
+     "width": "third"
+    },
+    {
+     "key": "whatHappened",
+     "label": "What happened",
+     "type": "textarea",
+     "required": true,
+     "placeholder": "The situation and its effect…"
+    },
+    {
+     "key": "recommendation",
+     "label": "Recommendation",
+     "type": "textarea",
+     "placeholder": "What future projects should do…"
+    },
+    {
+     "key": "raisedBy",
+     "label": "Raised by",
+     "type": "user"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Draft",
+      "Agreed",
+      "Actioned"
+     ],
+     "default": "Draft"
+    }
+   ]
+  },
+  {
+   "key": "closure",
+   "navGroup": "Closure",
+   "label": "Closure & Handover",
+   "singular": "Checklist Item",
+   "icon": "closure",
+   "description": "Sign-off checklist for closing the project and handing the service over to BAU.",
+   "titleField": "item",
+   "view": "checklist",
+   "groupBy": "category",
+   "template": {
+    "label": "Add standard checklist",
+    "kind": "static",
+    "records": [
+     {
+      "category": "Handover to BAU",
+      "item": "Service desk trained on the new support model",
+      "status": "Not Started"
+     },
+     {
+      "category": "Handover to BAU",
+      "item": "Runbooks and knowledge articles handed to BAU owners",
+      "status": "Not Started"
+     },
+     {
+      "category": "Handover to BAU",
+      "item": "Known errors and workarounds documented",
+      "status": "Not Started"
+     },
+     {
+      "category": "Handover to BAU",
+      "item": "Support contacts and escalation paths agreed with BAU",
+      "status": "Not Started"
+     },
+     {
+      "category": "Acceptance & sign-off",
+      "item": "Hypercare exit criteria met",
+      "status": "Not Started"
+     },
+     {
+      "category": "Acceptance & sign-off",
+      "item": "Service owner accepts the service into BAU",
+      "status": "Not Started"
+     },
+     {
+      "category": "Acceptance & sign-off",
+      "item": "Project sponsor sign-off",
+      "status": "Not Started"
+     },
+     {
+      "category": "Documentation",
+      "item": "As-built design and configuration baseline published",
+      "status": "Not Started"
+     },
+     {
+      "category": "Documentation",
+      "item": "Project documents archived in the document library",
+      "status": "Not Started"
+     },
+     {
+      "category": "Finance & contracts",
+      "item": "All invoices received and POs closed",
+      "status": "Not Started"
+     },
+     {
+      "category": "Finance & contracts",
+      "item": "Budget reconciled: final actuals against plan",
+      "status": "Not Started"
+     },
+     {
+      "category": "Licences & assets",
+      "item": "Licence counts reconciled and surplus released",
+      "status": "Not Started"
+     },
+     {
+      "category": "Licences & assets",
+      "item": "Legacy tooling decommission plan agreed",
+      "status": "Not Started"
+     },
+     {
+      "category": "Access & security",
+      "item": "Project and contractor access removed",
+      "status": "Not Started"
+     },
+     {
+      "category": "Communications",
+      "item": "Project closure communication sent",
+      "status": "Not Started"
+     },
+     {
+      "category": "Communications",
+      "item": "Lessons learned workshop held and published",
+      "status": "Not Started"
+     }
+    ]
+   },
+   "quickAction": {
+    "field": "status",
+    "value": "Done",
+    "label": "Done",
+    "hideWhen": [
+     "Done",
+     "Not Applicable"
+    ]
+   },
+   "columns": [
+    "item",
+    "category",
+    "owner",
+    "dueDate",
+    "status",
+    "signedOffBy"
+   ],
+   "fields": [
+    {
+     "key": "item",
+     "label": "Checklist item",
+     "type": "text",
+     "required": true,
+     "width": "full",
+     "placeholder": "e.g. Service desk trained on the new support model"
+    },
+    {
+     "key": "category",
+     "label": "Category",
+     "type": "select",
+     "required": true,
+     "options": [
+      "Handover to BAU",
+      "Acceptance & sign-off",
+      "Documentation",
+      "Finance & contracts",
+      "Licences & assets",
+      "Access & security",
+      "Communications"
+     ],
+     "default": "Handover to BAU"
+    },
+    {
+     "key": "status",
+     "label": "Status",
+     "type": "select",
+     "options": [
+      "Not Started",
+      "In Progress",
+      "Done",
+      "Not Applicable"
+     ],
+     "default": "Not Started"
+    },
+    {
+     "key": "owner",
+     "label": "Owner",
+     "type": "user",
+     "placeholder": "Who completes it"
+    },
+    {
+     "key": "dueDate",
+     "label": "Due date",
+     "type": "date"
+    },
+    {
+     "key": "signedOffBy",
+     "label": "Signed off by",
+     "type": "user",
+     "placeholder": "Who confirmed it"
+    },
+    {
+     "key": "signedOffDate",
+     "label": "Sign-off date",
+     "type": "date"
+    },
+    {
+     "key": "evidence",
+     "label": "Evidence link",
+     "type": "url",
+     "width": "full",
+     "placeholder": "https://… (optional)"
+    },
+    {
+     "key": "notes",
+     "label": "Notes",
+     "type": "textarea",
+     "placeholder": "Handover details, conditions…"
+    }
+   ]
+  }
+ ]
+}

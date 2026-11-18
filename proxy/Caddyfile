@@ -1,7 +1,8 @@
 # Client Platforms front door (Docker / Portainer).
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
-#   /restart/*        Restart Reminder      everything else: the portal (home, sign-in, settings)
+#   /restart/*        Restart Reminder      /projects/*   Projects
+#   everything else: the portal (home, sign-in, settings)
 #
 # Before a request reaches a tool, Caddy asks the portal (/auth/check) whether the person is signed
 # in and allowed that tool. The portal answers with X-CP-User, a short-lived signed token the tool
@@ -69,6 +70,11 @@
 	handle @restart {
 		import signed_in
 		import to restart
+	}
+	@projects path /projects /projects/*
+	handle @projects {
+		import signed_in
+		import to projects
 	}
 
 	handle /proxy-health {
