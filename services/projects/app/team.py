@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import access, modules, tasks
+from .inbox import notify, person_email
 from .auth import TEAM, User, current_user, require_team_user
 from .store import Store, now
 
@@ -401,7 +402,24 @@ def add_entry(email: str, body: EntryIn, user: User = Depends(require_team_user)
         d.execute("INSERT INTO team_entries (id, member, kind, date, body, data, author, author_name, created_at, updated_at) "
                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                   (eid, m["email"], body.kind, when, text, json.dumps(data) if data else None, user.email, user.name, t, t))
+    _tell(m, body.kind, when, text, (data or {}).get("actions", []), user)
     return list_entries(email, user)
+
+
+def _tell(m: dict, kind: str, when: str, text: str, new_actions: list[dict], user: User) -> None:
+    """The person hears about their 1-2-1s and feedback; action owners about their actions. Never manager notes."""
+    tab = "one_to_one" if kind == "one_to_one" else "feedback"
+    url = f"/team/#person={m['email']}&tab={tab}"
+    if kind == "one_to_one":
+        notify(m["email"], "one_to_one", f"{user.name} recorded your 1-2-1 on {tasks.nice_date(when)}", user, text[:200], url)
+    elif kind in ("well", "improve"):
+        notify(m["email"], "feedback", f"{user.name} added feedback: {KINDS[kind].lower()}", user, text, url)
+    for a in new_actions:
+        owner = person_email(a.get("owner", ""))
+        if owner:
+            whose = "your" if owner == m["email"] else f"{m['name']}'s"
+            notify(owner, "action", f"New action from {whose} 1-2-1: {a['text']}", user,
+                   f"Due {tasks.nice_date(a['due'])}" if a.get("due") else "", "/inbox/")
 
 
 @router.put("/api/members/{email}/entries/{eid}")
@@ -421,6 +439,9 @@ def update_entry(email: str, eid: str, body: EntryIn, user: User = Depends(requi
     with _store.lock, db() as d:
         d.execute("UPDATE team_entries SET date = ?, body = ?, data = ?, updated_at = ? WHERE id = ?",
                   (when, text, json.dumps(data) if data else None, now(), eid))
+    if r["kind"] == "one_to_one" and data:   # tell the owners of actions added since
+        before = {a["id"] for a in (json.loads(r["data"]) if r["data"] else {}).get("actions", [])}
+        _tell(m, "", when, "", [a for a in data.get("actions", []) if a["id"] not in before], user)
     return list_entries(email, user)
 
 

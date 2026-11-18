@@ -51,6 +51,11 @@
   tbody tr:last-child td { border-bottom: 0; }
   td input[type=text] { max-width: none; min-width: 220px; }
   .muted { color: var(--text2); font-size: 12.5px; }
+  .stabs { display: flex; gap: 4px; border-bottom: 1px solid var(--surface); margin: -8px 0 24px; }
+  .stabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; color: var(--text2); font: inherit; font-weight: 600;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .stabs button:hover { color: var(--text); }
+  .stabs button[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
   .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 11px; white-space: nowrap; background: var(--surface); color: var(--primary); }
   .badge.grey { background: var(--grey-fill); color: var(--text2); }
   .badge.off { background: var(--err-fill); color: var(--err); }
@@ -76,6 +81,11 @@
 
 <main>
   <h1 id="title">Settings</h1>
+  <div class="stabs" id="stabs" role="tablist" hidden>
+    <button role="tab" data-stab="general" aria-selected="true" aria-controls="generalTab">Site and people</button>
+    <button role="tab" data-stab="changes" aria-selected="false" aria-controls="changesTab">Change management</button>
+  </div>
+  <div id="generalTab" role="tabpanel">
 
   <section class="card" id="account" hidden>
     <h2>Your account</h2>
@@ -133,6 +143,8 @@
     </table></div>
     <div id="userNotice" class="notice" hidden></div>
   </section>
+  </div>
+  <div id="changesTab" role="tabpanel" hidden></div>
 </main>
 
 <dialog id="userDlg">
@@ -303,6 +315,30 @@ $('resetForm').addEventListener('submit', async e => {
   } catch (err) { notice($('rpNotice'), err.message); }
 });
 
+/* ---------- Tabs: site and people · change management ---------- */
+function setupTabs() {
+  $('stabs').hidden = false;
+  const show = async tab => {
+    if (tab !== 'changes' && window.cpChangeSettings?.isDirty?.() &&
+        !(await cp.confirm({ title: 'Leave without saving?', message: 'Your change management settings have unsaved changes.', confirm: 'Leave', cancel: 'Stay', danger: true }))) return;
+    document.querySelectorAll('[data-stab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.stab === tab)));
+    $('generalTab').hidden = tab !== 'general';
+    $('changesTab').hidden = tab !== 'changes';
+    history.replaceState(null, '', tab === 'changes' ? '#changes' : location.pathname);
+    if (tab === 'changes' && !$('changesTab').dataset.loaded) {
+      $('changesTab').dataset.loaded = '1';
+      // The flow builder lives with Change management (projects service) and draws itself here.
+      const sc = document.createElement('script');
+      sc.src = '/changes/static/change-settings.js';
+      sc.onload = () => window.cpChangeSettings.mount($('changesTab'));
+      sc.onerror = () => { $('changesTab').innerHTML = '<section class="card"><h2>Change management</h2><p class="sub">Couldn\'t load the change management settings. Is the projects service running?</p></section>'; };
+      document.head.append(sc);
+    }
+  };
+  document.querySelectorAll('[data-stab]').forEach(b => b.onclick = () => show(b.dataset.stab));
+  if (location.hash === '#changes') show('changes');
+}
+
 /* ---------- Start ---------- */
 (async () => {
   me = await api('/api/me');
@@ -317,6 +353,7 @@ $('resetForm').addEventListener('submit', async e => {
   if (!me.passwords) $('peopleSub').textContent += ' Cloudflare Access does the signing in, so there are no passwords here: add the same email Cloudflare signs them in with.';
   renderSettings(await api('/api/settings'));
   if (me.accounts) await loadUsers();
+  setupTabs();
 })().catch(err => { document.querySelector('main').append(el('p', { className: 'notice err', textContent: err.message })); });
 </script>
 </body>

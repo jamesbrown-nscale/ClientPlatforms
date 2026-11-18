@@ -14,7 +14,9 @@
     home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    changes: '<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
     team: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+    inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
     tasks: '<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/>',
     projects: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/>',
     restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
@@ -124,6 +126,7 @@
       <a class="cp-brand" href="/"><img src="/static/nscale-icon.svg" alt=""><span>Client Platforms</span></a>
       <div class="cp-list" role="navigation" aria-label="Tools">
         ${item('/', 'home', 'Home')}
+        ${me.inbox ? item('/inbox/', 'inbox', 'Notifications', false, 'inbox') : ''}
         ${tools}
       </div>
       <div class="cp-foot">
@@ -138,6 +141,10 @@
       try { localStorage.setItem('cp-nav-open', JSON.stringify({ ...opened, [b.dataset.group]: open })); opened[b.dataset.group] = open; } catch {}
     }));
     document.body.prepend(side);
+    if (me.inbox) {
+      inboxBadge(side);
+      window.cpNavRefreshInbox = () => inboxBadge(side);   // the inbox page calls this after changes
+    }
     if ((me.tools || []).some(t => t.id === 'tasks')) {
       taskBadge(side);
       window.cpNavRefreshTasks = () => taskBadge(side);   // the Tasks page calls this after changes
@@ -151,7 +158,7 @@
       const r = await fetch('/tasks/api/counts', { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
       if (!r.ok) return;
       const c = await r.json();
-      side.querySelectorAll('.cp-badge, .cp-dot').forEach(b => b.remove());
+      side.querySelectorAll('a[data-tool="tasks"] .cp-badge, button.cp-label .cp-dot').forEach(b => b.remove());
       if (!c.badge) return;
       const title = `${c.mine} assigned to you${c.overdue ? `, ${c.overdue} overdue` : ''}${c.waiting ? `, ${c.waiting} question${c.waiting > 1 ? 's' : ''} waiting on you` : ''}`;
       const badge = () => { const b = document.createElement('span'); b.className = 'cp-badge' + (c.overdue || c.waiting ? ' late' : '');
@@ -168,6 +175,25 @@
         dot.title = title;
         heading.querySelector('span').after(dot);
       }
+    } catch { /* no badge */ }
+  }
+
+  /** A red count of unread notifications beside Notifications. */
+  async function inboxBadge(side) {
+    try {
+      const r = await fetch('/inbox/api/count', { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
+      if (!r.ok) return;
+      const c = await r.json();
+      const link = side.querySelector('a[data-tool="inbox"]');
+      if (!link) return;
+      link.querySelector('.cp-badge')?.remove();
+      link.setAttribute('aria-label', c.unread ? `Notifications: ${c.unread} unread` : 'Notifications');
+      if (!c.unread) return;
+      const b = document.createElement('span');
+      b.className = 'cp-badge late';
+      b.textContent = c.unread > 99 ? '99+' : String(c.unread);
+      b.title = `${c.unread} unread`;
+      link.append(b);
     } catch { /* no badge */ }
   }
 

@@ -7,10 +7,12 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/` | Home page, sign-in, Settings (people, tool links, addresses) | [`services/portal`](services/portal) |
 | `/notifications/` | IT Notifications: send branded notifications to Windows and Mac devices | [`services/notifications`](services/notifications) (apps: [ITNotifications](https://github.com/jamesbrown-nscale/ITNotifications)) |
 | `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
+| `/changes/` | Change management: raise, review and approve changes, through a flow per change type | [`services/projects`](services/projects) (`app/changes.py`) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Tasks: a shared task list with assignees, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
 | `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
+| `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
 ```
  people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
@@ -168,6 +170,43 @@ Everyone on the team, grouped by team, with their role, manager, start date, loc
 | **Manager notes** | Private notes | Their manager and admins only. **Never the person.** |
 
 Only their manager or an admin adds or changes anything about someone (the person reads their own 1-2-1s and feedback but can't change them). Admins add anyone and set managers; anyone else on the team can add people who report to them. Only admins take someone off the team.
+
+## Change management
+
+Under **Device Management**. A **change requestor** raises a change: title, change type, category, risk, the planned window, what's changing and why, impact, scope, and the implementation, test and rollback plans. It can be saved as a draft (only they see it) and submitted when ready.
+
+Each change type has a **flow**, set by admins in **Settings → Change management** by dragging steps into it:
+
+| Step | What happens |
+|---|---|
+| **Review** | The *Change reviewers* (or named people) approve, decline or ask for changes. Any one, a number, or all must approve. |
+| **Notify** | Tells the reviewers, the requestor or named people, and moves straight on |
+| **Schedule** | The requestor confirms the window |
+| **Implement** | The requestor (or named implementers) starts it, then marks it complete, or failed and rolled back |
+| **Verify** | Someone confirms it worked |
+
+Three flows come ready to edit: **Standard** (pre-approved), **Normal** (two reviewers, then schedule, implement and a post-implementation review) and **Emergency** (one approval, implement, then a retrospective review). The same tab sets the roles (requestors: everyone with the tool, or named people; *Change reviewers*), the categories and the risk levels.
+
+**Statuses:** Draft, In review, Changes requested, Awaiting schedule, Scheduled, In progress, Awaiting verification, Completed, Declined, Failed, Cancelled. A strip on each change shows where it is in its flow.
+
+**Rules:** nobody approves their own change; if no reviewers are set, admins can approve. When a reviewer asks for changes, the requestor edits and resubmits, and approvals on that step start again. A change keeps the flow it was submitted with, so editing a flow never disturbs changes under way. Everyone with the tool sees submitted changes; drafts are private.
+
+**Talking about it:** anyone can comment and @tag people; the requestor posts updates. Notifications go to everyone's inbox: your turn to review, schedule, implement or verify; approved, declined, changes requested; comments, tags and updates; completed or failed.
+
+## Notifications (your own)
+
+**Notifications**, just under Home in the sidebar, is everyone's own inbox, whatever tools they have. A red count shows how many are unread. You're told when:
+
+| From | What |
+|---|---|
+| Tasks | a task is assigned to you; someone comments, posts an update or changes a task you're assigned to or created; a question is waiting on you; your question is answered; a task you created is done; someone @mentions you |
+| Team | your 1-2-1 is recorded; an action from any 1-2-1 is given to you (by name or email); feedback about you is added. **Manager notes never notify anyone.** |
+| Projects | you're added to a project, or your role changes |
+| Change management | your turn on a change; your change approved, declined or sent back; comments, tags and updates on changes you're involved in; completed or failed |
+
+Nobody is told about their own doing. Opening a notification marks it read and takes you there; each can be marked unread or dismissed, and there's *Mark all as read*. Read notifications older than 120 days are cleared away.
+
+**Your 1-2-1 actions** stay at the top of the page until you tick them off (the action's owner can tick it, even in someone else's 1-2-1; their manager is told).
 
 ## Dialogs
 

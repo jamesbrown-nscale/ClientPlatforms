@@ -5,6 +5,8 @@
     items     every record in every section, as JSON, with its reference number (RSK-001 …)
     tasks, task_activity   the Tasks tool (tasks.py)
     team_*    the Team tool (team.py): people, responsibilities, 1-2-1s, feedback, manager notes
+    notifications   each person's own notifications (inbox.py)
+    change_*  Change management (changes.py): settings and flows, change requests, their activity
 """
 import json
 import sqlite3
@@ -68,6 +70,20 @@ class Store:
                 kind TEXT NOT NULL, date TEXT, body TEXT DEFAULT '', data TEXT,
                 author TEXT, author_name TEXT, created_at TEXT, updated_at TEXT);
             CREATE INDEX IF NOT EXISTS team_entries_member ON team_entries(member, kind, date);
+            CREATE TABLE IF NOT EXISTS notifications (
+                id TEXT PRIMARY KEY, recipient TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT DEFAULT '',
+                link TEXT DEFAULT '', actor TEXT, actor_name TEXT, created_at TEXT, read_at TEXT);
+            CREATE INDEX IF NOT EXISTS notifications_recipient ON notifications(recipient, read_at, created_at);
+            CREATE TABLE IF NOT EXISTS change_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT, updated_by TEXT);
+            CREATE TABLE IF NOT EXISTS changes (
+                id TEXT PRIMARY KEY, ref TEXT, title TEXT NOT NULL, flow TEXT NOT NULL, state TEXT NOT NULL, step INTEGER DEFAULT 0,
+                step_started_at TEXT, started INTEGER DEFAULT 0, fields TEXT NOT NULL, requestor TEXT NOT NULL, requestor_name TEXT,
+                created_at TEXT, updated_at TEXT, submitted_at TEXT, closed_at TEXT);
+            CREATE INDEX IF NOT EXISTS changes_requestor ON changes(requestor);
+            CREATE TABLE IF NOT EXISTS change_activity (
+                id TEXT PRIMARY KEY, change_id TEXT NOT NULL REFERENCES changes(id) ON DELETE CASCADE, kind TEXT NOT NULL,
+                author TEXT, author_name TEXT, body TEXT DEFAULT '', step INTEGER, mentions TEXT DEFAULT '[]', data TEXT, created_at TEXT);
+            CREATE INDEX IF NOT EXISTS change_activity_change ON change_activity(change_id, created_at);
             """)
 
     def db(self):

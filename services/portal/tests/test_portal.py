@@ -78,6 +78,12 @@ def test_front_door_check(c):
     assert access.verify(r.headers["x-cp-user"][:-2] + "xx", "elevation", SECRET) is None
     assert access.verify(r.headers["x-cp-user"], "elevation", "t" * 40) is None
     assert check(c, "/somewhere-else/").status_code == 403
+    # Everyone has their own notifications, whatever tools they've been given.
+    add(c, "nobody@nscale.com", tools=[])
+    sign_in(c, "nobody@nscale.com", "a-good-password")
+    r = check(c, "/inbox/api/count")
+    assert r.status_code == 200 and access.verify(r.headers["x-cp-user"], "inbox", SECRET)["email"] == "nobody@nscale.com"
+    assert check(c, "/tasks/").status_code == 403
 
 
 def test_each_person_only_gets_their_tools(c):
@@ -142,7 +148,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "restart", "projects", "tasks", "team"]
+    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "changes", "restart", "projects", "tasks", "team"]
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},

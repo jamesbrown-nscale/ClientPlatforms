@@ -20,6 +20,8 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Send branded notifications to Windows and Mac devices, and see who has read them."},
     {"id": "elevation", "group": "Device Management", "name": "Admin elevation log", "icon": "shield", "url": "/elevation/",
      "about": "Every Windows admin elevation request: who, which device, why, and how it ended."},
+    {"id": "changes", "group": "Device Management", "name": "Change management", "icon": "changes", "url": "/changes/",
+     "about": "Raise, review and approve changes to devices and services, through the right flow for each change type."},
     {"id": "restart", "group": "Device Management", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",

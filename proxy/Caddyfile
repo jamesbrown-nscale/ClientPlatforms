@@ -2,6 +2,7 @@
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
 #   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
+#   /inbox/*          your notifications   /changes/*   Change management
 #   everything else: the portal (home, sign-in, settings)
 #
 # Before a request reaches a tool, Caddy asks the portal (/auth/check) whether the person is signed
@@ -85,6 +86,17 @@
 	}
 	@team path /team /team/*
 	handle @team {
+		import signed_in
+		import to projects
+	}
+	@changes path /changes /changes/*
+	handle @changes {
+		import signed_in
+		import to projects
+	}
+	# Everyone's own notifications (any signed-in person; see the portal's EVERYONE).
+	@inbox path /inbox /inbox/*
+	handle @inbox {
 		import signed_in
 		import to projects
 	}

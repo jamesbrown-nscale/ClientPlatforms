@@ -110,8 +110,11 @@ def not_signed_in(request: Request, nxt: str = "/") -> Response:
     return message_page(access.sign_in_message(), 403)
 
 
+EVERYONE = {"inbox"}   # everyone signed in has their own notifications, whatever tools they have
+
+
 def can_use(user: dict, tool: str) -> bool:
-    return user["admin"] or tool in user["tools"]
+    return user["admin"] or tool in user["tools"] or tool in EVERYONE
 
 
 def require_user(request: Request) -> dict:
@@ -231,7 +234,7 @@ def auth_check(request: Request):
         if page:
             return not_signed_in(request, uri)
         return JSONResponse({"detail": "Sign in first."}, status_code=401)
-    if tool not in TOOL_IDS or not can_use(user, tool):
+    if (tool not in TOOL_IDS and tool not in EVERYONE) or not can_use(user, tool):
         name = next((t["name"] for t in TOOLS if t["id"] == tool), "this tool")
         msg = f"You don't have access to {name}. Ask a Client Platforms admin to add it to your account."
         return message_page(msg, 403, "Back to home", "/") if page else JSONResponse({"detail": msg}, status_code=403)
@@ -277,7 +280,7 @@ def settings_page(request: Request):
 def me(user: dict = Depends(require_user)):
     tools = [t for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "tools": tools,
-            "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "cloudflare": CLOUDFLARE, "minPassword": MIN_PASSWORD}
+            "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "cloudflare": CLOUDFLARE, "minPassword": MIN_PASSWORD}
 
 
 class PasswordChange(BaseModel):
@@ -500,6 +503,7 @@ def _value_error(request: Request, exc: ValueError):
 ICONS = {
     "bell": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
     "shield": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+    "changes": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>',
     "team": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>',
     "tasks": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/></svg>',
     "projects": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/></svg>',

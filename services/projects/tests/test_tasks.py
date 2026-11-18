@@ -23,6 +23,7 @@ def c(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "store", s)
     tasks.setup(s, main.STATIC)
     main.team.setup(s, main.STATIC)
+    main.inbox.setup(s, main.STATIC)
     with TestClient(main.app) as client:
         yield client
 

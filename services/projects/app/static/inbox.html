@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --muted: #6B7080; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --page: #F3F5FB; --soft: #F7F9FE;
+    --ok-fill: #D6FAEE; --ok-text: #006B4A; --err-fill: #FDECEC; --err: #B42318;
+    --warn-fill: #FFF1D6; --warn: #8A5300; --grey-fill: #ECEEF3; --violet-fill: #ECE8FD; --violet: #4A3AB0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
+  header.top { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .bar img { height: 16px; display: block; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; white-space: nowrap; }
+  .who a { color: inherit; }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 24px 64px; }
+  h1 { font-size: 22px; margin: 0; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: #fff; padding: 6px 14px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--primary); font-weight: 600; }
+  .seg .n { color: var(--text2); font-weight: 400; margin-left: 2px; }
+  .btn { height: 34px; border-radius: 8px; padding: 0 12px; border: 1px solid var(--border); background: transparent; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--surface); }
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; margin-bottom: 18px; overflow: hidden; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 0; padding: 14px 18px 8px; display: flex; gap: 8px; align-items: center; }
+  .card h2 .count { background: var(--surface); color: var(--primary); border-radius: 10px; padding: 0 8px; font-size: 12px; letter-spacing: 0; }
+  .act { display: flex; gap: 12px; align-items: flex-start; padding: 10px 18px; border-top: 1px solid var(--surface); }
+  .act input { width: 18px; height: 18px; margin-top: 2px; accent-color: #12A26F; cursor: pointer; flex-shrink: 0; }
+  .act .t { font-weight: 600; }
+  .act.done .t { text-decoration: line-through; color: var(--text2); font-weight: 400; }
+  .meta { font-size: 12.5px; color: var(--text2); }
+  .late { color: var(--err); font-weight: 600; }
+  .day { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 14px 18px 6px; border-top: 1px solid var(--surface); }
+  .day:first-child { border-top: 0; }
+  .n-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 18px; border-top: 1px solid var(--surface); cursor: pointer; position: relative; }
+  .day + .n-item { border-top: 0; }
+  .n-item:hover { background: var(--soft); }
+  .n-item.unread { background: #F5F8FF; }
+  .n-item.unread:hover { background: #EDF2FF; }
+  .n-item .dotu { width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-top: 15px; flex-shrink: 0; }
+  .n-item.unread .dotu { background: var(--primary); }
+  .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; background: var(--surface); color: var(--primary); }
+  .ic svg { width: 18px; height: 18px; }
+  .ic.green { background: var(--ok-fill); color: var(--ok-text); }
+  .ic.amber { background: var(--warn-fill); color: var(--warn); }
+  .ic.violet { background: var(--violet-fill); color: var(--violet); }
+  .n-main { flex: 1; min-width: 0; }
+  .n-title { overflow-wrap: anywhere; }
+  .n-item.unread .n-title { font-weight: 600; }
+  .n-body { color: var(--text2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin-top: 2px; }
+  .tools { display: flex; gap: 4px; opacity: 0; transition: opacity .1s; }
+  .n-item:hover .tools, .n-item:focus-within .tools { opacity: 1; }
+  .tools button { border: 0; background: none; cursor: pointer; padding: 4px 8px; border-radius: 6px; color: var(--text2); font-size: 12.5px; }
+  .tools button:hover { background: var(--surface); color: var(--primary); }
+  .empty { text-align: center; padding: 48px 16px; color: var(--text2); }
+  .empty b { display: block; color: var(--text); font-size: 16px; margin-bottom: 4px; }
+  @media (max-width: 700px) { main { padding: 18px 14px 48px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; } .tools { opacity: 1; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Notifications</span>
+  <div class="who"><span id="who"></span> · <a href="/logout">Sign out</a></div>
+</div></header>
+<main>
+  <div class="head">
+    <h1>Your notifications</h1><span style="flex:1"></span>
+    <div class="seg" role="group" aria-label="Show"><button type="button" data-f="all" aria-pressed="true">All</button><button type="button" data-f="unread" aria-pressed="false">Unread <span class="n" id="unreadN"></span></button></div>
+    <button class="btn" id="readAll">Mark all as read</button>
+  </div>
+  <section class="card" id="actionsCard" hidden aria-label="Your 1-2-1 actions"><h2>Your 1-2-1 actions <span class="count" id="actN"></span></h2><div id="actions"></div></section>
+  <section class="card" aria-label="Notifications"><div id="list"><div class="empty">Loading…</div></div></section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let FILTER = 'all', DATA = null;
+const ICONS = {
+  task: ['', '<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/>'],
+  comment: ['', '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'],
+  question: ['amber', '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>'],
+  answer: ['green', '<path d="M20 6 9 17l-5-5"/>'],
+  done: ['green', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'],
+  mention: ['violet', '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>'],
+  people: ['violet', '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>'],
+  action: ['amber', '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'],
+  feedback: ['green', '<path d="M12 2 15 8.5l7 1-5 5 1.2 7L12 18l-6.2 3.5L7 14.5l-5-5 7-1z"/>'],
+  change: ['', '<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'],
+  project: ['', '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/>'],
+};
+const KIND = { task_assigned: 'task', task_change: 'task', task_comment: 'comment', task_question: 'question', task_answer: 'answer',
+               task_done: 'done', mention: 'mention', one_to_one: 'people', action: 'action', feedback: 'feedback', project_member: 'project', change: 'change' };
+const icon = k => { const [cls, path] = ICONS[KIND[k]] || ICONS.task;
+  return `<span class="ic ${cls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></span>`; };
+
+async function api(path, opts = {}) {
+  const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) { location.reload(); throw new Error('Signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+const send = (p, body, method = 'POST') => api(p, { method, body: JSON.stringify(body ?? {}) });
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+function when(s) {
+  const d = new Date(s), mins = (Date.now() - d) / 6e4;
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${Math.round(mins)} min ago`;
+  if (mins < 60 * 12) return `${Math.round(mins / 60)} h ago`;
+  return d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function dayOf(s) {
+  const d = new Date(s), t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = (t - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5;
+  return diff <= 0 ? 'Today' : diff === 1 ? 'Yesterday' : diff < 7 ? 'This week' : 'Older';
+}
+
+async function load() {
+  DATA = await api('notifications' + (FILTER === 'unread' ? '?unread=true' : ''));
+  $('who').textContent = DATA.me.email;
+  draw();
+  window.cpNavRefreshInbox?.();
+}
+
+function draw() {
+  $('unreadN').textContent = DATA.unread || '';
+  $('readAll').disabled = !DATA.unread;
+  document.querySelectorAll('[data-f]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === FILTER)));
+  // 1-2-1 actions
+  const acts = DATA.actions;
+  $('actionsCard').hidden = !acts.length;
+  $('actN').textContent = acts.length;
+  $('actions').innerHTML = acts.map(a => {
+    const late = a.due && a.due < today();
+    return `<label class="act"><input type="checkbox" data-entry="${esc(a.entry)}" data-act="${esc(a.id)}" aria-label="Done: ${esc(a.text)}">
+      <div><div class="t">${esc(a.text)}</div><div class="meta">From ${a.own ? 'your' : esc(a.memberName) + "'s"} 1-2-1 on ${esc(fmtDate(a.date))}${a.due ? ` · <span class="${late ? 'late' : ''}">${late ? 'overdue, ' : ''}due ${esc(fmtDate(a.due))}</span>` : ''}</div></div></label>`;
+  }).join('');
+  $('actions').querySelectorAll('input').forEach(cb => cb.onchange = async () => {
+    cb.closest('.act').classList.add('done');
+    try { await send(`actions/${cb.dataset.entry}/${cb.dataset.act}`, { done: true }); setTimeout(load, 500); }
+    catch (e) { cb.checked = false; cb.closest('.act').classList.remove('done'); cp.alert(e.message); }
+  });
+  // Notifications, by day
+  const list = DATA.notifications;
+  if (!list.length) {
+    $('list').innerHTML = FILTER === 'unread' ? '<div class="empty"><b>You\'re all caught up</b>No unread notifications.</div>'
+      : '<div class="empty"><b>Nothing yet</b>When someone assigns you a task, asks you something, mentions you or records your 1-2-1, it shows up here.</div>';
+    return;
+  }
+  let html = '', last = '';
+  for (const n of list) {
+    const d = dayOf(n.createdAt);
+    if (d !== last) { html += `<div class="day">${d}</div>`; last = d; }
+    html += `<div class="n-item ${n.read ? '' : 'unread'}" data-id="${esc(n.id)}" data-link="${esc(n.link)}" tabindex="0" role="link" aria-label="${esc((n.read ? '' : 'Unread: ') + n.title)}">
+      <span class="dotu" aria-hidden="true"></span>${icon(n.kind)}
+      <div class="n-main"><div class="n-title">${esc(n.title)}</div>${n.body ? `<div class="n-body">${esc(n.body)}</div>` : ''}<div class="meta">${esc(when(n.createdAt))}</div></div>
+      <div class="tools"><button type="button" data-toggle="${esc(n.id)}">${n.read ? 'Mark unread' : 'Mark read'}</button><button type="button" data-dismiss="${esc(n.id)}" aria-label="Dismiss">✕</button></div></div>`;
+  }
+  $('list').innerHTML = html;
+  $('list').querySelectorAll('.n-item').forEach(el => {
+    const go = async () => {
+      const n = list.find(x => x.id === el.dataset.id);
+      if (!n.read) { try { await send(`notifications/${n.id}/read`, { read: true }); } catch {} }
+      if (n.link) location.href = n.link; else load();
+    };
+    el.onclick = e => { if (!e.target.closest('.tools')) go(); };
+    el.onkeydown = e => { if (e.key === 'Enter') go(); };
+  });
+  $('list').querySelectorAll('[data-toggle]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const n = list.find(x => x.id === b.dataset.toggle);
+    await send(`notifications/${n.id}/read`, { read: !n.read }); load();
+  });
+  $('list').querySelectorAll('[data-dismiss]').forEach(b => b.onclick = async e => {
+    e.stopPropagation(); await api(`notifications/${b.dataset.dismiss}`, { method: 'DELETE' }); load();
+  });
+}
+
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { FILTER = b.dataset.f; load(); });
+$('readAll').onclick = async () => { await send('read-all'); load(); };
+load().catch(e => { $('list').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+setInterval(() => { if (!document.hidden) load().catch(() => {}); }, 60000);
+</script>
+</body>
+</html>

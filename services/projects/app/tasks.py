@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from . import access
+from .inbox import notify
 from .auth import TASKS, User, current_user, require_task_user
 from .store import Store, now
 
@@ -317,9 +318,31 @@ def create_task(body: TaskIn, user: User = Depends(require_task_user)):
                    (tid, _next_ref(), fields["title"], fields.get("description", ""), fields.get("status", "To do"),
                     fields.get("priority", "Medium"), fields.get("assignee", ""), fields.get("assignee_name", ""),
                     fields.get("due", ""), pid, user.email, user.name, t, t))
+    t = get_task(tid)
     if fields.get("assignee") and fields["assignee"] != user.email:
         _add_activity(tid, "change", user, data={"field": "assignee", "to": fields["assignee_name"], "toEmail": fields["assignee"]})
-    return get_task(tid)
+        notify(fields["assignee"], "task_assigned", f"{user.name} assigned you {t['ref']} {t['title']}", user,
+               _due_line(t), link(tid))
+    return t
+
+
+def link(tid: str) -> str:
+    return f"/tasks/#view=all&task={tid}"
+
+
+def nice_date(iso: str) -> str:
+    """2026-11-20 → 20 Nov (the year too if it isn't this year)."""
+    try:
+        d = date.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return iso or ""
+    return f"{d.day} {d:%b}" + ("" if d.year == date.today().year else f" {d.year}")
+
+
+def _due_line(t: dict) -> str:
+    bits = [f"Due {nice_date(t['due'])}" if t.get("due") else "", t["priority"] if t.get("priority") in ("High", "Urgent") else "",
+            (t.get("project") or {}).get("name", "")]
+    return " · ".join(b for b in bits if b)
 
 
 @router.get("/api/tasks/{tid}")
@@ -365,7 +388,23 @@ def update_task(tid: str, body: TaskIn, user: User = Depends(require_task_user))
             db.execute(f"UPDATE tasks SET {cols}, updated_at = ? WHERE id = ?", (*fields.values(), now(), tid))
     for c in changes:
         _add_activity(tid, "change", user, data=c)
+    _tell_about_changes(t, changes, user)
     return read_task(tid, user)
+
+
+def _tell_about_changes(t: dict, changes: list[dict], user: User) -> None:
+    label = f"{t['ref']} {t['title']}"
+    for c in changes:
+        if c["field"] == "assignee" and c.get("toEmail"):
+            notify(c["toEmail"], "task_assigned", f"{user.name} assigned you {label}", user, _due_line(t), link(t["id"]))
+    others = [c for c in changes if c["field"] != "assignee"]
+    if not others:
+        return
+    done = any(c["field"] == "status" and c["to"] == "Done" for c in others)
+    what = "marked done" if done else "changed " + ", ".join(LABEL.get(c["field"], c["field"]) for c in others)
+    current = get_task(t["id"]) or t
+    notify([current["assignee"], t["createdBy"]], "task_done" if done else "task_change", f"{user.name} {what}: {label}", user,
+           "; ".join(f"{LABEL.get(c['field'], c['field'])} → {c['to'] or 'none'}" for c in others), link(t["id"]))
 
 
 @router.delete("/api/tasks/{tid}")
@@ -415,7 +454,32 @@ def add_activity(tid: str, body: ActivityIn, user: User = Depends(require_task_u
             db.execute("UPDATE tasks SET progress = ? WHERE id = ?", (body.progress, tid))
         if t["status"] == "To do" and body.progress > 0:   # work has started
             update_task(tid, TaskIn(status="In progress"), user)
+    _tell_about_activity(t, body, kw, text, user)
     return read_task(tid, user)
+
+
+def _tell_about_activity(t: dict, body: "ActivityIn", kw: dict, text: str, user: User) -> None:
+    label, url = f"{t['ref']} {t['title']}", link(t["id"])
+    mentioned = set(kw.get("mentions") or [])
+    told = set()
+    if mentioned:
+        notify(mentioned, "mention", f"{user.name} mentioned you on {label}", user, text, url)
+        told |= mentioned
+    if body.kind == "question":
+        notify(kw["waiting_on"], "task_question", f"{user.name} asked you a question on {label}", user, text, url)
+        told.add(kw["waiting_on"])
+    if body.kind == "answer":
+        with store().db() as db:
+            q = db.execute("SELECT author FROM task_activity WHERE id = ?", (kw["answers"],)).fetchone()
+        if q and q["author"] not in told:
+            notify(q["author"], "task_answer", f"{user.name} answered your question on {label}", user, text, url)
+            told.add(q["author"])
+    what = {"comment": "commented on", "update": "posted an update on", "question": "asked a question on",
+            "answer": "answered a question on"}[body.kind]
+    if body.kind == "update" and kw.get("progress") is not None:
+        what = f"posted an update ({kw['progress']}%) on"
+    rest = [e for e in (t["assignee"], t["createdBy"]) if e and e not in told]
+    notify(rest, "task_comment", f"{user.name} {what} {label}", user, text, url)
 
 
 @router.delete("/api/tasks/{tid}/activity/{aid}")

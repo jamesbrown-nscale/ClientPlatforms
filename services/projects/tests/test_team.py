@@ -26,6 +26,7 @@ def c(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "store", s)
     tasks.setup(s, main.STATIC)
     team.setup(s, main.STATIC)
+    main.inbox.setup(s, main.STATIC)
     with TestClient(main.app) as client:
         # Admin sets up James; James adds Amy (who then reports to him); admin adds Bob.
         assert client.post(BASE, headers=ADMIN, json={"email": "james.brown@nscale.com", "title": "Client Platforms Lead"}).status_code == 200

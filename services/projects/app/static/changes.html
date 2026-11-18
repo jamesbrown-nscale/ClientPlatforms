@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change management · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --muted: #6B7080; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --page: #F3F5FB; --soft: #F7F9FE;
+    --ok-fill: #D6FAEE; --ok-text: #006B4A; --ok: #12A26F; --err-fill: #FDECEC; --err: #B42318; --red: #D92D20;
+    --warn-fill: #FFF1D6; --warn: #8A5300; --grey-fill: #ECEEF3; --violet-fill: #ECE8FD; --violet: #4A3AB0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--primary); }
+  [hidden] { display: none !important; }
+  header.top { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .bar img { height: 16px; display: block; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; white-space: nowrap; }
+  .who a { color: inherit; }
+  main { padding: 24px; display: grid; grid-template-columns: minmax(330px, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; }
+  .btn { height: 34px; border-radius: 8px; padding: 0 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; white-space: nowrap;
+         display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+  .btn:hover { background: var(--surface); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--bg); font-weight: 600; }
+  .btn.primary:hover { background: var(--primary-hover); }
+  .btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+  .btn.ok:hover { background: #0E8A5E; }
+  .btn.warn { color: var(--warn); border-color: #F5DDA8; }
+  .btn.danger { color: var(--err); border-color: #F7B4B4; }
+  .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .muted { color: var(--text2); font-size: 12.5px; }
+  .empty { color: var(--text2); text-align: center; padding: 36px 16px; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 11px; background: var(--grey-fill); color: var(--text2); white-space: nowrap; }
+  .chip.blue { background: var(--surface); color: var(--primary); }
+  .chip.green { background: var(--ok-fill); color: var(--ok-text); }
+  .chip.amber { background: var(--warn-fill); color: var(--warn); }
+  .chip.red { background: var(--err-fill); color: var(--err); }
+  .chip.violet { background: var(--violet-fill); color: var(--violet); }
+
+  .list .head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+  .list h1 { font-size: 20px; margin: 0; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 10px; }
+  .tabs button { border: 1px solid var(--surface); background: transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .tabs button[aria-pressed="true"] { background: var(--surface); color: var(--primary); border-color: var(--surface); font-weight: 600; }
+  .tabs .n { color: var(--text2); font-weight: 400; margin-left: 2px; }
+  .tabs .n.hot { color: #fff; background: var(--red); border-radius: 9px; padding: 0 6px; font-weight: 700; }
+  .search { padding: 0 16px 12px; }
+  .search input { width: 100%; height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; }
+  .row { display: flex; gap: 10px; padding: 11px 16px; border-top: 1px solid var(--surface); cursor: pointer; align-items: flex-start; }
+  .row:hover { background: var(--soft); }
+  .row[aria-current="true"] { background: var(--surface); }
+  .row .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text2); }
+  .row .t { font-weight: 600; overflow-wrap: anywhere; }
+  .row .m { font-size: 12.5px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+  .turn { color: #fff; background: var(--red); border-radius: 9px; padding: 0 7px; font-size: 11.5px; font-weight: 700; }
+
+  .detail { padding: 22px 24px 28px; }
+  .dh { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .dh .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; color: var(--text2); }
+  .detail h2 { font-size: 21px; margin: 4px 0 6px; }
+  .facts { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--text2); }
+  .flow { display: flex; align-items: center; gap: 0; margin: 18px 0; overflow-x: auto; padding-bottom: 4px; }
+  .fstep { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 104px; text-align: center; position: relative; }
+  .fstep .c { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--grey-fill); color: var(--muted); font-weight: 700; font-size: 13px; border: 2px solid transparent; z-index: 1; }
+  .fstep .c svg { width: 15px; height: 15px; }
+  .fstep .l { font-size: 12px; color: var(--text2); line-height: 1.25; max-width: 110px; }
+  .fstep.done .c { background: var(--ok); color: #fff; }
+  .fstep.now .c { background: #fff; border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 4px rgba(15,65,243,.12); }
+  .fstep.now .l { color: var(--primary); font-weight: 700; }
+  .fstep.bad .c { background: var(--red); color: #fff; }
+  .fstep.bad .l { color: var(--err); font-weight: 700; }
+  .fline { flex: 1; min-width: 20px; height: 2px; background: var(--grey-fill); margin-bottom: 22px; }
+  .fline.done { background: var(--ok); }
+  .panel { border: 1px solid var(--border); background: var(--soft); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+  .panel.green { background: #EEFBF5; border-color: #BDEBD6; } .panel.red { background: var(--err-fill); border-color: #F7B4B4; }
+  .panel.amber { background: #FFF8EA; border-color: #F5DDA8; }
+  .panel h3 { margin: 0 0 4px; font-size: 15px; }
+  .panel textarea, .composer textarea { width: 100%; min-height: 64px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: #fff; resize: vertical; outline: none; margin: 8px 0; }
+  .panel .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .panel input[type=datetime-local] { height: 34px; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; background: #fff; }
+  .approvers { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  .fv h4 { margin: 0 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); }
+  .fv div { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fv.full { grid-column: span 2; }
+  h3.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 22px 0 10px; }
+  .feed { border-left: 2px solid var(--surface); margin-left: 6px; padding-left: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .ev .who2 { font-weight: 600; }
+  .ev .when { color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .ev .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ev.sys { color: var(--text2); font-size: 13px; }
+  .ev.box { border-radius: 8px; padding: 8px 10px; }
+  .ev.approve { background: var(--ok-fill); color: var(--ok-text); }
+  .ev.decline, .ev.fail { background: var(--err-fill); color: var(--err); }
+  .ev.request_changes { background: var(--warn-fill); color: var(--warn); }
+  .ev.update { background: var(--surface); color: #0B2A99; }
+  .mention { background: var(--surface); color: var(--primary); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+  .composer { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--soft); }
+  .kinds { display: flex; gap: 6px; }
+  .kinds button { border: 1px solid var(--border); background: #fff; border-radius: 8px; padding: 3px 10px; cursor: pointer; font-size: 13px; }
+  .kinds button[aria-pressed="true"] { background: var(--surface); color: var(--primary); border-color: var(--primary); font-weight: 600; }
+
+  .form { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 14px; }
+  .fld { grid-column: span 3; }
+  .fld.full { grid-column: span 6; } .fld.third { grid-column: span 2; }
+  .fld label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+  .fld .req { color: var(--err); }
+  .fld .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .fld input, .fld select, .fld textarea { width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; outline: none; }
+  .fld input, .fld select { height: 36px; }
+  .fld textarea { min-height: 80px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .flowpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .flowpick label { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: #fff; display: block; margin: 0; font-weight: 400; color: var(--text); }
+  .flowpick input { position: absolute; opacity: 0; pointer-events: none; }
+  .flowpick label:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); background: var(--soft); }
+  .flowpick b { display: block; }
+  .flowpick .st { font-size: 11.5px; color: var(--text2); margin-top: 4px; }
+  @media (max-width: 1050px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; } .grid2 { grid-template-columns: 1fr; } .fv.full { grid-column: auto; }
+    .fld, .fld.third { grid-column: span 6; } .detail { padding: 18px; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="bar">
+  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Change management</span>
+  <div class="who"><span id="who"></span> · <a href="/logout">Sign out</a></div>
+</div></header>
+<main>
+  <section class="card list" aria-label="Changes">
+    <div class="head"><h1>Changes</h1><span style="flex:1"></span><button class="btn primary" id="newBtn" hidden>Raise a change</button></div>
+    <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
+    <div class="search"><input type="search" id="q" placeholder="Search changes" aria-label="Search"></div>
+    <div id="rows"><div class="empty">Loading…</div></div>
+  </section>
+  <section class="card detail" id="detail" aria-label="Change"><div class="empty">Pick a change, or raise a new one.</div></section>
+</main>
+<datalist id="people"></datalist>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TABS = [['review', 'Awaiting me'], ['mine', 'My changes'], ['open', 'Open'], ['closed', 'Closed'], ['all', 'All']];
+let ME = null, VIEW = 'review', LIST = [], COUNTS = {}, CUR = null, KIND = 'comment', PEOPLE = [];
+
+async function api(path, opts = {}) {
+  const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) { location.reload(); throw new Error('Signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const d = data.detail; throw new Error(Array.isArray(d) ? d.map(x => x.msg).join('; ') : (d || res.statusText)); }
+  return data;
+}
+const send = (p, body, method = 'POST') => api(p, { method, body: JSON.stringify(body ?? {}) });
+const name = e => (PEOPLE.find(p => p.email === e) || {}).name || (e || '').split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const fmtWhen = s => s ? new Date(s).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const fmtWindow = f => f.start ? `${fmtWhen(f.start)}${f.end ? ' – ' + new Date(f.end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''}` : 'No window yet';
+const STATUS = { 'Draft': '', 'In review': 'blue', 'Changes requested': 'amber', 'Awaiting schedule': 'violet', 'Scheduled': 'violet',
+                 'In progress': 'blue', 'Awaiting verification': 'blue', 'Completed': 'green', 'Declined': 'red', 'Failed': 'red', 'Cancelled': '' };
+const chip = st => `<span class="chip ${STATUS[st] ?? ''}">${esc(st)}</span>`;
+const riskChip = r => r ? `<span class="chip ${r === 'High' ? 'red' : r === 'Medium' ? 'amber' : 'green'}">Risk ${esc(r)}</span>` : '';
+const withMentions = t => esc(t).replace(/@([\w.+-]+@[\w-]+\.[\w.-]+|[\w.-]+)/g, m => `<span class="mention">${m}</span>`);
+const ICON = { check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>' };
+const svg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+/* ---------- List ---------- */
+async function load() {
+  const r = await api('changes?view=' + VIEW);
+  LIST = r.changes; COUNTS = r.counts;
+  $('tabs').innerHTML = TABS.map(([k, l]) => `<button type="button" data-v="${k}" aria-pressed="${k === VIEW}">${esc(l)}${k === 'review'
+    ? (COUNTS.review ? ` <span class="n hot">${COUNTS.review}</span>` : '') : k !== 'all' && k !== 'closed' ? ` <span class="n">${COUNTS[k] ?? ''}</span>` : ''}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { VIEW = b.dataset.v; remember(); load(); });
+  drawRows();
+}
+function drawRows() {
+  const w = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = LIST.filter(c => !w.length || w.every(x => `${c.ref} ${c.title} ${c.requestorName} ${c.fields.category || ''} ${c.flow.name}`.toLowerCase().includes(x)));
+  const empty = { review: 'Nothing is waiting on you.', mine: "You haven't raised any open changes.", open: 'No open changes.', closed: 'No closed changes yet.', all: 'No changes yet.' }[VIEW];
+  $('rows').innerHTML = rows.length ? rows.map(c => `<div class="row" data-id="${esc(c.id)}" aria-current="${CUR?.id === c.id}" tabindex="0">
+      <div style="flex:1;min-width:0"><div><span class="ref">${esc(c.ref)}</span> ${c.myTurn ? '<span class="turn">Your turn</span>' : ''}</div>
+      <div class="t">${esc(c.title)}</div>
+      <div class="m">${chip(c.status)}<span>${esc(c.flow.name)}</span>${riskChip(c.fields.risk)}<span>${esc(c.requestorName)}</span>${c.fields.start ? `<span>${esc(fmtWhen(c.fields.start))}</span>` : ''}</div></div></div>`).join('')
+    : `<div class="empty">${TABS.length && LIST.length ? 'Nothing matches.' : esc(empty)}</div>`;
+  $('rows').querySelectorAll('.row').forEach(r => { r.onclick = () => openChange(r.dataset.id); r.onkeydown = e => { if (e.key === 'Enter') openChange(r.dataset.id); }; });
+}
+
+/* ---------- One change ---------- */
+async function openChange(id) {
+  try { CUR = await api('changes/' + id); KIND = 'comment'; drawDetail(); drawRows(); remember(); }
+  catch (e) { $('detail').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+function flowStrip(c) {
+  const steps = c.flow.steps, bad = ['declined', 'failed'].includes(c.state);
+  const at = c.state === 'completed' ? steps.length : c.step;
+  let html = `<div class="fstep ${c.state === 'draft' ? 'now' : 'done'}"><span class="c">${c.state === 'draft' ? '1' : svg('check')}</span><span class="l">Raised</span></div>`;
+  steps.forEach((s, i) => {
+    const cls = i < at ? 'done' : i === at && c.state !== 'draft' && c.state !== 'cancelled' ? (bad ? 'bad' : 'now') : '';
+    html += `<div class="fline ${i < at || (i === 0 && c.state !== 'draft') ? 'done' : ''}"></div>
+      <div class="fstep ${cls}"><span class="c">${cls === 'done' ? svg('check') : cls === 'bad' ? svg('x') : i + 2}</span><span class="l">${esc(s.name)}</span></div>`;
+  });
+  html += `<div class="fline ${c.state === 'completed' ? 'done' : ''}"></div><div class="fstep ${c.state === 'completed' ? 'done' : ''}"><span class="c">${c.state === 'completed' ? svg('check') : steps.length + 2}</span><span class="l">Done</span></div>`;
+  return `<div class="flow" aria-label="Flow: ${esc(c.flow.name)}">${html}</div>`;
+}
+
+function actionPanel(c) {
+  const step = c.state === 'active' || c.state === 'changes_requested' ? c.flow.steps[c.step] : null;
+  const mine = c.requestor === ME.email;
+  if (c.state === 'draft') return mine ? `<div class="panel"><h3>Draft</h3><div class="muted">Only you can see it until you submit it. It then goes through the ${esc(c.flow.name)} flow.</div>
+    <div class="acts" style="margin-top:10px"><button class="btn primary" data-do="submit">Submit</button><button class="btn" data-edit>Edit</button><span style="flex:1"></span><button class="btn danger" data-delete>Delete draft</button></div></div>` : '';
+  if (c.state === 'changes_requested') {
+    const ask = [...c.activity].reverse().find(a => a.kind === 'request_changes');
+    return `<div class="panel amber"><h3>Changes requested${ask ? ' by ' + esc(ask.authorName) : ''}</h3>${ask ? `<div class="body" style="white-space:pre-wrap">${esc(ask.body)}</div>` : ''}
+      ${mine ? `<textarea id="pBody" placeholder="What you changed (optional)"></textarea><div class="acts"><button class="btn" data-edit>Edit the change</button><button class="btn primary" data-do="submit">Resubmit</button><span style="flex:1"></span><button class="btn danger" data-do="cancel">Cancel change</button></div>`
+        : `<div class="muted" style="margin-top:6px">Waiting on ${esc(c.requestorName)} to update and resubmit.</div>`}</div>`;
+  }
+  if (c.state === 'completed') return `<div class="panel green"><h3>Completed</h3><div class="muted">${esc(fmtWhen(c.closedAt))}</div></div>`;
+  if (['declined', 'failed', 'cancelled'].includes(c.state)) {
+    const why = [...c.activity].reverse().find(a => ['decline', 'fail', 'cancel'].includes(a.kind));
+    return `<div class="panel ${c.state === 'cancelled' ? '' : 'red'}"><h3>${esc(c.status)}${why ? ' by ' + esc(why.authorName) : ''}</h3>${why?.body ? `<div style="white-space:pre-wrap">${esc(why.body)}</div>` : ''}</div>`;
+  }
+  if (!step) return '';
+  const waiting = c.stepActors.filter(e => !c.stepApprovals.includes(e)).map(name);
+  const canAct = c.myTurn || (ME.admin && ['review', 'verify'].includes(step.type) && !mine);
+  if (['review', 'verify'].includes(step.type)) {
+    const appr = `<div class="approvers">${c.stepActors.map(e => `<span class="chip ${c.stepApprovals.includes(e) ? 'green' : ''}">${c.stepApprovals.includes(e) ? '✓ ' : ''}${esc(name(e))}</span>`).join('') || '<span class="muted">No reviewers set up yet: an admin can act, or add Change reviewers in Settings.</span>'}</div>`;
+    const head = `<h3>${esc(step.name)}</h3><div class="muted">${c.stepApprovals.length} of ${c.stepNeeded} approval${c.stepNeeded > 1 ? 's' : ''} needed</div>${appr}`;
+    return canAct ? `<div class="panel">${head}<textarea id="pBody" placeholder="Note (needed to decline or ask for changes)"></textarea>
+      <div class="acts"><button class="btn ok" data-do="approve">${step.type === 'verify' ? 'Confirm it worked' : 'Approve'}</button><button class="btn warn" data-do="request_changes">Ask for changes</button><button class="btn danger" data-do="decline">Decline</button></div></div>`
+      : `<div class="panel">${head}<div class="muted" style="margin-top:8px">${waiting.length ? 'Waiting on ' + esc(waiting.join(', ')) : ''}</div></div>`;
+  }
+  if (step.type === 'schedule') {
+    const f = c.fields, v = s => (s || '').slice(0, 16);
+    return c.myTurn ? `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">Confirm when this will be done.</div>
+      <div class="acts" style="margin:10px 0"><label class="muted">From <input type="datetime-local" id="pStart" value="${esc(v(f.start))}"></label><label class="muted">to <input type="datetime-local" id="pEnd" value="${esc(v(f.end))}"></label></div>
+      <div class="acts"><button class="btn primary" data-do="schedule">Confirm schedule</button><span style="flex:1"></span><button class="btn danger" data-do="cancel">Cancel change</button></div></div>`
+      : `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">Waiting on ${esc(waiting.join(', ') || c.requestorName)} to confirm the window.</div></div>`;
+  }
+  if (step.type === 'implement') {
+    return c.myTurn ? `<div class="panel ${c.started ? '' : ''}"><h3>${esc(step.name)}</h3><div class="muted">Window: ${esc(fmtWindow(c.fields))}</div>
+      <textarea id="pBody" placeholder="${c.started ? 'What happened (needed if it failed)' : 'Note (optional)'}"></textarea>
+      <div class="acts">${c.started ? '<button class="btn ok" data-do="complete">Mark complete</button><button class="btn danger" data-do="fail">Failed / rolled back</button>'
+        : '<button class="btn primary" data-do="start">Start implementing</button>'}<span style="flex:1"></span><button class="btn danger" data-do="cancel">Cancel change</button></div></div>`
+      : `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">${c.started ? 'In progress' : 'Scheduled for ' + esc(fmtWindow(c.fields))} · ${esc(waiting.join(', ') || c.requestorName)}</div></div>`;
+  }
+  return '';
+}
+
+function evRow(a) {
+  const when = `<span class="when">${esc(fmtWhen(a.createdAt))}</span>`;
+  const sysText = { submit: 'submitted the change', resubmit: 'resubmitted it', schedule: `scheduled it for ${a.data ? fmtWindow(a.data) : ''}`,
+                    start: 'started implementing', complete: 'marked it complete', cancel: 'cancelled the change' };
+  if (a.kind === 'step') return `<div class="ev sys">→ <b>${esc(a.body)}</b> ${when}</div>`;
+  if (a.kind === 'status') return `<div class="ev sys">${esc(a.body)} ${when}</div>`;
+  if (sysText[a.kind]) return `<div class="ev sys"><span class="who2">${esc(a.authorName)}</span> ${esc(sysText[a.kind])} ${when}${a.body ? `<div class="body" style="color:var(--text)">${withMentions(a.body)}</div>` : ''}</div>`;
+  const label = { approve: 'Approved', decline: 'Declined', request_changes: 'Asked for changes', fail: 'Failed', update: 'Update' }[a.kind];
+  if (label) return `<div class="ev box ${a.kind}"><div style="font-size:12px"><b>${label}</b> · ${esc(a.authorName)} ${when}</div>${a.body ? `<div class="body">${withMentions(a.body)}</div>` : ''}</div>`;
+  return `<div class="ev"><span class="who2">${esc(a.authorName)}</span> ${when}<div class="body">${withMentions(a.body)}</div></div>`;
+}
+
+function drawDetail() {
+  const c = CUR, f = c.fields;
+  const fv = (k, label, full) => f[k] ? `<div class="fv ${full ? 'full' : ''}"><h4>${esc(label)}</h4><div>${esc(f[k])}</div></div>` : '';
+  $('detail').innerHTML = `
+    <div class="dh"><span class="ref">${esc(c.ref)}</span>${chip(c.status)}<span class="chip">${esc(c.flow.name)}</span>${riskChip(f.risk)}${f.category ? `<span class="chip">${esc(f.category)}</span>` : ''}
+      <span style="flex:1"></span><button class="btn small" id="closeD">Close</button></div>
+    <h2>${esc(c.title)}</h2>
+    <div class="facts"><span>Raised by ${esc(c.requestorName)}</span>${c.submittedAt ? `<span>Submitted ${esc(fmtWhen(c.submittedAt))}</span>` : ''}<span>Window: ${esc(fmtWindow(f))}</span></div>
+    ${c.state === 'draft' ? '' : flowStrip(c)}
+    ${actionPanel(c)}
+    <div class="grid2">${fv('summary', "What's changing", true)}${fv('reason', 'Why')}${fv('impact', "Impact and who's affected")}${fv('scope', 'Devices, groups or services', true)}
+      ${fv('plan', 'Implementation plan', true)}${fv('test', 'Test plan')}${fv('rollback', 'Rollback plan')}</div>
+    ${c.state === 'draft' ? '' : `<h3 class="sec">Activity</h3><div class="feed">${c.activity.map(evRow).join('') || '<div class="muted">Nothing yet.</div>'}</div>
+    <div class="composer"><div class="kinds">${[['comment', 'Comment'], ...(c.requestor === ME.email ? [['update', 'Update']] : [])].map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${k === KIND}">${l}</button>`).join('')}</div>
+      <textarea id="cBody" placeholder="${KIND === 'update' ? 'Where it stands' : 'Comment or ask a question. @name to tag someone.'}"></textarea>
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="cSend">${KIND === 'update' ? 'Post update' : 'Comment'}</button></div></div>`}`;
+  $('closeD').onclick = () => { CUR = null; $('detail').innerHTML = '<div class="empty">Pick a change, or raise a new one.</div>'; drawRows(); remember(); };
+  $('detail').querySelectorAll('[data-do]').forEach(b => b.onclick = () => doAction(b.dataset.do));
+  $('detail').querySelector('[data-edit]')?.addEventListener('click', () => form(CUR));
+  $('detail').querySelector('[data-delete]')?.addEventListener('click', async () => {
+    if (!(await cp.confirm({ title: `Delete ${c.ref}?`, message: 'The draft is deleted. Nobody else has seen it.', confirm: 'Delete draft', danger: true }))) return;
+    try { await api('changes/' + c.id, { method: 'DELETE' }); CUR = null; $('detail').innerHTML = '<div class="empty">Deleted.</div>'; load(); } catch (e) { cp.alert(e.message); }
+  });
+  $('detail').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { KIND = b.dataset.k; drawDetail(); $('cBody').focus(); });
+  if ($('cSend')) $('cSend').onclick = async () => {
+    try { CUR = await send(`changes/${c.id}/act`, { action: KIND, body: $('cBody').value }); KIND = 'comment'; drawDetail(); load(); } catch (e) { cp.alert(e.message); }
+  };
+}
+
+async function doAction(a) {
+  const c = CUR, body = $('pBody')?.value || '';
+  const confirmText = { decline: ['Decline this change?', 'It closes and the requestor is told why. They would raise a new change to try again.', 'Decline'],
+                        cancel: ['Cancel this change?', 'It closes and everyone involved is told.', 'Cancel change'],
+                        fail: ['Mark it as failed?', 'It closes as failed and the reviewers are told.', 'Mark failed'] }[a];
+  if (confirmText && !(await cp.confirm({ title: confirmText[0], message: confirmText[1], confirm: confirmText[2], cancel: 'Go back', danger: true }))) return;
+  const payload = { action: a, body };
+  if (a === 'schedule') { payload.start = $('pStart').value; payload.end = $('pEnd').value; }
+  try { CUR = await send(`changes/${c.id}/act`, payload); drawDetail(); load(); window.cpNavRefreshInbox?.(); }
+  catch (e) { cp.alert(e.message); }
+}
+
+/* ---------- Raise or edit ---------- */
+function form(c) {
+  const f = c?.fields || {}, F = ME.fields, v = s => (s || '').slice(0, 16);
+  const ta = (k, rows, req, ph) => `<div class="fld full"><label for="f_${k}">${esc(F[k])}${req ? ' <span class="req">*</span>' : ''}</label><textarea id="f_${k}" rows="${rows}" placeholder="${esc(ph)}">${esc(f[k] || '')}</textarea></div>`;
+  $('detail').innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h2 style="margin:0;font-size:20px">${c ? 'Edit ' + esc(c.ref) : 'Raise a change'}</h2><span style="flex:1"></span><button class="btn small" id="fClose">Close</button></div>
+    <p class="muted" style="margin:4px 0 16px">Save it as a draft and come back, or submit it straight away. Fields marked * are needed to submit.</p>
+    <div class="form">
+      <div class="fld full"><label for="f_title">Title <span class="req">*</span></label><input id="f_title" maxlength="200" value="${esc(c?.title || '')}" placeholder="Turn on BitLocker silent encryption for all Windows laptops"></div>
+      <div class="fld full"><label>Change type <span class="req">*</span></label><div class="flowpick">${ME.flows.map((fl, i) => `<label><input type="radio" name="flow" value="${esc(fl.id)}" ${(c ? c.flow.id === fl.id : i === (ME.flows.length > 1 ? 1 : 0)) ? 'checked' : ''} ${c && c.state !== 'draft' ? 'disabled' : ''}>
+        <b>${esc(fl.name)}</b><span class="muted">${esc(fl.description)}</span><div class="st">${fl.steps.map(s => esc(s.name)).join(' → ')}</div></label>`).join('')}</div></div>
+      <div class="fld third"><label for="f_category">Category</label><select id="f_category"><option value="">Choose…</option>${ME.categories.map(x => `<option ${x === f.category ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+      <div class="fld third"><label for="f_risk">Risk <span class="req">*</span></label><select id="f_risk"><option value="">Choose…</option>${ME.risks.map(x => `<option ${x === f.risk ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+      <div class="fld third"></div>
+      <div class="fld"><label for="f_start">Planned start</label><input type="datetime-local" id="f_start" value="${esc(v(f.start))}"></div>
+      <div class="fld"><label for="f_end">Planned end</label><input type="datetime-local" id="f_end" value="${esc(v(f.end))}"></div>
+      ${ta('summary', 3, true, 'What exactly will change')}${ta('reason', 2, true, 'Why it is needed: the problem, request or finding')}
+      ${ta('impact', 2, false, 'Who and what is affected, and what they will notice')}${ta('scope', 2, false, 'Device groups, policies, apps or services')}
+      ${ta('plan', 4, true, 'The steps, in order')}${ta('test', 2, false, 'How you will know it worked')}${ta('rollback', 3, true, 'How to undo it if it goes wrong')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px"><span style="flex:1"></span><button class="btn" id="fSave">${c ? 'Save' : 'Save draft'}</button>${!c || c.state === 'draft' ? '<button class="btn primary" id="fSubmit">Save and submit</button>' : ''}</div>`;
+  $('fClose').onclick = () => c ? openChange(c.id) : ($('detail').innerHTML = '<div class="empty">Pick a change, or raise a new one.</div>');
+  const collect = () => ({ title: $('f_title').value, flowId: document.querySelector('input[name=flow]:checked')?.value, category: $('f_category').value, risk: $('f_risk').value,
+    start: $('f_start').value, end: $('f_end').value, fields: Object.fromEntries(Object.keys(ME.fields).map(k => [k, $('f_' + k).value])) });
+  const save = async submit => {
+    try {
+      let r = c ? await send('changes/' + c.id, collect(), 'PATCH') : await send('changes', collect());
+      if (submit) r = await send(`changes/${r.id}/act`, { action: 'submit' });
+      await load(); openChange(r.id);
+    } catch (e) { cp.alert(e.message); }
+  };
+  $('fSave').onclick = () => save(false);
+  if ($('fSubmit')) $('fSubmit').onclick = () => save(true);
+  $('f_title').focus();
+}
+
+function remember() {
+  const p = new URLSearchParams();
+  if (VIEW !== 'review') p.set('view', VIEW);
+  if (CUR) p.set('change', CUR.id);
+  history.replaceState(null, '', '#' + p.toString());
+}
+
+(async () => {
+  ME = await api('me');
+  $('who').textContent = ME.email;
+  $('newBtn').hidden = !ME.canRequest;
+  $('newBtn').onclick = () => { CUR = null; drawRows(); form(null); };
+  $('q').oninput = drawRows;
+  const people = await fetch('/api/people?tool=changes', { cache: 'no-store' }).then(r => r.ok ? r.json() : { people: [] }).catch(() => ({ people: [] }));
+  PEOPLE = people.people || [];
+  const h = new URLSearchParams(location.hash.slice(1));
+  VIEW = TABS.some(([k]) => k === h.get('view')) ? h.get('view') : 'review';
+  await load();
+  if (VIEW === 'review' && !COUNTS.review && !h.get('view')) { VIEW = ME.canRequest ? 'mine' : 'open'; if (!COUNTS[VIEW]) VIEW = 'open'; await load(); }
+  if (h.get('change')) openChange(h.get('change'));
+})().catch(e => { $('rows').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

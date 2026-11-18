@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, modules, tasks, team
+from . import access, auth, changes, inbox, modules, tasks, team
 from .auth import User, require_user
 from .modules import BY_KEY, ValidationError
 from .store import Store
@@ -35,6 +35,8 @@ from .store import Store
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")
 TASKS_PATH = os.environ.get("TASKS_PATH", "/tasks").rstrip("/")
 TEAM_PATH = os.environ.get("TEAM_PATH", "/team").rstrip("/")
+INBOX_PATH = os.environ.get("INBOX_PATH", "/inbox").rstrip("/")
+CHANGES_PATH = os.environ.get("CHANGES_PATH", "/changes").rstrip("/")
 PORTAL_URL = os.environ.get("PORTAL_URL", "/")
 STATIC = Path(__file__).parent / "static"
 ROLES = ["Owner", "Editor", "Viewer"]
@@ -44,6 +46,8 @@ auth.check_settings()
 store = Store(os.environ.get("DATABASE_PATH", "/data/projects.db"))
 tasks.setup(store, STATIC)
 team.setup(store, STATIC)
+inbox.setup(store, STATIC)
+changes.setup(store, STATIC)
 app = FastAPI(title="Nscale Projects", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -241,6 +245,10 @@ def add_member(pid: str, body: MemberIn, user: User = Depends(require_user)):
     if current == "Owner" and body.role != "Owner" and _owners(pid) <= 1:
         raise HTTPException(400, "A project needs at least one owner.")
     store.set_member(pid, email, body.name.strip() or access.display_name(email), body.role, user.email)
+    name = store.project(pid)["name"]
+    if current != body.role:
+        inbox.notify(email, "project_member", f"{user.name} {'added you to' if not current else 'changed your role on'} {name}",
+                     user, f"You're {'an' if body.role[0] in 'AEIOU' else 'a'} {body.role.lower()}.", f"/projects/#/p/{pid}")
     return {"members": store.members(pid)}
 
 
@@ -256,6 +264,9 @@ def change_member(pid: str, email: str, body: RoleIn, user: User = Depends(requi
     if current == "Owner" and body.role != "Owner" and _owners(pid) <= 1:
         raise HTTPException(400, "A project needs at least one owner.")
     store.set_member(pid, email, "", body.role, user.email)
+    if current != body.role:
+        inbox.notify(email, "project_member", f"{user.name} changed your role on {store.project(pid)['name']}", user,
+                     f"You're {'an' if body.role[0] in 'AEIOU' else 'a'} {body.role.lower()}.", f"/projects/#/p/{pid}")
     return {"members": store.members(pid)}
 
 
@@ -409,7 +420,8 @@ def _http_error(request: Request, exc: HTTPException):
 
 
 # ---------- Serving under paths on a shared host ----------
-# Projects at BASE_PATH (/projects), Tasks at TASKS_PATH (/tasks) and Team at TEAM_PATH (/team),
+# Projects at BASE_PATH (/projects), Tasks at TASKS_PATH (/tasks), Team at TEAM_PATH (/team) and
+# each person's notifications at INBOX_PATH (/inbox) and Change management at CHANGES_PATH (/changes),
 # from the same process and database.
 tasks_app = FastAPI(title="Nscale Tasks", docs_url=None, redoc_url=None, openapi_url=None)
 tasks_app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -419,6 +431,14 @@ team_app = FastAPI(title="Nscale Team", docs_url=None, redoc_url=None, openapi_u
 team_app.mount("/static", StaticFiles(directory=STATIC), name="static")
 team_app.include_router(team.router)
 team_app.add_exception_handler(HTTPException, _http_error)
+inbox_app = FastAPI(title="Nscale notifications", docs_url=None, redoc_url=None, openapi_url=None)
+inbox_app.mount("/static", StaticFiles(directory=STATIC), name="static")
+inbox_app.include_router(inbox.router)
+inbox_app.add_exception_handler(HTTPException, _http_error)
+changes_app = FastAPI(title="Nscale Change management", docs_url=None, redoc_url=None, openapi_url=None)
+changes_app.mount("/static", StaticFiles(directory=STATIC), name="static")
+changes_app.include_router(changes.router)
+changes_app.add_exception_handler(HTTPException, _http_error)
 
 _projects = app
 app = FastAPI(title="Nscale Projects and Tasks", docs_url=None, redoc_url=None, openapi_url=None)
@@ -429,7 +449,8 @@ def _healthz():
     return {"ok": True}
 
 
-for _path, _sub in ((TASKS_PATH, tasks_app), (TEAM_PATH, team_app), (BASE_PATH, _projects)):
+for _path, _sub in ((TASKS_PATH, tasks_app), (TEAM_PATH, team_app), (INBOX_PATH, inbox_app), (CHANGES_PATH, changes_app),
+                      (BASE_PATH, _projects)):
     if _path:
         app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
         app.mount(_path, _sub)
