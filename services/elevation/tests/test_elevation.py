@@ -12,7 +12,7 @@ os.environ["DATABASE_PATH"] = os.path.join(tempfile.mkdtemp(), "e.db")
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import iap, main, store as store_mod  # noqa: E402
+from app import access, auth, main, store as store_mod  # noqa: E402
 
 KEY = {"Authorization": "Bearer " + "k" * 32}
 OTHER_KEY = {"Authorization": "Bearer " + "s" * 32}
@@ -135,12 +135,17 @@ def test_paths_and_page(client):
     assert client.get("/elevation/static/nscale-wordmark.svg").status_code == 200
 
 
-def test_source_ip_is_the_load_balancers_view(client):
-    g = record()
-    client.post("/elevation/api/elevations/ingest", json={"events": [g]},
-                headers={**KEY, "X-Forwarded-For": "6.6.6.6, 81.2.69.160, 34.111.1.1"})
-    h = client.get(f"/elevation/api/elevations/{g['eventId']}").json()["history"][0]
-    assert h["sourceIp"] == "81.2.69.160"
+def test_source_ip_is_the_proxys_view(client, monkeypatch):
+    def sent_from(xff):
+        g = record()
+        client.post("/elevation/api/elevations/ingest", json={"events": [g]}, headers={**KEY, "X-Forwarded-For": xff})
+        return client.get(f"/elevation/api/elevations/{g['eventId']}").json()["history"][0]["sourceIp"]
+
+    # Caddy (Docker stack): the last address is the one it saw.
+    assert sent_from("6.6.6.6, 81.2.69.160") == "81.2.69.160"
+    # Google load balancer: "<client>, <load balancer>" is appended.
+    monkeypatch.setattr(access, "AUTH_MODE", "iap")
+    assert sent_from("6.6.6.6, 81.2.69.160, 34.111.1.1") == "81.2.69.160"
 
 
 # ---------- Sign-in through IAP ----------
@@ -155,16 +160,16 @@ def iap_client(tmp_path, monkeypatch):
     from google.auth import crypt, jwt
 
     monkeypatch.setenv("DEV_USER", "")
+    monkeypatch.setenv("AUTH_MODE", "iap")
     monkeypatch.setenv("IAP_AUDIENCE", AUDIENCE)
-    importlib.reload(iap)
-    importlib.reload(main)
+    reload_app()
     monkeypatch.setattr(main, "store", store_mod.SqliteStore(str(tmp_path / "t.db")))
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.public_key().public_bytes(serialization.Encoding.PEM,
                                         serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     signer = crypt.ES256Signer.from_string(key.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode(), "k")
-    monkeypatch.setattr(iap.keys, "get", lambda: {"k": pem})
+    monkeypatch.setattr(access.iap_keys, "get", lambda: {"k": pem})
 
     def token(**kw):
         now = int(time.time())
@@ -177,8 +182,13 @@ def iap_client(tmp_path, monkeypatch):
         yield c
     monkeypatch.setenv("DEV_USER", "viewer@nscale.com")
     monkeypatch.delenv("IAP_AUDIENCE")
-    importlib.reload(iap)
-    importlib.reload(main)
+    monkeypatch.delenv("AUTH_MODE")
+    reload_app()
+
+
+def reload_app():
+    for m in (access, auth, main):
+        importlib.reload(m)
 
 
 def test_iap_sign_in_is_checked(iap_client):
@@ -191,4 +201,38 @@ def test_iap_sign_in_is_checked(iap_client):
     assert c.get("/elevation/").status_code == 403
     assert c.get("/elevation/api/elevations.csv").status_code == 401
     # Devices don't sign in; they use the ingest key.
+    assert send(c, record()).status_code == 200
+
+
+SECRET = "x" * 40
+
+
+@pytest.fixture
+def local_client(tmp_path, monkeypatch):
+    """As in the Docker stack: Caddy asks the portal, which vouches for the person with X-CP-User."""
+    monkeypatch.setenv("DEV_USER", "")
+    monkeypatch.setenv("AUTH_SECRET", SECRET)
+    reload_app()
+    monkeypatch.setattr(main, "store", store_mod.SqliteStore(str(tmp_path / "t.db")))
+    with TestClient(main.app) as c:
+        yield c
+    monkeypatch.setenv("DEV_USER", "viewer@nscale.com")
+    monkeypatch.delenv("AUTH_SECRET")
+    reload_app()
+
+
+def test_front_door_sign_in_is_checked(local_client):
+    c = local_client
+
+    def h(tool="elevation", secret=SECRET, email="amy.chen@nscale.com"):
+        return {"x-cp-user": access.issue(email, "Amy Chen", tool, secret=secret)}
+
+    me = c.get("/elevation/api/me", headers=h())
+    assert me.status_code == 200 and me.json()["email"] == "amy.chen@nscale.com"
+    assert c.get("/elevation/api/me").status_code == 401
+    assert c.get("/elevation/api/me", headers=h(tool="notifications")).status_code == 401
+    assert c.get("/elevation/api/me", headers=h(secret="y" * 40)).status_code == 401
+    assert c.get("/elevation/api/me", headers={"x-cp-user": "junk"}).status_code == 401
+    assert c.get("/elevation/").status_code == 403
+    assert c.get("/elevation/", headers=h()).status_code == 200
     assert send(c, record()).status_code == 200

@@ -4,7 +4,7 @@ Devices:  POST /api/elevations/ingest   Authorization: Bearer <ingest key>
           The same request the worker already sends to TechOps: {"events": [ ... ]}, up to 500 per
           call. Answers {"results": [{"eventId", "status": created|updated|rejected, "error"?}]},
           400 if the body isn't that shape, 401 for a missing or unknown key.
-People:   /                             the log (Google sign-in through IAP, see iap.py)
+People:   /                             the log (signed in at the front door, see auth.py)
           /api/elevations               JSON for the page, /api/elevations.csv to download
           /api/elevations/{eventId}     one record and every send received for it
 
@@ -12,7 +12,7 @@ All of it sits under BASE_PATH (/elevation), so the worker's TechOps-style addre
 https://clientplatforms.nscale.com/elevation.
 
 Settings: INGEST_KEYS (label:key, one per line or comma separated; a secret), STORE, FIRESTORE_DATABASE,
-IAP_AUDIENCE, ALLOWED_DOMAIN, VIEWER_EMAILS, PORTAL_URL, BASE_PATH.
+AUTH_MODE, AUTH_SECRET (or IAP_AUDIENCE), VIEWER_EMAILS, PORTAL_URL, BASE_PATH.
 """
 import csv
 import hmac
@@ -28,8 +28,8 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import iap, records
-from .iap import User, require_user
+from . import access, auth, records
+from .auth import User, require_user
 from .records import iso, merge, status, utc_now, validate
 from .store import make_store
 
@@ -66,7 +66,7 @@ _h.setFormatter(logging.Formatter("%(message)s"))
 log.addHandler(_h)
 log.propagate = False
 
-iap.check_settings()
+auth.check_settings()
 store = make_store()
 app = FastAPI(title="Nscale Elevation Log", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -87,11 +87,12 @@ def key_label(request: Request) -> str:
 
 def client_ip(request: Request) -> str:
     # The Google load balancer appends "<client>, <load balancer>" to X-Forwarded-For; anything
-    # before those came from the client and can't be trusted.
+    # before those came from the client and can't be trusted. Caddy replaces the header with the
+    # client's address alone.
     parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
-    if len(parts) >= 2:
+    if access.AUTH_MODE == "iap" and len(parts) >= 2:
         return parts[-2]
-    return parts[0] if parts else (request.client.host if request.client else "")
+    return parts[-1] if parts else (request.client.host if request.client else "")
 
 
 @app.post("/api/elevations/ingest")
@@ -152,8 +153,8 @@ p{{color:#3B404E;margin:0}}</style></head><body><div class="c"><p>{escape(messag
 
 @app.get("/")
 def index(request: Request):
-    if not iap.current_user(request):
-        return _page(f"Sign in with your {iap.ALLOWED_DOMAIN} Google account at the Client Platforms address.", 403)
+    if not auth.current_user(request):
+        return _page(access.sign_in_message(), 403)
     return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 

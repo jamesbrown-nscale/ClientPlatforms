@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restart reminder · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --page: #F3F5FB;
+    --ok-fill: #D6FAEE; --ok-text: #006B4A; --err-fill: #FDECEC; --err: #B42318;
+    --warn-fill: #FFF1D6; --warn: #8A5300; --grey-fill: #ECEEF3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  header { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+  .bar img { height: 16px; display: block; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  .bar .home { color: var(--text2); text-decoration: none; padding: 8px 12px; border-radius: 8px; margin-left: 8px; }
+  .bar .home:hover { background: var(--surface); }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--text2); margin: 0 0 22px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; padding: 14px 16px; text-align: left; cursor: pointer; }
+  .tile:hover { border-color: var(--border); }
+  .tile[aria-pressed="true"] { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.10); }
+  .tile b { display: block; font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 12.5px; color: var(--text2); }
+  .tile.alert b { color: var(--err); }
+  .tile.warn b { color: var(--warn); }
+
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; padding: 16px; border-bottom: 1px solid var(--surface); flex-wrap: wrap; }
+  .toolbar input, .toolbar select { height: 38px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; outline: none; }
+  .toolbar input { flex: 1; min-width: 220px; max-width: 420px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .toolbar .sp { flex: 1; }
+  .toolbar .count { color: var(--text2); font-size: 12.5px; }
+  .btn { height: 38px; border-radius: 8px; padding: 0 16px; border: 1px solid var(--border); background: transparent; cursor: pointer; }
+  .btn:hover { background: var(--surface); }
+
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--surface); white-space: nowrap; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--surface); vertical-align: top; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #F7F9FE; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .muted { color: var(--text2); font-size: 12.5px; }
+  .when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .reason { max-width: 380px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 11px; white-space: nowrap; }
+  .b-active, .b-granted { background: var(--surface); color: var(--primary); }
+  .dev { white-space: nowrap; }
+  .b-denied { background: var(--warn-fill); color: var(--warn); }
+  .b-expired, .b-user_ended { background: var(--grey-fill); color: var(--text2); }
+  .b-revoked, .b-not_ended { background: var(--err-fill); color: var(--err); }
+  .flag { display: inline-block; margin: 4px 4px 0 0; font-size: 11.5px; font-weight: 600; color: var(--warn); background: var(--warn-fill); padding: 1px 8px; border-radius: 10px; }
+  .empty { color: var(--text2); text-align: center; padding: 48px 16px; }
+  .notice { border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; background: var(--err-fill); color: var(--err); display: none; }
+
+  .scrim { position: fixed; inset: 0; background: rgba(4,14,39,.35); display: none; }
+  .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100%); background: var(--bg); box-shadow: -8px 0 30px rgba(4,14,39,.2); display: none; flex-direction: column; }
+  .panel.open, .scrim.open { display: flex; }
+  .phd { padding: 22px 28px; border-bottom: 1px solid var(--surface); display: flex; gap: 16px; align-items: flex-start; }
+  .phd h2 { margin: 8px 0 2px; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+  .phd .x { margin-left: auto; }
+  .pbody { padding: 22px 28px 40px; overflow: auto; flex: 1; }
+  dl { display: grid; grid-template-columns: 150px 1fr; gap: 8px 16px; margin: 0 0 24px; }
+  dt { color: var(--text2); font-size: 13px; }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .quote { white-space: pre-wrap; background: #fff; border: 1px solid var(--surface); border-radius: 8px; padding: 10px 12px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 24px 0 10px; }
+  .warnbox { background: var(--warn-fill); color: var(--warn); border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; }
+  .warnbox table td { padding: 4px 8px 4px 0; border: 0; vertical-align: top; color: var(--text); }
+  .warnbox table td:first-child { color: var(--warn); font-weight: 600; white-space: nowrap; }
+  .hist { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--surface); }
+  .hist li { position: relative; padding: 0 0 16px 18px; }
+  .hist li::before { content: ""; position: absolute; left: -6px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+  .hist li.odd::before { background: var(--err); }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12.5px; }
+
+  @media (max-width: 1000px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px) {
+    .bar { padding: 0 16px; gap: 10px; } .bar .app, .who { display: none; }
+    main { padding: 22px 16px 48px; } .tiles { grid-template-columns: repeat(2, 1fr); }
+    .hide-sm { display: none; } dl { grid-template-columns: 1fr; gap: 2px; } dd { margin-bottom: 8px; }
+    .phd, .pbody { padding-left: 18px; padding-right: 18px; }
+  }
+  .tiles { grid-template-columns: repeat(7, 1fr); }
+  .b-ok { background: var(--ok-fill); color: var(--ok-text); }
+  .b-countdown { background: var(--surface); color: var(--primary); }
+  .b-overdue, .b-restart_failed { background: var(--err-fill); color: var(--err); }
+  .b-silent { background: var(--grey-fill); color: var(--text2); }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .num.over { color: var(--err); font-weight: 600; }
+  .danger { color: var(--err); }
+  @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 700px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" id="home" href="../">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <h1>Restart reminder</h1>
+  <p class="sub" id="sub">Windows devices running the Restart Reminder app, as they last reported. Times are in your time zone.</p>
+  <div class="notice" id="notice"></div>
+
+  <div class="tiles" id="tiles">
+    <button class="tile" data-show="all"><b id="s-devices">–</b><span>Devices</span></button>
+    <button class="tile" data-show="ok"><b id="s-ok">–</b><span>Within the limit</span></button>
+    <button class="tile" data-show="countdown"><b id="s-countdown">–</b><span>Restart due</span></button>
+    <button class="tile warn" data-show="postponed" title="The person picked a later restart time on the current boot"><b id="s-postponed">–</b><span>Put off</span></button>
+    <button class="tile alert" data-show="overdue" title="Up longer than the limit plus the countdown, as of the last report"><b id="s-overdue">–</b><span>Overdue</span></button>
+    <button class="tile alert" data-show="restart_failed" title="A restart was issued over 30 minutes ago but the device still reports the same boot"><b id="s-restartFailed">–</b><span>Restart didn't happen</span></button>
+    <button class="tile" data-show="silent" title="No report for a while: it may be off, or the app isn't running"><b id="s-silent">–</b><span>Not reporting</span></button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search device, serial or person" aria-label="Search">
+      <select id="show" aria-label="Show">
+        <option value="all">All devices</option>
+        <option value="ok">Within the limit</option>
+        <option value="countdown">Restart due</option>
+        <option value="postponed">Put off</option>
+        <option value="overdue">Overdue</option>
+        <option value="restart_failed">Restart didn't happen</option>
+        <option value="silent">Not reporting</option>
+      </select>
+      <span class="sp"></span>
+      <span class="count" id="count"></span>
+      <button class="btn" id="csv">Download CSV</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>Device</th><th class="hide-sm">Person</th><th>Up for</th><th>State</th>
+          <th class="hide-sm">Restarts at</th><th class="hide-sm">Last restart</th><th class="hide-sm">Last report</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-label="Device details">
+  <div class="phd">
+    <div><span id="p-badge"></span><h2 id="p-title"></h2><div class="muted" id="p-sub"></div></div>
+    <button class="btn x" id="p-close" aria-label="Close">Close</button>
+  </div>
+  <div class="pbody" id="p-body"></div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const LABEL = { ok: 'Within limit', countdown: 'Restart due', overdue: 'Overdue', restart_failed: "Restart didn't happen", silent: 'Not reporting' };
+const EVENT = { status: 'Checked in', countdown_started: 'Countdown started', scheduled: 'Picked a restart time', hidden: 'Hid the reminder',
+                restart_now: 'Chose Restart now', restarting: 'Restart issued', booted: 'Started after a restart', dry_run: 'Test run (no restart)' };
+let openKey = null, maxUptimeHours = 72;
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function when(s) { return s ? new Date(s).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''; }
+function full(s) { return s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—'; }
+function badge(st) { return `<span class="badge b-${esc(st)}">${esc(LABEL[st] || st)}</span>`; }
+function hours(h) {
+  if (h == null) return '';
+  if (h >= 24) { const d = Math.floor(h / 24); return `${d} day${d === 1 ? '' : 's'} ${Math.round(h - d * 24)} h`; }
+  return `${Math.round(h)} h`;
+}
+function params() { return new URLSearchParams({ show: $('show').value, q: $('q').value.trim() }); }
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { 'Accept': 'application/json', 'X-Requested-With': 'nscale-admin' }, cache: 'no-store' });
+  if (res.status === 401) { showError('Your sign-in has expired. Reload the page to sign in again.'); throw new Error('signed out'); }
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || `Error ${res.status}`); }
+  return res.json();
+}
+function showError(msg) { const n = $('notice'); n.textContent = msg; n.style.display = msg ? 'block' : 'none'; }
+
+async function load() {
+  try {
+    const data = await api('api/devices?' + params());
+    showError('');
+    for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
+    document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.show === $('show').value)));
+    $('count').textContent = data.matched === data.items.length ? `${data.matched.toLocaleString()} shown`
+      : `${data.items.length.toLocaleString()} of ${data.matched.toLocaleString()} shown`;
+    render(data.items);
+  } catch (e) { if (e.message !== 'signed out') showError('Could not load devices: ' + e.message); }
+}
+
+function render(items) {
+  if (!items.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No devices match. Devices appear here once the Restart Reminder app reports in.</td></tr>'; return; }
+  $('rows').innerHTML = items.map(r => {
+    const flags = (r.postponedThisBoot ? `<span class="flag">Put off ${r.postponedThisBoot}×</span>` : '') + (r.dryRun ? '<span class="flag">Test mode</span>' : '');
+    return `<tr data-key="${esc(r.key)}">
+      <td class="dev">${esc(r.deviceName)}<div class="muted">${esc(r.serial)}</div></td>
+      <td class="hide-sm">${esc(r.user)}</td>
+      <td class="num ${r.uptimeHours > maxUptimeHours ? 'over' : ''}">${esc(hours(r.uptimeHours))}</td>
+      <td>${badge(r.status)}${flags ? '<div>' + flags + '</div>' : ''}</td>
+      <td class="hide-sm when">${esc(when(r.deadline))}${r.userScheduled ? '<div class="muted">picked by them</div>' : ''}</td>
+      <td class="hide-sm when muted">${esc(when(r.lastRestartAt))}</td>
+      <td class="hide-sm when muted">${esc(when(r.lastReceivedAt))}</td></tr>`;
+  }).join('');
+}
+
+async function openDevice(key) {
+  openKey = key;
+  $('p-badge').innerHTML = ''; $('p-title').textContent = 'Loading…'; $('p-sub').textContent = ''; $('p-body').innerHTML = '';
+  $('panel').classList.add('open'); $('scrim').classList.add('open');
+  try {
+    const d = await api('api/devices/' + encodeURIComponent(key));
+    if (openKey !== key) return;
+    $('p-badge').innerHTML = badge(d.status);
+    $('p-title').textContent = d.deviceName;
+    $('p-sub').textContent = `${d.user || 'Unknown person'} · up ${hours(d.uptimeHours)} at its last report`;
+    let html = `<dl>
+      <dt>Serial</dt><dd>${esc(d.serial || '—')}</dd>
+      <dt>Person</dt><dd>${esc(d.user || '—')}</dd>
+      <dt>Last boot</dt><dd>${esc(full(d.bootTime))}</dd>
+      <dt>Restart due</dt><dd>${d.deadline ? esc(full(d.deadline)) + (d.userScheduled ? ' (time picked by them)' : '') : '—'}</dd>
+      <dt>Countdown started</dt><dd>${esc(full(d.countdownStartedAt))}</dd>
+      <dt>Put off this boot</dt><dd>${d.postponedThisBoot ? esc(d.postponedThisBoot) + ' time(s)' : 'No'}</dd>
+      <dt>Restart issued</dt><dd>${esc(full(d.restartIssuedAt))}</dd>
+      <dt>Restarts seen</dt><dd>${esc(d.restarts)}</dd>
+      <dt>Last report</dt><dd>${esc(full(d.lastReportAt))} (${esc(EVENT[d.lastEvent] || d.lastEvent)})</dd>
+      <dt>First seen</dt><dd>${esc(full(d.firstSeenAt))}</dd>
+      <dt>App version</dt><dd>${esc(d.appVersion || '—')}</dd>
+      <dt>Ingest key</dt><dd>${esc(d.keyLabel || '—')}</dd>
+    </dl>`;
+    if (d.restartHistory.length) {
+      html += '<h3>Restarts</h3><ul class="hist">' + d.restartHistory.map(r => `
+        <li><div><b>${esc(full(r.restartedAt))}</b> <span class="muted">after ${esc(hours(r.uptimeHours))} up</span></div>
+        <div class="muted">${r.afterReminder ? 'after the reminder' : 'before any reminder'}${r.postponed ? ` · put off ${esc(r.postponed)}×` : ''}</div></li>`).join('') + '</ul>';
+    }
+    const events = d.reports.filter(r => r.event !== 'status');
+    html += '<h3>What happened</h3>' + (events.length ? '<ul class="hist">' + events.map(r => `
+      <li class="${r.event === 'restarting' || r.event === 'restart_now' ? '' : r.event === 'scheduled' ? 'odd' : ''}">
+        <div><b>${esc(EVENT[r.event] || r.event)}</b> <span class="muted">${esc(full(r.at))}</span></div>
+        <div class="muted">${r.deadline ? 'restart at ' + esc(full(r.deadline)) + ' · ' : ''}${r.reason ? esc(r.reason) + ' · ' : ''}${esc(r.user || '')}</div>
+      </li>`).join('') + '</ul>' : '<p class="muted">Nothing but check-ins so far.</p>');
+    html += `<h3>Retired device?</h3><button class="btn danger" id="forget">Remove from the list</button>
+      <p class="muted">It comes back if it reports again.</p>`;
+    $('p-body').innerHTML = html;
+    $('forget').onclick = async () => {
+      if (!confirm(`Remove ${d.deviceName} and its history?`)) return;
+      try { await api('api/devices/' + encodeURIComponent(key), { method: 'DELETE' }); closePanel(); load(); }
+      catch (e) { alert(e.message); }
+    };
+  } catch (e) { $('p-title').textContent = 'Could not load this device'; $('p-sub').textContent = e.message; }
+}
+function closePanel() { openKey = null; $('panel').classList.remove('open'); $('scrim').classList.remove('open'); }
+
+let debounce;
+$('q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(load, 250); });
+$('show').addEventListener('change', load);
+$('tiles').addEventListener('click', e => { const t = e.target.closest('.tile'); if (!t) return; $('show').value = t.dataset.show; load(); });
+$('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-key]'); if (tr) openDevice(tr.dataset.key); });
+$('csv').addEventListener('click', () => { location.href = 'api/devices.csv?' + params(); });
+$('p-close').addEventListener('click', closePanel);
+$('scrim').addEventListener('click', closePanel);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+api('api/me').then(me => {
+  $('who').textContent = me.email;
+  if (me.portalUrl) $('home').href = me.portalUrl;
+  maxUptimeHours = me.policy.maxUptimeDays * 24;
+  $('sub').textContent = `Windows devices running the Restart Reminder app, as they last reported. A restart is due after ${me.policy.maxUptimeDays} days up, with ${me.policy.countdownHours} hours' notice. Times are in your time zone.`;
+}).catch(() => {});
+load();
+setInterval(() => { if (!document.hidden) load(); }, 60000);
+</script>
+</body>
+</html>

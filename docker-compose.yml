@@ -1,0 +1,101 @@
+# Client Platforms on Docker / Portainer.
+#
+# In Portainer: Stacks → Add stack → Repository, point it at this repo (compose path
+# docker-compose.yml), and set the environment variables from .env.example. Every image runs its
+# tests while it builds, so a stack with failing tests doesn't deploy.
+#
+#   proxy          Caddy: routes paths, asks the portal about every request to a tool
+#   portal         home page, sign-in (Cloudflare Access or passwords), people, settings
+#   notifications  IT Notifications            /notifications/
+#   elevation      admin elevation log         /elevation/
+#   restart        Restart Reminder report     /restart/
+#   cloudflared    Cloudflare Tunnel to the proxy (public hostname → http://proxy:80)
+#
+# Data is kept in one Docker volume per service (SQLite). Back them up.
+name: client-platforms
+
+x-service: &service
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz', timeout=3)"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 10s
+
+x-auth: &auth
+  AUTH_MODE: ${AUTH_MODE:-cloudflare}
+  AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a long random string (openssl rand -hex 32)}
+  PORTAL_URL: /
+
+services:
+  proxy:
+    build: ./proxy
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      # For the local network and testing. With Cloudflare Tunnel only, you can remove this.
+      - "${HTTP_PORT:-8080}:80"
+    depends_on: [portal, notifications, elevation, restart]
+
+  portal:
+    <<: *service
+    build: ./services/portal
+    environment:
+      <<: *auth
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL: the first admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      DEVICE_URL: ${DEVICE_URL:-}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+    volumes:
+      - portal-data:/data
+
+  notifications:
+    <<: *service
+    build: ./services/notifications
+    environment:
+      <<: *auth
+      ENROLLMENT_KEY: ${ENROLLMENT_KEY:-}
+      ADMIN_EMAILS: ${NOTIFY_ADMIN_EMAILS:-}
+      ALLOWED_LINK_HOSTS: ${ALLOWED_LINK_HOSTS:-nscale.com}
+    volumes:
+      - notifications-data:/data
+
+  elevation:
+    <<: *service
+    build: ./services/elevation
+    environment:
+      <<: *auth
+      INGEST_KEYS: ${ELEVATION_INGEST_KEYS:-}
+    volumes:
+      - elevation-data:/data
+
+  restart:
+    <<: *service
+    build: ./services/restart
+    environment:
+      <<: *auth
+      INGEST_KEYS: ${RESTART_INGEST_KEYS:-}
+      MAX_UPTIME_DAYS: ${MAX_UPTIME_DAYS:-3}
+      COUNTDOWN_HOURS: ${COUNTDOWN_HOURS:-3}
+      LATEST_SCHEDULE_TIME: ${LATEST_SCHEDULE_TIME:-17:00}
+    volumes:
+      - restart-data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN, or remove the cloudflared service}
+    depends_on: [proxy]
+
+volumes:
+  portal-data:
+  notifications-data:
+  elevation-data:
+  restart-data:

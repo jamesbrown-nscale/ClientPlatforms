@@ -1,0 +1,81 @@
+# Client Platforms front door (Docker / Portainer).
+#
+#   /notifications/*  IT Notifications      /elevation/*  admin elevation log
+#   /restart/*        Restart Reminder      everything else: the portal (home, sign-in, settings)
+#
+# Before a request reaches a tool, Caddy asks the portal (/auth/check) whether the person is signed
+# in and allowed that tool. The portal answers with X-CP-User, a short-lived signed token the tool
+# checks itself. Device endpoints skip that: they use their own keys.
+{
+	admin off
+	servers {
+		# Behind Cloudflare Tunnel, cloudflared is the peer and Cf-Connecting-Ip holds the real address.
+		trusted_proxies static private_ranges
+		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
+	}
+}
+
+(to) {
+	reverse_proxy {args[0]}:8080 {
+		header_up X-Forwarded-For {client_ip}
+	}
+}
+
+(signed_in) {
+	forward_auth portal:8080 {
+		uri /auth/check
+		header_up X-Forwarded-For {client_ip}
+		copy_headers X-CP-User
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	encode gzip
+	# Only the portal may say who someone is.
+	request_header -X-CP-User
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		-Server
+	}
+
+	# Devices: no sign-in, their own keys.
+	handle /notifications/api/v1/checkin {
+		import to notifications
+	}
+	handle /elevation/api/elevations/ingest {
+		import to elevation
+	}
+	handle /restart/api/reports {
+		import to restart
+	}
+	handle /restart/api/policy {
+		import to restart
+	}
+
+	# People: signed in, and allowed that tool.
+	@notifications path /notifications /notifications/*
+	handle @notifications {
+		import signed_in
+		import to notifications
+	}
+	@elevation path /elevation /elevation/*
+	handle @elevation {
+		import signed_in
+		import to elevation
+	}
+	@restart path /restart /restart/*
+	handle @restart {
+		import signed_in
+		import to restart
+	}
+
+	handle /proxy-health {
+		respond "ok" 200
+	}
+
+	handle {
+		import to portal
+	}
+}

@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nscale IT Notifications</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<style>
+  :root {
+    --bg: #FDFFF8; --text: #040E27; --text2: #3B404E; --primary: #0F41F3; --primary-hover: #0B34C8;
+    --border: #C1CFF7; --surface: #E1EAF9; --accent: #86A0F5;
+    --ok-fill: #D6FAEE; --ok: #00A874; --ok-text: #006B4A; --err-fill: #FDECEC; --err: #EF4444;
+    --page: #F3F5FB;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  header { background: var(--bg); border-bottom: 1px solid var(--surface); }
+  .bar { max-width: 1200px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 28px; height: 64px; }
+  .bar img { height: 16px; }
+  .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
+  nav { display: flex; gap: 4px; margin-left: 12px; }
+  nav button { background: none; border: 0; padding: 8px 14px; border-radius: 8px; cursor: pointer; color: var(--text2); }
+  nav button:hover { background: var(--surface); }
+  nav button[aria-selected="true"] { background: var(--surface); color: var(--primary); font-weight: 600; }
+  .who { margin-left: auto; color: var(--text2); font-size: 12.5px; text-align: right; }
+  main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 60px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--text2); margin: 0 0 22px; }
+  .card { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; padding: 24px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 24px; align-items: start; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
+  .hint { font-weight: 400; color: var(--text2); font-size: 12.5px; }
+  .field { margin-bottom: 18px; }
+  input[type=text], input[type=url], input[type=number], textarea, select {
+    width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  textarea { min-height: 140px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .prio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .prio { position: relative; }
+  .prio input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .prio label { margin: 0; border: 1px solid var(--border); border-radius: 8px; padding: 10px; cursor: pointer; font-weight: 600; text-align: center; }
+  .prio label small { display: block; font-weight: 400; font-size: 11.5px; color: var(--text2); }
+  .prio input:checked + label { border-color: var(--primary); background: var(--surface); color: var(--primary); }
+  .prio input[value=critical]:checked + label { border-color: var(--err); background: var(--err-fill); color: var(--err); }
+  .prio input:focus-visible + label { box-shadow: 0 0 0 3px rgba(15,65,243,.25); }
+  .seg { display: flex; gap: 16px; flex-wrap: wrap; }
+  .seg label { font-weight: 400; display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+  .btn { height: 42px; border-radius: 8px; padding: 0 22px; border: 0; cursor: pointer; font-weight: 600; background: var(--primary); color: var(--bg); }
+  .btn:hover { background: var(--primary-hover); }
+  .btn:disabled { background: var(--border); color: var(--text); cursor: default; }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 400; padding: 0 18px; }
+  .btn.secondary:hover { background: var(--surface); }
+  .btn.danger { background: transparent; color: var(--err); border: 1px solid #F7B4B4; font-weight: 600; }
+  .btn.danger:hover { background: var(--err-fill); }
+  .actions { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+  .reach { color: var(--text2); font-size: 13px; }
+  .notice { border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: none; }
+  .notice.ok { display: block; background: var(--ok-fill); color: var(--ok-text); }
+  .notice.err { display: block; background: var(--err-fill); color: #B42318; }
+
+  /* Preview of the device window */
+  .pv-label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin: 0 0 10px; font-weight: 600; }
+  .win { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 6px 28px rgba(4,14,39,.18); overflow: hidden; }
+  .win .accent { height: 5px; }
+  .win .hd { display: flex; justify-content: space-between; align-items: center; padding: 18px 16px 0 24px; height: 30px; }
+  .win .hd img { height: 13px; }
+  .win .x { color: var(--text2); font-size: 12px; width: 28px; text-align: center; }
+  .win .c { padding: 18px 24px 0; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 11px; white-space: nowrap; }
+  .win .meta { font-size: 12.5px; color: var(--text2); margin-left: 10px; }
+  .win h2 { font-size: 20px; font-weight: 600; margin: 12px 0 0; overflow-wrap: anywhere; }
+  .win p { color: var(--text2); white-space: pre-wrap; margin: 12px 0 6px; max-height: 260px; overflow: auto; overflow-wrap: anywhere; }
+  .win .ft { border-top: 1px solid var(--surface); margin-top: 8px; padding: 14px 24px 18px; display: flex; gap: 10px; align-items: center; }
+  .win .ft .note { font-size: 12px; color: var(--text2); flex: 1; }
+  .win .ft .sp { flex: 1; }
+  .win .ft .btn { height: 38px; pointer-events: none; white-space: nowrap; }
+  .toast { margin-top: 18px; background: #fff; border: 1px solid #e3e5ea; border-radius: 8px; padding: 12px 14px; display: flex; gap: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+  .toast img { width: 36px; height: 36px; border-radius: 8px; }
+  .toast b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+  .toast span { color: #555; font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .toast i { display: block; font-style: normal; font-size: 11.5px; color: #777; margin-top: 4px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--surface); }
+  td { padding: 12px; border-bottom: 1px solid var(--surface); vertical-align: middle; }
+  tbody tr.click { cursor: pointer; }
+  tbody tr.click:hover { background: #F7F9FE; }
+  .muted { color: var(--text2); font-size: 12.5px; }
+  .progress { display: flex; flex-direction: column; gap: 4px; min-width: 190px; }
+  .pbar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+  .pbar .track { flex: 1; height: 6px; background: var(--surface); border-radius: 3px; overflow: hidden; }
+  .pbar .fill { height: 100%; background: var(--primary); }
+  .pbar .fill.ack { background: var(--ok); }
+  .pbar em { font-style: normal; width: 74px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--border); }
+  .dot.on { background: var(--ok); }
+  .state { font-size: 12.5px; }
+  .tablewrap { overflow-x: auto; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  .toolbar input { max-width: 320px; }
+  .empty { color: var(--text2); text-align: center; padding: 40px; }
+
+  /* Detail panel */
+  .scrim { position: fixed; inset: 0; background: rgba(4,14,39,.35); display: none; }
+  .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%); background: var(--bg); box-shadow: -8px 0 30px rgba(4,14,39,.2); display: none; flex-direction: column; }
+  .panel.open, .scrim.open { display: flex; }
+  .panel .phd { padding: 22px 28px; border-bottom: 1px solid var(--surface); display: flex; gap: 16px; align-items: flex-start; }
+  .panel .pbody { padding: 22px 28px; overflow: auto; flex: 1; }
+  .panel h2 { margin: 8px 0 4px; font-size: 22px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
+  .stat { background: var(--surface); border-radius: 10px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; font-weight: 600; }
+  .stat span { font-size: 12px; color: var(--text2); }
+  /* Rich text editor */
+  .editor-wrap { background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .editor-wrap:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .tools { display: flex; gap: 2px; padding: 4px 6px; border-bottom: 1px solid var(--surface); background: #FBFCFF; }
+  .tools button { width: 32px; height: 30px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--text2); font-size: 14px; display: grid; place-items: center; }
+  .tools button:hover { background: var(--surface); color: var(--text); }
+  .tools button[aria-pressed="true"] { background: var(--surface); color: var(--primary); }
+  .tools .sep { width: 1px; background: var(--surface); margin: 4px 4px; }
+  .tools svg { width: 16px; height: 16px; }
+  .editor { min-height: 140px; max-height: 360px; overflow: auto; padding: 10px 12px; outline: none; white-space: pre-wrap; overflow-wrap: anywhere; resize: vertical; }
+  .editor:empty::before { content: attr(data-placeholder); color: #8A90A0; pointer-events: none; }
+  .editor a, .rich a { color: var(--primary); text-decoration: underline; }
+  .linkbar { display: none; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--surface); background: #FBFCFF; flex-wrap: wrap; }
+  .linkbar.open { display: flex; }
+  .linkbar input { flex: 1; min-width: 180px; height: 34px; padding: 6px 10px; }
+  .linkbar .btn { height: 34px; padding: 0 14px; font-size: 13px; }
+  .linkbar .err { width: 100%; color: #B42318; font-size: 12.5px; display: none; }
+  .msgbody { white-space: pre-wrap; color: var(--text2); background: #fff; border: 1px solid var(--surface); border-radius: 8px; padding: 12px 14px; }
+  @media (max-width: 700px) { .bar .app, .who { display: none; } .bar { gap: 10px; padding: 0 16px; } .bar img { height: 13px; } nav { margin-left: 0; } nav button { padding: 8px 9px; } main { padding: 22px 16px 48px; } .card { padding: 18px; } .row { grid-template-columns: 1fr; } .prio { grid-template-columns: 1fr 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">IT Notifications</span>
+    <nav role="tablist">
+      <button role="tab" data-tab="send" aria-selected="true">Send</button>
+      <button role="tab" data-tab="messages">Messages</button>
+      <button role="tab" data-tab="devices">Devices</button>
+    </nav>
+    <div class="who"><span id="who"></span> · <a href="logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+
+<main>
+  <!-- SEND -->
+  <section id="tab-send">
+    <h1>Send a notification</h1>
+    <p class="sub">Devices check in every <span id="poll">60</span> seconds, so it arrives within about a minute.</p>
+    <div class="grid">
+      <form class="card" id="form" autocomplete="off">
+        <div class="notice" id="notice"></div>
+        <div class="field">
+          <label>Priority</label>
+          <div class="prio">
+            <input type="radio" name="priority" id="p-low" value="low"><label for="p-low">Low<small>Silent</small></label>
+            <input type="radio" name="priority" id="p-normal" value="normal" checked><label for="p-normal">Normal<small>Standard</small></label>
+            <input type="radio" name="priority" id="p-high" value="high"><label for="p-high">High<small>Stays on screen</small></label>
+            <input type="radio" name="priority" id="p-critical" value="critical"><label for="p-critical">Critical<small>Opens, must confirm</small></label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="subject">Subject</label>
+          <input type="text" id="subject" maxlength="140" required placeholder="VPN maintenance tonight">
+        </div>
+        <div class="field">
+          <label id="bodyLabel">Message</label>
+          <div class="editor-wrap">
+            <div class="tools" role="toolbar" aria-label="Formatting">
+              <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+              <button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i style="font-family:Georgia,serif">I</i></button>
+              <button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+              <span class="sep"></span>
+              <button type="button" id="linkBtn" title="Link (Ctrl+K)" aria-label="Link" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </button>
+              <button type="button" data-cmd="removeFormat" title="Clear formatting" aria-label="Clear formatting">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/><path d="M3 3l18 18"/></svg>
+              </button>
+            </div>
+            <div class="linkbar" id="linkbar">
+              <input type="text" inputmode="url" id="linkInput" autocomplete="off" placeholder="https://…nscale.com/…" aria-label="Link address">
+              <button type="button" class="btn" id="linkApply">Add link</button>
+              <button type="button" class="btn secondary" id="linkRemove">Remove</button>
+              <button type="button" class="btn secondary" id="linkCancel">Cancel</button>
+              <span class="err" id="linkErr"></span>
+            </div>
+            <div class="editor" id="body" contenteditable="true" role="textbox" aria-multiline="true"
+                 aria-labelledby="bodyLabel" data-placeholder="Write the message. Select text to format it."></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="from">From</label>
+            <input type="text" id="from" maxlength="60" value="Nscale IT">
+          </div>
+          <div class="field">
+            <label for="expires">Expires <span class="hint">(optional)</span></label>
+            <select id="expires">
+              <option value="">Never</option><option value="1">In 1 hour</option><option value="4">In 4 hours</option>
+              <option value="8">In 8 hours</option><option value="24">In 1 day</option><option value="72">In 3 days</option>
+              <option value="168">In 1 week</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="linkText">Button text <span class="hint">(optional)</span></label>
+            <input type="text" id="linkText" maxlength="40" placeholder="Read more">
+          </div>
+          <div class="field">
+            <label for="linkUrl">Button link</label>
+            <input type="url" id="linkUrl" maxlength="500" placeholder="https://…nscale.com/…">
+          </div>
+        </div>
+        <div class="field">
+          <label>Send to</label>
+          <div class="seg">
+            <label><input type="radio" name="who" value="all" checked> Everyone</label>
+            <label><input type="radio" name="who" value="some"> Specific devices or people</label>
+          </div>
+        </div>
+        <div class="field" id="audienceField" hidden>
+          <label for="audience">Computer names, user names or emails <span class="hint">one per line or comma separated; * wildcards allowed, e.g. LT-LON-*</span></label>
+          <textarea id="audience" style="min-height:80px"></textarea>
+        </div>
+        <div class="field">
+          <label>Platforms</label>
+          <div class="seg">
+            <label><input type="checkbox" id="pf-windows" checked> Windows</label>
+            <label><input type="checkbox" id="pf-macos" checked> Mac</label>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" type="submit" id="sendBtn">Send notification</button>
+          <span class="reach" id="reach"></span>
+        </div>
+      </form>
+
+      <div>
+        <p class="pv-label">What people will see</p>
+        <div class="win">
+          <div class="accent" id="pvAccent"></div>
+          <div class="hd"><img src="static/nscale-wordmark.svg" alt=""><span class="x" id="pvX">✕</span></div>
+          <div class="c">
+            <span class="badge" id="pvBadge"></span><span class="meta" id="pvMeta"></span>
+            <h2 id="pvSubject"></h2>
+            <p id="pvBody" class="rich"></p>
+          </div>
+          <div class="ft"><span class="note" id="pvNote"></span><span class="sp"></span>
+            <span class="btn secondary" id="pvLink"></span><span class="btn" id="pvAck"></span></div>
+        </div>
+        <div class="toast">
+          <img src="static/nscale-icon.png" alt="">
+          <div><b id="tSubject"></b><span id="tBody"></span><i id="tAttr"></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MESSAGES -->
+  <section id="tab-messages" hidden>
+    <h1>Messages</h1>
+    <p class="sub">Click a message to see who has received, opened and acknowledged it.</p>
+    <div class="card tablewrap">
+      <table>
+        <thead><tr><th>Priority</th><th>Subject</th><th>Sent</th><th>Progress</th></tr></thead>
+        <tbody id="msgRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- DEVICES -->
+  <section id="tab-devices" hidden>
+    <h1>Devices</h1>
+    <p class="sub">Every device and user that has checked in. Online means checked in within the last few minutes.</p>
+    <div class="toolbar"><input type="text" id="devFilter" placeholder="Filter by name, user or version"><span class="muted" id="devCount"></span></div>
+    <div class="card tablewrap">
+      <table>
+        <thead><tr><th>Computer</th><th>User</th><th>Platform</th><th>App</th><th>Last check-in</th></tr></thead>
+        <tbody id="devRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-modal="true" role="dialog">
+  <div class="phd">
+    <div style="flex:1">
+      <span class="badge" id="dBadge"></span>
+      <h2 id="dSubject"></h2>
+      <div class="muted" id="dMeta"></div>
+    </div>
+    <button class="btn danger" id="dWithdraw">Withdraw</button>
+    <button class="btn secondary" id="dClose">Close</button>
+  </div>
+  <div class="pbody">
+    <div class="msgbody rich" id="dBody"></div>
+    <div class="stats" id="dStats"></div>
+    <table>
+      <thead><tr><th>Computer</th><th>User</th><th>Status</th><th>Last check-in</th></tr></thead>
+      <tbody id="dRows"></tbody>
+    </table>
+  </div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const PRIORITY = {
+  low:      { label: 'Low priority',  fill: 'var(--surface)',  text: 'var(--text2)',   bar: 'var(--border)' },
+  normal:   { label: 'Normal',        fill: 'var(--surface)',  text: 'var(--primary)', bar: 'var(--accent)' },
+  high:     { label: 'High priority', fill: 'var(--primary)',  text: 'var(--bg)',      bar: 'var(--primary)' },
+  critical: { label: 'Critical',      fill: 'var(--err-fill)', text: 'var(--err)',     bar: 'var(--err)' },
+};
+let pollSeconds = 60, onlineSeconds = 180;
+let allowedHosts = ['nscale.com'];
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) { location.href = 'login'; throw new Error('Signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = data.detail;
+    throw new Error(Array.isArray(d) ? d.map(x => (x.msg || '').replace(/^Value error, /, '')).join(' ') : (d || res.statusText));
+  }
+  return data;
+}
+
+function badge(el, p) {
+  const s = PRIORITY[p] || PRIORITY.normal;
+  el.textContent = s.label; el.style.background = s.fill; el.style.color = s.text;
+}
+function fmt(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+function ago(iso) {
+  if (!iso) return 'never';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+function td(text, cls) { const c = document.createElement('td'); c.textContent = text ?? ''; if (cls) c.className = cls; return c; }
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+function showTab(name) {
+  document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+  ['send', 'messages', 'devices'].forEach(t => $('tab-' + t).hidden = t !== name);
+  if (name === 'messages') loadMessages();
+  if (name === 'devices') loadDevices();
+}
+
+/* ---------- Send form + preview ---------- */
+const form = $('form');
+function formData() {
+  const audience = document.querySelector('input[name=who]:checked').value === 'some'
+    ? $('audience').value.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
+  const platforms = ['windows', 'macos'].filter(p => $('pf-' + p).checked);
+  return {
+    subject: $('subject').value.trim(), bodyRich: editorToRich(), body: editorText(), fromName: $('from').value.trim() || 'Nscale IT',
+    priority: document.querySelector('input[name=priority]:checked').value,
+    expiresInHours: $('expires').value ? Number($('expires').value) : null,
+    linkText: $('linkText').value.trim() || null, linkUrl: $('linkUrl').value.trim() || null,
+    audience, platforms: platforms.length === 2 ? [] : platforms,
+  };
+}
+function renderPreview() {
+  const d = formData(); const crit = d.priority === 'critical'; const s = PRIORITY[d.priority];
+  $('pvAccent').style.background = s.bar; badge($('pvBadge'), d.priority);
+  $('pvMeta').textContent = `${d.fromName}  ·  ${fmt(new Date().toISOString())}`;
+  $('pvSubject').textContent = d.subject || 'Subject';
+  if (d.body.trim()) renderRich($('pvBody'), d.bodyRich); else $('pvBody').textContent = 'Your message appears here.';
+  $('pvX').style.visibility = crit ? 'hidden' : 'visible';
+  $('pvNote').textContent = crit ? 'Please read this message before continuing.' : '';
+  $('pvAck').textContent = crit ? "I've read this" : 'Close';
+  $('pvLink').style.display = d.linkUrl ? '' : 'none'; $('pvLink').textContent = d.linkText || 'Open link';
+  $('tSubject').textContent = d.subject || 'Subject';
+  $('tBody').textContent = (d.body || '').replace(/\s+/g, ' ');
+  $('tAttr').textContent = `${d.fromName}  ·  ${s.label}`;
+  $('sendBtn').textContent = crit ? 'Send critical notification' : 'Send notification';
+}
+let reachTimer;
+function updateReach() {
+  clearTimeout(reachTimer);
+  reachTimer = setTimeout(async () => {
+    const d = formData();
+    if (!d.platforms.length && !$('pf-windows').checked) { $('reach').textContent = 'Pick at least one platform.'; return; }
+    try {
+      const r = await api('api/admin/audience', { method: 'POST', body: JSON.stringify({ audience: d.audience, platforms: d.platforms }) });
+      $('reach').textContent = `Will reach ${r.devices} active device${r.devices === 1 ? '' : 's'}`;
+    } catch { $('reach').textContent = ''; }
+  }, 300);
+}
+form.addEventListener('input', () => { renderPreview(); updateReach(); });
+document.querySelectorAll('input[name=who]').forEach(r => r.addEventListener('change', () => {
+  $('audienceField').hidden = document.querySelector('input[name=who]:checked').value !== 'some';
+}));
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const d = formData(), n = $('notice');
+  n.className = 'notice';
+  if (!$('pf-windows').checked && !$('pf-macos').checked) { n.className = 'notice err'; n.textContent = 'Pick at least one platform.'; return; }
+  if (d.linkUrl && !d.linkText) d.linkText = 'Open link';
+  if (d.priority === 'critical' && !confirm('Send a critical notification? It opens on screen immediately and stays on top until each person confirms they have read it.')) return;
+  $('sendBtn').disabled = true;
+  try {
+    const r = await api('api/admin/messages', { method: 'POST', body: JSON.stringify(d) });
+    n.className = 'notice ok';
+    n.textContent = `Sent to ${r.targetedDevices} active device${r.targetedDevices === 1 ? '' : 's'}. Track it under Messages.`;
+    form.reset(); $('body').replaceChildren(); $('audienceField').hidden = true; renderPreview(); updateReach();
+  } catch (err) {
+    n.className = 'notice err'; n.textContent = err.message;
+  } finally { $('sendBtn').disabled = false; }
+});
+
+/* ---------- Rich text ----------
+   Stored format: <b> <i> <u> <a href="https://…"> only, with &amp; &lt; &gt; &quot; and newlines.
+   The server sanitises it again; the Windows and Mac apps render the same four tags. */
+const editor = $('body');
+document.execCommand('defaultParagraphSeparator', false, 'div');
+
+function escapeRich(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function unescapeRich(t) { return t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'); }
+
+const TAG_OF = { B: 'b', STRONG: 'b', I: 'i', EM: 'i', U: 'u', A: 'a' };
+const BLOCKS = new Set(['DIV', 'P', 'LI', 'H1', 'H2', 'H3', 'H4', 'BLOCKQUOTE']);
+function editorToRich() {
+  let out = '';
+  const walk = (node, parentIsBlock) => {
+    for (const n of node.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE) { out += escapeRich(n.nodeValue.replace(/\u00a0/g, ' ')); continue; }
+      if (n.nodeType !== Node.ELEMENT_NODE) continue;
+      if (n.tagName === 'BR') { if (!(parentIsBlock && n === node.lastChild && n.previousSibling)) out += '\n'; continue; }
+      const block = BLOCKS.has(n.tagName);
+      if (block && out && !out.endsWith('\n')) out += '\n';
+      let tag = TAG_OF[n.tagName];
+      if (!tag && n.tagName === 'SPAN') {   // some browsers format with styles
+        const st = n.style;
+        if (st.fontWeight === 'bold' || +st.fontWeight >= 600) tag = 'b';
+        else if (st.fontStyle === 'italic') tag = 'i';
+        else if ((st.textDecorationLine || st.textDecoration || '').includes('underline')) tag = 'u';
+      }
+      if (tag === 'a') out += `<a href="${escapeRich(n.getAttribute('href') || '')}">`;
+      else if (tag) out += `<${tag}>`;
+      walk(n, block);
+      if (tag) out += `</${tag}>`;
+    }
+  };
+  walk(editor, true);
+  return out.replace(/\n+$/, '');
+}
+function editorText() { const t = document.createElement('div'); renderRich(t, editorToRich()); return t.textContent; }
+
+// Builds DOM from stored rich text without ever using innerHTML.
+function renderRich(el, rich) {
+  el.replaceChildren();
+  const stack = [el];
+  const re = /<(\/?)(b|i|u|a)(?:\s+href="([^"]*)")?\s*>|[^<]+|</gi;
+  let m;
+  while ((m = re.exec(rich || ''))) {
+    const top = stack[stack.length - 1];
+    if (!m[2]) { top.append(unescapeRich(m[0])); continue; }
+    const tag = m[2].toLowerCase();
+    if (m[1]) { if (stack.length > 1 && top.tagName.toLowerCase() === tag) stack.pop(); continue; }
+    const node = document.createElement(tag);
+    if (tag === 'a') {
+      const href = unescapeRich(m[3] || '');
+      if (!/^https:\/\//i.test(href)) continue;
+      node.href = href; node.target = '_blank'; node.rel = 'noopener noreferrer'; node.title = href;
+    }
+    top.append(node); stack.push(node);
+  }
+}
+
+// Paste as plain text so formatting from Word or web pages doesn't come along.
+editor.addEventListener('paste', e => {
+  e.preventDefault();
+  document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain'));
+});
+editor.addEventListener('drop', e => e.preventDefault());
+
+document.querySelectorAll('.tools button[data-cmd]').forEach(b => {
+  b.addEventListener('mousedown', e => e.preventDefault());   // keep the selection in the editor
+  b.addEventListener('click', () => {
+    editor.focus();
+    document.execCommand(b.dataset.cmd, false, null);
+    if (b.dataset.cmd === 'removeFormat') document.execCommand('unlink', false, null);
+    updateTools(); renderPreview();
+  });
+});
+function selectionLink() {
+  const sel = getSelection();
+  if (!sel.rangeCount || !editor.contains(sel.anchorNode)) return null;
+  let n = sel.anchorNode;
+  while (n && n !== editor) { if (n.tagName === 'A') return n; n = n.parentNode; }
+  return null;
+}
+function updateTools() {
+  const inEditor = editor.contains(getSelection().anchorNode);
+  document.querySelectorAll('.tools button[data-cmd]').forEach(b => {
+    if (b.dataset.cmd !== 'removeFormat') b.setAttribute('aria-pressed', inEditor && document.queryCommandState(b.dataset.cmd));
+  });
+  $('linkBtn').setAttribute('aria-pressed', !!selectionLink());
+}
+document.addEventListener('selectionchange', updateTools);
+
+// Links
+let savedRange = null;
+function openLinkBar() {
+  const sel = getSelection();
+  if (!sel.rangeCount || !editor.contains(sel.anchorNode)) { editor.focus(); }
+  savedRange = getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
+  const a = selectionLink();
+  $('linkInput').value = a ? a.getAttribute('href') : '';
+  $('linkApply').textContent = a ? 'Update link' : 'Add link';
+  $('linkRemove').hidden = !a;
+  $('linkErr').style.display = 'none';
+  $('linkbar').classList.add('open');
+  $('linkInput').focus();
+}
+function closeLinkBar() {
+  $('linkbar').classList.remove('open');
+  $('linkErr').style.display = 'none';
+  editor.focus();
+  if (savedRange) { const s = getSelection(); s.removeAllRanges(); s.addRange(savedRange); }
+}
+function linkAllowed(url) {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.toLowerCase();
+    return u.protocol === 'https:' && (!allowedHosts.length || allowedHosts.some(a => h === a || h.endsWith('.' + a)));
+  } catch { return false; }
+}
+function applyLink() {
+  let url = $('linkInput').value.trim();
+  if (url && !/^[a-z]+:/i.test(url)) url = 'https://' + url;
+  if (!linkAllowed(url)) {
+    $('linkErr').textContent = `Links must start with https:// and be on ${allowedHosts.join(', ') || 'an allowed domain'}.`;
+    $('linkErr').style.display = 'block'; return;
+  }
+  closeLinkBar();
+  const a = selectionLink();
+  if (a) { a.setAttribute('href', url); }
+  else if (savedRange && !savedRange.collapsed) { document.execCommand('createLink', false, url); }
+  else {   // nothing selected: insert the address as the link text
+    const link = document.createElement('a'); link.href = url; link.textContent = url;
+    const r = getSelection().getRangeAt(0); r.insertNode(link); r.setStartAfter(link); r.collapse(true);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  }
+  updateTools(); renderPreview();
+}
+$('linkBtn').addEventListener('mousedown', e => e.preventDefault());
+$('linkBtn').addEventListener('click', openLinkBar);
+$('linkApply').addEventListener('click', applyLink);
+$('linkCancel').addEventListener('click', closeLinkBar);
+$('linkRemove').addEventListener('click', () => {
+  closeLinkBar();                       // puts the selection back inside the link
+  const link = selectionLink();
+  if (link) link.replaceWith(...link.childNodes);
+  updateTools(); renderPreview();
+});
+$('linkInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLinkBar(); }
+});
+editor.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openLinkBar(); }
+});
+// Clicking a link inside the editor shouldn't navigate.
+editor.addEventListener('click', e => { if (e.target.closest('a')) e.preventDefault(); });
+
+/* ---------- Messages ---------- */
+function progressCell(m) {
+  const c = document.createElement('td'); const wrap = document.createElement('div'); wrap.className = 'progress';
+  const total = Math.max(m.targeted, m.delivered, 1);
+  const rows = [['Delivered', m.delivered, '']];
+  if (m.priority === 'critical') rows.push(['Confirmed', m.acknowledged, 'ack']); else rows.push(['Opened', m.opened, '']);
+  for (const [label, n, cls] of rows) {
+    const r = document.createElement('div'); r.className = 'pbar';
+    const em = document.createElement('em'); em.textContent = label;
+    const t = document.createElement('div'); t.className = 'track';
+    const f = document.createElement('div'); f.className = 'fill ' + cls; f.style.width = (100 * n / total) + '%'; t.append(f);
+    const v = document.createElement('span'); v.textContent = `${n}/${m.targeted}`;
+    r.append(em, t, v); wrap.append(r);
+  }
+  c.append(wrap); return c;
+}
+async function loadMessages() {
+  const tb = $('msgRows');
+  try {
+    const { messages } = await api('api/admin/messages');
+    tb.replaceChildren();
+    if (!messages.length) { const r = tb.insertRow(); const c = td('No messages sent yet.', 'empty'); c.colSpan = 4; r.append(c); return; }
+    for (const m of messages) {
+      const r = document.createElement('tr'); r.className = 'click';
+      const b = document.createElement('td'); const s = document.createElement('span'); s.className = 'badge'; badge(s, m.priority); b.append(s);
+      const subj = document.createElement('td'); const strong = document.createElement('div'); strong.style.fontWeight = 600; strong.textContent = m.subject;
+      const sub = document.createElement('div'); sub.className = 'muted';
+      sub.textContent = m.withdrawn ? `Withdrawn by ${m.withdrawnBy}` : (m.audience.length ? `To ${m.audience.join(', ')}` : 'To everyone') + (m.platforms.length ? ` · ${m.platforms.map(p => p === 'macos' ? 'Mac' : 'Windows').join('')} only` : '');
+      if (m.withdrawn) { strong.style.textDecoration = 'line-through'; strong.style.color = 'var(--text2)'; }
+      subj.append(strong, sub);
+      const sent = document.createElement('td'); sent.textContent = fmt(m.sent);
+      const by = document.createElement('div'); by.className = 'muted'; by.textContent = m.sentBy; sent.append(by);
+      r.append(b, subj, sent, progressCell(m));
+      r.addEventListener('click', () => openMessage(m.id));
+      tb.append(r);
+    }
+  } catch (e) { tb.replaceChildren(); const r = tb.insertRow(); const c = td(e.message, 'empty'); c.colSpan = 4; r.append(c); }
+}
+
+let openId = null;
+async function openMessage(id) {
+  openId = id;
+  const m = await api('api/admin/messages/' + encodeURIComponent(id));
+  badge($('dBadge'), m.priority);
+  $('dSubject').textContent = m.subject;
+  $('dMeta').textContent = `Sent ${fmt(m.sent)} by ${m.sentBy} as "${m.from}"` + (m.expires ? ` · expires ${fmt(m.expires)}` : '') + (m.withdrawn ? ` · withdrawn ${fmt(m.withdrawn)}` : '');
+  if (m.bodyRich || m.body) renderRich($('dBody'), m.bodyRich || escapeRich(m.body)); else $('dBody').textContent = '(no message body)';
+  $('dWithdraw').hidden = !!m.withdrawn;
+  $('dStats').replaceChildren(...[['Targeted', m.targeted], ['Delivered', m.delivered], ['Opened', m.opened], [m.priority === 'critical' ? 'Confirmed read' : 'Acknowledged', m.acknowledged]].map(([l, n]) => {
+    const s = document.createElement('div'); s.className = 'stat'; const b = document.createElement('b'); b.textContent = n; const sp = document.createElement('span'); sp.textContent = l; s.append(b, sp); return s;
+  }));
+  const tb = $('dRows'); tb.replaceChildren();
+  for (const d of m.devices) {
+    const r = document.createElement('tr');
+    const status = d.acknowledged ? `✓ Acknowledged ${fmt(d.acknowledged)}` : d.opened ? `Opened ${fmt(d.opened)}` : d.delivered ? `Delivered ${fmt(d.delivered)}` : 'Not delivered yet';
+    const st = td(status, 'state'); st.style.color = d.acknowledged ? 'var(--ok-text)' : d.delivered ? 'var(--text)' : 'var(--text2)';
+    r.append(td(d.hostname), td(d.upn || d.username), st, td(ago(d.lastSeen), 'muted'));
+    tb.append(r);
+  }
+  if (!m.devices.length) { const r = tb.insertRow(); const c = td('No active devices match this message.', 'empty'); c.colSpan = 4; r.append(c); }
+  $('panel').classList.add('open'); $('scrim').classList.add('open');
+}
+function closePanel() { $('panel').classList.remove('open'); $('scrim').classList.remove('open'); openId = null; }
+$('dClose').addEventListener('click', closePanel); $('scrim').addEventListener('click', closePanel);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+$('dWithdraw').addEventListener('click', async () => {
+  if (!openId || !confirm('Withdraw this message? Devices that have not received it yet will not get it. It stays on screens that already show it.')) return;
+  try { await api(`api/admin/messages/${encodeURIComponent(openId)}/withdraw`, { method: 'POST' }); await openMessage(openId); loadMessages(); }
+  catch (e) { alert(e.message); }
+});
+
+/* ---------- Devices ---------- */
+let devices = [];
+async function loadDevices() {
+  try { const r = await api('api/admin/devices'); devices = r.devices; renderDevices(); }
+  catch (e) { $('devRows').replaceChildren(); }
+}
+function renderDevices() {
+  const q = $('devFilter').value.trim().toLowerCase();
+  const rows = devices.filter(d => !q || [d.hostname, d.username, d.upn, d.appVersion, d.osVersion].some(v => (v || '').toLowerCase().includes(q)));
+  const online = devices.filter(d => (Date.now() - new Date(d.lastSeen)) / 1000 < onlineSeconds).length;
+  $('devCount').textContent = `${rows.length} shown · ${online} online now`;
+  const tb = $('devRows'); tb.replaceChildren();
+  for (const d of rows) {
+    const r = document.createElement('tr');
+    const name = document.createElement('td'); const dot = document.createElement('span');
+    dot.className = 'dot' + ((Date.now() - new Date(d.lastSeen)) / 1000 < onlineSeconds ? ' on' : '');
+    name.append(dot, document.createTextNode(d.hostname));
+    const plat = td(d.platform === 'macos' ? 'Mac' : 'Windows'); const os = document.createElement('div'); os.className = 'muted'; os.textContent = d.osVersion || ''; plat.append(os);
+    r.append(name, td(d.upn || d.username), plat, td(d.appVersion || ''), td(ago(d.lastSeen), 'muted'));
+    tb.append(r);
+  }
+  if (!rows.length) { const r = tb.insertRow(); const c = td(devices.length ? 'No devices match.' : 'No devices have checked in yet.', 'empty'); c.colSpan = 5; r.append(c); }
+}
+$('devFilter').addEventListener('input', renderDevices);
+
+/* ---------- Start ---------- */
+(async () => {
+  renderPreview();
+  try {
+    const me = await api('api/admin/me');
+    pollSeconds = me.pollSeconds; onlineSeconds = me.onlineSeconds || pollSeconds * 3; $('poll').textContent = me.pollSeconds;
+    $('who').textContent = me.name + (me.email && me.email !== me.name ? ' · ' + me.email : '');
+    allowedHosts = me.allowedLinkHosts || [];
+    $('linkUrl').placeholder = `https://…${allowedHosts[0] || ''}/…`;
+    $('linkInput').placeholder = $('linkUrl').placeholder;
+  } catch {}
+  updateReach();
+})();
+</script>
+</body>
+</html>

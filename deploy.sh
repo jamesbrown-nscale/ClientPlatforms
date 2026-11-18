@@ -6,9 +6,8 @@
 #   ./deploy.sh infra                          create or update everything in infra/ (terraform apply)
 #   ./deploy.sh portal                         build and roll out the home page
 #   ./deploy.sh elevation                      build and roll out the elevation log
-#   ./deploy.sh notifications <ITNotifications repo folder>
-#                                              build and roll out IT Notifications from its own repo
-#   ./deploy.sh all <ITNotifications repo folder>
+#   ./deploy.sh notifications                  build and roll out IT Notifications
+#   ./deploy.sh all                            all three
 #   ./deploy.sh keys                           show the device keys (enrollment key, elevation ingest keys)
 #   ./deploy.sh add-ingest-key <label>         add an elevation ingest key for a group of devices
 #   ./deploy.sh remove-ingest-key <label>      revoke one
@@ -55,13 +54,6 @@ build_and_roll() {   # build_and_roll <workload> <service> <source folder>
     --default-buckets-behavior=regional-user-owned-bucket --quiet
   echo "==> Rolling out $service"
   gcloud run deploy "$service" --project "$PROJECT" --region "$REGION" --image "$image" --quiet
-}
-
-notify_src() {
-  local src=${1:-}
-  [ -n "$src" ] || { echo "Give the path to the ITNotifications repo, e.g. ./deploy.sh notifications ../ITNotifications" >&2; exit 1; }
-  [ -f "$src/server/Dockerfile" ] || { echo "$src/server/Dockerfile not found: is that the ITNotifications repo?" >&2; exit 1; }
-  echo "$src/server"
 }
 
 secret_value() { gcloud secrets versions access latest --secret "$1" --project "$PROJECT"; }
@@ -120,15 +112,13 @@ case "${1:-}" in
   infra)               infra ;;
   portal)              build_and_roll portal cp-portal services/portal ;;
   elevation)           build_and_roll elevation cp-elevation services/elevation ;;
-  notifications)       src=$(notify_src "${2:-}")
-                       build_and_roll notifications cp-notify "$src" ;;
-  all)                 src=$(notify_src "${2:-}")
-                       build_and_roll portal cp-portal services/portal
+  notifications)       build_and_roll notifications cp-notify services/notifications ;;
+  all)                 build_and_roll portal cp-portal services/portal
                        build_and_roll elevation cp-elevation services/elevation
-                       build_and_roll notifications cp-notify "$src" ;;
+                       build_and_roll notifications cp-notify services/notifications ;;
   keys)                keys ;;
   add-ingest-key)      add_ingest_key "${2:-}" ;;
   remove-ingest-key)   remove_ingest_key "${2:-}" ;;
   status)              status ;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

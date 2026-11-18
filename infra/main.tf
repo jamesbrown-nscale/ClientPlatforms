@@ -235,10 +235,13 @@ resource "google_cloud_run_v2_service" "app" {
         name  = "IAP_AUDIENCE"
         value = local.iap_audience[each.key]
       }
+      env {
+        name  = "AUTH_MODE"
+        value = "iap"
+      }
 
       dynamic "env" {
         for_each = each.key == "notify" ? {
-          AUTH_MODE          = "iap"
           BASE_PATH          = "/notifications"
           STORE              = "firestore"
           FIRESTORE_DATABASE = "notifications"
