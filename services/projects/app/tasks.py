@@ -155,6 +155,16 @@ def _next_ref() -> str:
     return f"TSK-{n + 1:03d}"
 
 
+def picked_mentions(text: str, picked: list | None) -> list[str]:
+    """People chosen from the @ list whose @tag (first.last) is still in the text."""
+    out = []
+    for e in picked or []:
+        e = str(e).strip().lower()
+        if EMAIL.match(e) and re.search(rf"(^|[\s(])@{re.escape(e.split('@')[0])}\b", text or "", re.I) and e not in out:
+            out.append(e)
+    return out
+
+
 def mentions_in(text: str, people: list[dict]) -> list[str]:
     """Emails of the people @mentioned: @first.last, @first or @full@email (matched to known people)."""
     found = []
@@ -203,6 +213,7 @@ class ActivityIn(BaseModel):
     progress: int | None = Field(default=None, ge=0, le=100)
     answers: str | None = None
     to: str | None = Field(default=None, max_length=254)
+    mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list
 
 
 def _found(tid: str, user: User) -> dict:
@@ -427,7 +438,7 @@ def add_activity(tid: str, body: ActivityIn, user: User = Depends(require_task_u
         raise HTTPException(422, "Write something first.")
     if body.kind == "update" and not can_change(t, user):
         raise HTTPException(403, "Only the project's owners and editors can post updates.")
-    kw = {"mentions": mentions_in(text, _people_known())}
+    kw = {"mentions": list(dict.fromkeys(picked_mentions(text, body.mentions) + mentions_in(text, _people_known())))}
     if body.kind == "question":
         to = (body.to or "").strip().lower()
         if not to:   # ask the assignee, or the creator if the assignee is asking

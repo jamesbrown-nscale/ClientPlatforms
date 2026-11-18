@@ -132,3 +132,10 @@ def test_mentions_matching():
     people = [{"email": "amy.chen@nscale.com", "name": "Amy Chen"}, {"email": "bob@nscale.com", "name": "Bob"}]
     assert tasks.mentions_in("thanks @amy and @bob@nscale.com.", people) == ["amy.chen@nscale.com", "bob@nscale.com"]
     assert tasks.mentions_in("email me at x@y.com", people) == []
+
+
+def test_picked_mentions(c):
+    t = new(c, assignee="bob.smith@nscale.com")
+    r = c.post(f"/tasks/api/tasks/{t['id']}/activity", headers=BOB, json={"body": "@zed.new can you look?", "mentions": ["zed.new@nscale.com"]}).json()
+    assert r["activity"][-1]["mentions"] == ["zed.new@nscale.com"]
+    assert tasks.picked_mentions("hi @amy.chen!", ["amy.chen@nscale.com", "bob@x.com"]) == ["amy.chen@nscale.com"]

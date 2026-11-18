@@ -170,3 +170,12 @@ def test_comments_tags_updates_and_flow_copies(c):
     got = c.get(f"{API}/changes/{cid}", headers=AMY).json()
     assert got["stepName"] == "Change review" and got["stepNeeded"] == 2 and len(got["flow"]["steps"]) == 5
     assert raise_change(c)["flow"]["steps"][0]["name"] == "Just one"
+
+
+def test_people_picked_from_the_at_list_are_tagged(c):
+    ch = raise_change(c)
+    act(c, ch["id"], AMY, "submit")
+    # Dan has never been near a change, so his @tag alone wouldn't be recognised; picked from the list, it is.
+    r = act(c, ch["id"], BOB, "comment", "@dan.ray please check the scope", mentions=["dan.ray@nscale.com", "eve@nscale.com", "not-an-email"]).json()
+    assert r["activity"][-1]["mentions"] == ["dan.ray@nscale.com"]   # Eve's tag isn't in the text
+    assert inbox_titles(c, "dan.ray@nscale.com")[0] == "Bob Smith tagged you on CHG-001 BitLocker policy"

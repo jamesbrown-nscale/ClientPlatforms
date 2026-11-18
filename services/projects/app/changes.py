@@ -38,7 +38,7 @@ from . import access
 from .auth import CHANGES, User, current_user, require_changes_user
 from .inbox import notify
 from .store import Store, now
-from .tasks import mentions_in
+from .tasks import mentions_in, picked_mentions
 
 STEP_TYPES = {
     "review": "Review",
@@ -354,6 +354,7 @@ class ChangeIn(BaseModel):
 class ActIn(BaseModel):
     action: str
     body: str = Field(default="", max_length=10000)
+    mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list
     start: str | None = None
     end: str | None = None
 
@@ -529,7 +530,7 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
         raise HTTPException(422, "Unknown action.")
     step = current_step(c)
     label, url = _label(c), link(c)
-    mentions = mentions_in(text, _people(s)) if text else []
+    mentions = list(dict.fromkeys(picked_mentions(text, body.mentions) + mentions_in(text, _people(s)))) if text else []
 
     if a in ("comment", "update"):
         if not text:

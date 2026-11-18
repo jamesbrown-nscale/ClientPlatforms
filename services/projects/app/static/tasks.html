@@ -6,6 +6,7 @@
 <title>Tasks · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
 <script src="/static/dialog.js"></script>
+<script src="/static/mention.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -141,7 +142,17 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
-let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null;
+let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
+
+/** Who to suggest after @: the people on this task first, then everyone with Tasks. */
+function mentionPeople() {
+  const t = OPEN, out = [], add = (email, hint) => { if (email && email !== ME.email && !out.some(p => p.email === email)) out.push({ email, name: personName(email), hint }); };
+  if (!t) return {};
+  add(t.assignee, 'Assigned');
+  add(t.createdBy, 'Created it');
+  t.activity.forEach(a => { add(a.waitingOn, 'Asked a question'); add(a.author, 'In the thread'); });
+  return { involved: out, everyone: PEOPLE.filter(p => p.email !== ME.email) };
+}
 
 async function api(path, opts = {}) {
   const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
@@ -336,8 +347,9 @@ function wireDetail() {
     if (!(await cp.confirm({ title: `Delete this ${what}?`, message: what === 'answer' ? 'The question it answered opens again.' : "This can't be undone.", confirm: 'Delete', danger: true }))) return;
     try { OPEN = await api(`tasks/${OPEN.id}/activity/${b.dataset.del}`, { method: 'DELETE' }); drawDetail(); load(); } catch (e) { cp.alert(e.message); }
   });
+  MENTION?.destroy(); MENTION = cpMention.attach($('cBody'), mentionPeople);
   $('cSend').onclick = async () => {
-    const body = { kind: ANSWERING ? 'answer' : KIND, body: $('cBody').value };
+    const body = { kind: ANSWERING ? 'answer' : KIND, body: $('cBody').value, mentions: MENTION ? MENTION.picked() : [] };
     if (ANSWERING) body.answers = ANSWERING.id;
     if (KIND === 'question' && !ANSWERING && $('cTo').value.trim()) {
       const v = $('cTo').value.trim(), p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());

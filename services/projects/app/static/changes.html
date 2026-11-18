@@ -6,6 +6,7 @@
 <title>Change management · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
 <script src="/static/dialog.js"></script>
+<script src="/static/mention.js"></script>
 <script src="/static/nav.js" defer></script>
 <style>
   :root {
@@ -150,7 +151,19 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TABS = [['review', 'Awaiting me'], ['mine', 'My changes'], ['open', 'Open'], ['closed', 'Closed'], ['all', 'All']];
-let ME = null, VIEW = 'review', LIST = [], COUNTS = {}, CUR = null, KIND = 'comment', PEOPLE = [];
+let ME = null, VIEW = 'review', LIST = [], COUNTS = {}, CUR = null, KIND = 'comment', PEOPLE = [], MENTION = null;
+
+/** Who to suggest after @: the people on this change first, then everyone with Change management. */
+function mentionPeople() {
+  const c = CUR, out = [], add = (email, hint) => { if (email && email !== ME.email && !out.some(p => p.email === email)) out.push({ email, name: name(email), hint }); };
+  if (!c) return {};
+  add(c.requestor, 'Requestor');
+  const step = c.flow.steps[c.step];
+  (c.stepActors || []).forEach(e => add(e, step ? `${step.name}` : 'On this step'));
+  (ME.reviewers || []).forEach(e => add(e, 'Change reviewer'));
+  c.activity.forEach(a => add(a.author, 'In the thread'));
+  return { involved: out, everyone: PEOPLE.filter(p => p.email !== ME.email) };
+}
 
 async function api(path, opts = {}) {
   const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
@@ -291,8 +304,10 @@ function drawDetail() {
     try { await api('changes/' + c.id, { method: 'DELETE' }); CUR = null; $('detail').innerHTML = '<div class="empty">Deleted.</div>'; load(); } catch (e) { cp.alert(e.message); }
   });
   $('detail').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { KIND = b.dataset.k; drawDetail(); $('cBody').focus(); });
+  MENTION?.destroy(); MENTION = $('cBody') ? cpMention.attach($('cBody'), mentionPeople) : null;
   if ($('cSend')) $('cSend').onclick = async () => {
-    try { CUR = await send(`changes/${c.id}/act`, { action: KIND, body: $('cBody').value }); KIND = 'comment'; drawDetail(); load(); } catch (e) { cp.alert(e.message); }
+    try { CUR = await send(`changes/${c.id}/act`, { action: KIND, body: $('cBody').value, mentions: MENTION ? MENTION.picked() : [] });
+      KIND = 'comment'; drawDetail(); load(); } catch (e) { cp.alert(e.message); }
   };
 }
 
