@@ -144,6 +144,17 @@
   .tips button.tip:hover, .tips button.tip:focus-visible { background: var(--surface); color: var(--primary); outline: none; }
   .tips button.tip::before { content: "+"; display: inline-block; width: 16px; color: var(--primary); font-weight: 700; }
   .tips .tfoot { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--surface); }
+  .rtebar { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--soft); }
+  .rtebar button { width: 30px; height: 28px; border: 0; background: none; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--text2); }
+  .rtebar button:hover, .rtebar button[aria-pressed="true"] { background: var(--surface); color: var(--primary); }
+  .rte { min-height: 160px; max-height: 480px; overflow: auto; border: 1px solid var(--border); border-radius: 0 0 8px 8px; padding: 8px 12px; background: #fff;
+    outline: none; line-height: 1.55; overflow-wrap: anywhere; }
+  .rte:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .rte:empty::before { content: attr(data-placeholder); color: var(--muted); }
+  .rte p, .notes p { margin: 0 0 6px; }
+  .rte b u, .notes b u { text-underline-offset: 3px; }
+  .rte ul, .rte ol, .notes ul, .notes ol { margin: 4px 0 6px; padding-left: 22px; }
+  .entry .notes { margin-top: 6px; overflow-wrap: anywhere; }
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
   @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
     .feedback, .stats { grid-template-columns: 1fr 1fr; } .feedback { grid-template-columns: 1fr; } .fld, .fld.third { grid-column: span 6; } .person { padding: 18px; } }
@@ -344,7 +355,7 @@ function drawOneToOnes() {
       const d = e.data || {};
       return `<div class="entry" data-id="${esc(e.id)}"><div class="eh"><b>${esc(fmtDate(e.date))}</b>${wellbeing(d.wellbeing)}<span class="muted">by ${esc(e.authorName)}</span>
           ${can ? `<span class="tools"><button class="btn small" data-edit="${esc(e.id)}">Edit</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></span>` : ''}</div>
-        ${e.body ? `<div class="body">${esc(e.body)}</div>` : ''}
+        ${d.html ? `<div class="notes">${d.html}</div>` : e.body ? `<div class="body">${esc(e.body)}</div>` : ''}
         ${d.actions?.length ? `<div class="muted" style="margin-top:8px;font-weight:600">Actions</div><ul class="acts">${d.actions.map(a => `<li class="${a.done ? 'done' : ''}">
           <input type="checkbox" ${a.done ? 'checked' : ''} ${can ? '' : 'disabled'} data-tick="${esc(e.id)}" data-act="${esc(a.id)}" aria-label="Done: ${esc(a.text)}">
           <span>${esc(a.text)}${a.owner ? ` <span class="muted">· ${esc(a.owner)}</span>` : ''}${a.due ? ` <span class="${!a.done && a.due < today() ? 'late' : 'muted'}">· ${esc(fmtDate(a.due))}</span>` : ''}</span></li>`).join('')}</ul>` : ''}
@@ -375,7 +386,12 @@ function form121(e) {
             ${TALK.map(([g, items]) => `<div class="tg">${esc(g)}</div>` + items.map(t => `<button type="button" class="tip" data-tip="${esc(t)}">${esc(t)}</button>`).join('')).join('')}
             <div class="tfoot"><button type="button" class="btn small" id="o_tipsAll">Add them all as an agenda</button><span style="flex:1"></span><button type="button" class="btn small" id="o_tipsClose">Close</button></div>
           </div></div>
-        <textarea id="o_body" placeholder="Wins, blockers, wellbeing, development, anything they raised" style="min-height:120px">${esc(e?.body || '')}</textarea></div>
+        <div class="rtebar" role="toolbar" aria-label="Formatting"><button type="button" data-cmd="bold" title="Bold (Ctrl/⌘ B)" aria-label="Bold"><b>B</b></button>
+          <button type="button" data-cmd="italic" title="Italic (Ctrl/⌘ I)" aria-label="Italic"><i>I</i></button>
+          <button type="button" data-cmd="underline" title="Underline (Ctrl/⌘ U)" aria-label="Underline"><u>U</u></button>
+          <button type="button" data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bullet list">•</button></div>
+        <div class="rte" id="o_body" contenteditable="true" role="textbox" aria-multiline="true" aria-label="What you talked about"
+          data-placeholder="Wins, blockers, wellbeing, development, anything they raised">${d.html || (e?.body ? esc(e.body).split('\n').map(l => `<p>${l || '<br>'}</p>`).join('') : '')}</div></div>
       <div class="fld full"><label>Actions</label><div id="o_acts">${(d.actions?.length ? d.actions : [{}]).map(actRow).join('')}</div><button class="btn small" id="o_addAct" type="button">Add an action</button></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1"></span><button class="btn" id="o_cancel">Cancel</button><button class="btn primary" id="o_save">${e ? 'Save' : 'Save 1-2-1'}</button></div></div>`;
@@ -384,11 +400,31 @@ function form121(e) {
   $('o_addAct').onclick = () => { $('o_acts').insertAdjacentHTML('beforeend', actRow({})); wire(); };
   const tips = $('o_tips'), tipsBtn = $('o_tipsBtn');
   const showTips = open => { tips.hidden = !open; tipsBtn.setAttribute('aria-expanded', String(open)); if (open) tips.querySelector('.tip').focus(); };
-  const addHeading = t => {   // a heading line in the notes, with the cursor ready under it
-    const ta = $('o_body'), sep = ta.value && !ta.value.endsWith('\n\n') ? (ta.value.endsWith('\n') ? '\n' : '\n\n') : '';
-    ta.value += `${sep}${t}\n`;
-    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight;
+  const ed = $('o_body');
+  const addHeading = t => {   // a bold, underlined heading in the notes, with the cursor on a fresh line under it
+    // Drop a trailing empty line, so headings don't pile up blank lines between them.
+    const last = ed.lastElementChild;
+    if (last && last.tagName === 'P' && !last.textContent.trim()) last.remove();
+    const h = document.createElement('p'), b = document.createElement('b'), u = document.createElement('u');
+    u.textContent = t; b.append(u); h.append(b);
+    const line = document.createElement('p'); line.append(document.createElement('br'));
+    if (!ed.textContent.trim() && !ed.querySelector('li')) ed.innerHTML = '';
+    ed.append(h, line);
+    ed.focus();
+    const r = document.createRange(); r.setStart(line, 0); r.collapse(true);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    line.scrollIntoView({ block: 'nearest' });
   };
+  document.querySelectorAll('.rtebar [data-cmd]').forEach(b => {
+    b.onmousedown = ev => ev.preventDefault();   // keep the cursor in the notes
+    b.onclick = () => { document.execCommand(b.dataset.cmd); ed.focus(); syncBar(); };
+  });
+  const syncBar = () => document.querySelectorAll('.rtebar [data-cmd]').forEach(b => b.setAttribute('aria-pressed', String(document.queryCommandState(b.dataset.cmd))));
+  ed.addEventListener('keyup', syncBar); ed.addEventListener('mouseup', syncBar);
+  ed.addEventListener('paste', ev => {   // paste as plain text; the editor's own formatting only
+    ev.preventDefault();
+    document.execCommand('insertText', false, ev.clipboardData.getData('text/plain'));
+  });
   tipsBtn.onclick = () => showTips(tips.hidden);
   $('o_tipsClose').onclick = () => { showTips(false); tipsBtn.focus(); };
   tips.querySelectorAll('[data-tip]').forEach(b => b.onclick = () => { addHeading(b.dataset.tip); b.disabled = true; b.style.opacity = .45; });
@@ -399,7 +435,9 @@ function form121(e) {
   $('o_save').onclick = async () => {
     const actions = [...$('o_acts').children].map(r => Object.fromEntries([...r.querySelectorAll('[data-c]')].map(i => [i.dataset.c, i.value.trim()])))
       .filter(a => a.text).map(a => ({ ...a, done: !!a.done }));
-    const body = { kind: 'one_to_one', date: $('o_date').value, body: $('o_body').value, data: { wellbeing: $('o_wb').value ? Number($('o_wb').value) : null, next: $('o_next').value, actions } };
+    const notes = $('o_body').textContent.trim() ? $('o_body').innerHTML : '';
+    const body = { kind: 'one_to_one', date: $('o_date').value, body: $('o_body').innerText.trim(),
+      data: { wellbeing: $('o_wb').value ? Number($('o_wb').value) : null, next: $('o_next').value, actions, html: notes } };
     try { ENTRIES = e ? await send(`members/${enc(CUR.email)}/entries/${e.id}`, body, 'PUT') : await send(`members/${enc(CUR.email)}/entries`, body);
       drawPerson(); loadList(); }
     catch (err) { cp.alert(err.message); }

@@ -136,3 +136,20 @@ def test_work_shows_only_what_the_viewer_can_see(c):
     # Bob (no projects) sees only the loose task.
     wb = c.get(f"{BASE}/amy.chen@nscale.com/work", headers=BOB).json()
     assert wb["projects"] == [] and [x["title"] for x in wb["openTasks"]] == ["Loose task"]
+
+
+def test_formatted_notes_are_kept_safe(c):
+    html, text = team.clean_notes('<p><b><u>Wins and what went well</u></b></p><p>Pilot <i>done</i><script>alert(1)</script></p>'
+                                  '<p><a href="javascript:x" onclick="y">link</a><img src=x onerror=z></p><ul><li>one</li></ul><p><br></p>')
+    assert html == '<p><b><u>Wins and what went well</u></b></p><p>Pilot <i>done</i></p><p>link</p><ul><li>one</li></ul>'
+    assert text == "Wins and what went well\nPilot done\nlink\n• one"
+    assert team.clean_notes("<b>unclosed")[0] == "<b>unclosed</b>"
+    r = c.post(f"{BASE}/amy.chen@nscale.com/entries", headers=MGR, json={"kind": "one_to_one", "date": "2026-11-18",
+               "data": {"html": "<p><b><u>Priorities</u></b></p><p>SL7 pilot</p><script>bad()</script>", "actions": []}}).json()
+    one = r["entries"]["one_to_one"][0]
+    assert one["data"]["html"] == "<p><b><u>Priorities</u></b></p><p>SL7 pilot</p>" and one["body"] == "Priorities\nSL7 pilot"
+    assert "text" not in one["data"]
+    # Ticking an action off keeps the formatting.
+    r = c.put(f"{BASE}/amy.chen@nscale.com/entries/{one['id']}", headers=MGR, json={"data": {**one["data"], "actions": [{"text": "Book it"}]}}).json()
+    assert r["entries"]["one_to_one"][0]["data"]["html"] == one["data"]["html"]
+    assert c.post(f"{BASE}/amy.chen@nscale.com/entries", headers=MGR, json={"kind": "one_to_one", "data": {"html": "<p><br></p>"}}).status_code == 422

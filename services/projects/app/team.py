@@ -23,6 +23,8 @@ import json
 import re
 import uuid
 from datetime import date, timedelta
+from html import escape
+from html.parser import HTMLParser
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -340,6 +342,67 @@ def _can_read(kind: str, user: User, m: dict) -> bool:
     return r["managerNotes"] if kind == "manager_note" else r["personal"]
 
 
+# ---------- Formatted 1-2-1 notes ----------
+# The notes box is a small rich-text editor. Only this formatting is kept; every attribute, link,
+# style and script is dropped, so what's shown back is always safe.
+KEEP = {"b": "b", "strong": "b", "u": "u", "i": "i", "em": "i", "p": "p", "div": "p", "br": "br", "ul": "ul", "ol": "ol", "li": "li"}
+BLOCKS = {"p", "ul", "ol", "li"}
+
+
+class _Clean(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.html, self.text, self.open, self.skip = [], [], [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self.skip += 1
+            return
+        t = KEEP.get(tag)
+        if not t:
+            return
+        if t == "br":
+            self.html.append("<br>")
+            self.text.append("\n")
+            return
+        if t in BLOCKS and self.text and not self.text[-1].endswith("\n"):
+            self.text.append("\n")
+        if t == "li":
+            self.text.append("• ")
+        self.html.append(f"<{t}>")
+        self.open.append(t)
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style"):
+            self.skip = max(0, self.skip - 1)
+            return
+        t = KEEP.get(tag)
+        if t and t != "br" and t in self.open:
+            while self.open:   # close anything left open inside it
+                x = self.open.pop()
+                self.html.append(f"</{x}>")
+                if x == t:
+                    break
+            if t in BLOCKS:
+                self.text.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.html.append(escape(data))
+            self.text.append(data)
+
+
+def clean_notes(html: str) -> tuple[str, str]:
+    """(safe HTML, plain text) from what the notes editor sent."""
+    p = _Clean()
+    p.feed(str(html or "")[:60000])
+    p.close()
+    out = "".join(p.html) + "".join(f"</{x}>" for x in reversed(p.open))
+    out = re.sub(r"(<p>(\s|<br>)*</p>)+$", "", out)   # trailing empty lines
+    text = re.sub(r"\n{3,}", "\n\n", "".join(p.text)).strip()
+    return out, text
+
+
 def _clean_121(data: dict | None) -> dict:
     data = data or {}
     out = {}
@@ -365,6 +428,8 @@ def _clean_121(data: dict | None) -> dict:
                         "text": text, "owner": str(a.get("owner") or "").strip()[:200],
                         "due": due if DATE.match(due) else "", "done": bool(a.get("done"))})
     out["actions"] = actions
+    if data.get("html"):
+        out["html"], out["text"] = clean_notes(data["html"])
     return out
 
 
@@ -395,6 +460,8 @@ def add_entry(email: str, body: EntryIn, user: User = Depends(require_team_user)
         raise HTTPException(422, "Give a date.")
     text = (body.body or "").strip()
     data = _clean_121(body.data) if body.kind == "one_to_one" else None
+    if data and data.get("html") is not None:
+        text = data.pop("text")
     if not text and not (data and data["actions"]):
         raise HTTPException(422, "Write something first.")
     eid, t = uuid.uuid4().hex, now()
@@ -436,6 +503,8 @@ def update_entry(email: str, eid: str, body: EntryIn, user: User = Depends(requi
         raise HTTPException(422, "Give a date.")
     text = body.body.strip() if body.body is not None else r["body"]
     data = _clean_121(body.data) if r["kind"] == "one_to_one" and body.data is not None else (json.loads(r["data"]) if r["data"] else None)
+    if data and "text" in data:
+        text = data.pop("text")
     with _store.lock, db() as d:
         d.execute("UPDATE team_entries SET date = ?, body = ?, data = ?, updated_at = ? WHERE id = ?",
                   (when, text, json.dumps(data) if data else None, now(), eid))
