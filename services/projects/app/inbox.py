@@ -1,12 +1,13 @@
 """Personal notifications: each person's own inbox, on Client Platforms at /inbox/.
 
-Projects, Tasks and Team call notify() when something happens that someone should know about:
+Projects, Team Planning and Team call notify() when something happens that someone should know about:
 
     task_assigned    a task was assigned to you
     task_comment     a comment or update on a task you're assigned to or created
     task_question    a question waiting on you
     task_answer      an answer to your question
     task_done        a task you created was marked done
+    job_assigned     a job in a plan was assigned to you ("task" means a plan here)
     mention          someone @mentioned you
     one_to_one       a 1-2-1 about you was recorded
     action           an action from a 1-2-1 was given to you

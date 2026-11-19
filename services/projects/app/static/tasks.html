@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tasks · Nscale Client Platforms</title>
+<title>Team Planning · Nscale Client Platforms</title>
 <link rel="icon" href="static/nscale-icon.svg">
 <script src="/static/dialog.js"></script>
 <script src="/static/mention.js"></script>
@@ -37,7 +37,7 @@
   .muted { color: var(--text2); font-size: 12.5px; }
   .notice { border-radius: 8px; padding: 9px 12px; background: var(--err-fill); color: var(--err); margin: 10px 0; }
 
-  .list .head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+  .list .head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; flex-wrap: wrap; }
   .list h1 { font-size: 20px; margin: 0; }
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px 10px; }
   .tabs button { border: 1px solid var(--surface); background: transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
@@ -109,30 +109,160 @@
   .composer .opts input.ask { max-width: 260px; height: 32px; }
   .replying { font-size: 12.5px; color: var(--warn); margin-bottom: 6px; }
 
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .detail { position: static; } }
-  @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
+  /* List / Calendar switch */
+  .modes { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  .modes button { border: 0; background: transparent; height: 32px; padding: 0 12px; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; color: var(--text2); }
+  .modes button + button { border-left: 1px solid var(--border); }
+  .modes button[aria-pressed="true"] { background: var(--surface); color: var(--primary); font-weight: 600; }
+  .modes svg { width: 15px; height: 15px; }
+  main.cal { grid-template-columns: minmax(0, 1fr); }
+  main.cal.withdetail { grid-template-columns: minmax(0, 1fr) minmax(360px, 480px); }
+  main.cal .detail .fields { grid-template-columns: 1fr 1fr; }
+  main.cal .detail .fields .wide, main.cal .detail .fields .two { grid-column: span 2; }
+
+  /* Jobs */
+  .jobshead { display: flex; align-items: center; gap: 10px; margin: 18px 0 8px; }
+  .jobshead h2 { margin: 0; }
+  .jobshead .muted { flex: 1; }
+  .jobs { display: flex; flex-direction: column; gap: 6px; }
+  .job { border: 1px solid var(--surface); border-radius: 10px; background: #fff; }
+  .job.open { border-color: var(--border); box-shadow: 0 2px 10px rgba(4,14,39,.06); }
+  .job.dragging { opacity: .45; }
+  .job.over { border-color: var(--primary); }
+  .jh { display: flex; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; }
+  .jh:hover { background: var(--soft); border-radius: 10px; }
+  .grip { cursor: grab; color: var(--muted); font-size: 14px; line-height: 1; user-select: none; padding: 2px 0; }
+  .jdot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .jt { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .job.isdone .jt { text-decoration: line-through; color: var(--text2); font-weight: 400; }
+  .jw { font-size: 12.5px; color: var(--text2); white-space: nowrap; }
+  .jw.unsched { color: var(--muted); font-style: italic; }
+  .chip { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--grey-fill); color: var(--text2); white-space: nowrap; }
+  .chip.s-inprogress { background: var(--surface); color: #0B2A99; }
+  .chip.s-blocked { background: var(--err-fill); color: var(--err); }
+  .chip.s-done { background: var(--ok-fill); color: var(--ok-text); }
+  .jb { padding: 4px 12px 12px; border-top: 1px solid var(--surface); }
+  .jb .fields { margin: 10px 0; }
+  .jb .ends { height: 36px; display: flex; align-items: center; color: var(--text2); }
+  .jtext h3 { font-size: 12px; color: var(--text2); margin: 10px 0 2px; }
+  .jtext .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .jnote { background: var(--warn-fill); color: #5C3A00; border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .jactions { display: flex; gap: 8px; align-items: center; }
+  .jempty { border: 1px dashed var(--border); border-radius: 10px; padding: 14px; color: var(--text2); text-align: center; font-size: 13px; }
+
+  /* Timeline (Gantt) */
+  .tlhead1 { display: flex; align-items: center; gap: 10px; padding: 14px 16px; flex-wrap: wrap; }
+  .tlhead1 h1 { font-size: 20px; margin: 0; }
+  .tlhead1 select { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; }
+  .tlbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--surface); flex-wrap: wrap; }
+  .ib { width: 32px; height: 32px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; display: inline-grid; place-items: center; color: var(--text2); padding: 0; }
+  .ib:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+  .ib:disabled { opacity: .35; cursor: default; }
+  .ib svg, .tlbar .btn svg { width: 16px; height: 16px; }
+  .tlrange { font-weight: 600; margin-left: 6px; white-space: nowrap; }
+  .tlrange span { font-weight: 400; color: var(--muted); }
+  .tlhint { font-size: 12.5px; color: var(--text2); padding: 0 16px 10px; }
+  .tl { overflow: auto; border-top: 1px solid var(--surface); max-height: calc(100vh - 230px); min-height: 260px; border-radius: 0 0 12px 12px; }
+  .tlin { position: relative; min-width: 100%; }
+  .tlcols { position: absolute; top: 0; bottom: 0; z-index: 0; pointer-events: none; }
+  .tlcols i { position: absolute; top: 0; bottom: 0; background: #F2F4F8; }
+  .tltoday { position: absolute; top: 22px; bottom: 0; width: 2px; background: #E5484D; z-index: 3; pointer-events: none; }
+  .tlrow { display: flex; position: relative; }
+  .tllab { position: sticky; left: 0; z-index: 4; flex-shrink: 0; background: #fff; border-right: 1px solid var(--surface); padding: 0 14px 0 20px; min-width: 0;
+           display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+  .tltrack { position: relative; flex-shrink: 0; z-index: 1; }
+  .tlhd { position: sticky; top: 0; z-index: 6; background: #fff; border-bottom: 1px solid var(--surface); }
+  .tlhd .tllab { z-index: 7; cursor: default; }
+  .tlmonths { position: relative; height: 22px; }
+  .tlmonths b { position: absolute; top: 4px; font-size: 12.5px; white-space: nowrap; padding-left: 6px; border-left: 1px solid var(--border); }
+  .tldays { position: relative; height: 30px; }
+  .tldays span { position: absolute; top: 0; height: 30px; text-align: center; font-size: 12px; color: var(--text2); line-height: 1.15; padding-top: 2px; }
+  .tldays span small { display: block; font-size: 9.5px; color: var(--muted); text-transform: uppercase; }
+  .tldays span.we { background: #ECEEF3; }
+  .tldays span.td { color: #E5484D; font-weight: 700; }
+  .tldays span.mon { text-align: left; padding-left: 3px; border-left: 1px solid var(--surface); }
+  .tlgroup .tllab { background: var(--soft); flex-direction: row; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+  .tlgroup .tllab .gt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tlgroup .tllab .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+  .tlgroup .tltrack { background: rgba(247,249,254,.75); }
+  .tlgroup, .tljob { border-bottom: 1px solid var(--surface); }
+  .sq { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .tladd { border: 0; background: transparent; color: var(--primary); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; border-radius: 6px; }
+  .tladd:hover { background: var(--surface); }
+  .tljob .tllab .jn { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tljob .tllab .js { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tljob.isdone .tllab .jn { text-decoration: line-through; color: var(--text2); }
+  .tljob.sel .tllab, .tlgroup.sel .tllab { box-shadow: inset 3px 0 0 var(--primary); }
+  .tljob.sel .tllab { background: #F5F8FF; }
+  .tljob .tltrack.pick, .tlgroup .tltrack.pick { cursor: copy; }
+  .tlspan { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; opacity: .35; }
+  .gbar { position: absolute; top: 50%; height: 24px; margin-top: -12px; border-radius: 6px; background: var(--c); color: #fff; font-size: 12px; line-height: 24px;
+          padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-shadow: 0 1px 2px rgba(4,14,39,.15); user-select: none; touch-action: none; }
+  .gbar.can { cursor: grab; }
+  .gbar.dragging { cursor: grabbing; box-shadow: 0 4px 14px rgba(4,14,39,.25); opacity: .92; }
+  .gbar.done { opacity: .45; }
+  .gbar.late { box-shadow: 0 0 0 2px #E5484D; }
+  .gbar.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+  .gbar .rh { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
+  .gbar .rh::after { content: ""; position: absolute; right: 3px; top: 7px; bottom: 7px; width: 2px; border-radius: 1px; background: rgba(255,255,255,.7); }
+  .diamond { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; transform: rotate(45deg); border-radius: 2px; background: var(--c); cursor: pointer;
+             box-shadow: 0 0 0 2px #fff; z-index: 2; }
+  .diamond.late { background: #E5484D; }
+  .tlnone { color: var(--muted); font-size: 13px; font-style: italic; }
+  .tlempty { padding: 50px 16px; text-align: center; color: var(--text2); }
+
+  @media (max-width: 1000px) { main, main.cal.withdetail { grid-template-columns: 1fr; } .detail { position: static; } }
+  @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; } .modes span { display: none; }
+    .tlrange span { display: none; }
     .fields { grid-template-columns: 1fr 1fr; } .fields .wide, .fields .two { grid-column: span 2; } }
 </style>
 </head>
 <body>
 <header class="top"><div class="bar">
-  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Tasks</span>
+  <img src="static/nscale-wordmark.svg" alt="Nscale"><span class="app">Team Planning</span>
   <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
 </div></header>
 
-<main>
-  <section class="card list" aria-label="Tasks">
-    <div class="head"><h1>Tasks</h1><span style="flex:1"></span><button class="btn primary" id="newBtn">New task</button></div>
+<main id="main">
+  <section class="card list" id="listCard" aria-label="Plans">
+    <div class="head"><h1>Team Planning</h1><span style="flex:1"></span><div class="modes" id="modes1" role="group" aria-label="Show as">
+        <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
+        <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
+      </div><button class="btn primary" id="newBtn">New plan</button></div>
     <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
     <div class="filters">
-      <input type="search" id="q" placeholder="Search tasks" aria-label="Search">
+      <input type="search" id="q" placeholder="Search plans" aria-label="Search">
       <select id="proj" aria-label="Project"><option value="">All projects</option></select>
     </div>
     <div class="rows" id="rows"><div class="empty">Loading…</div></div>
   </section>
 
-  <section class="card detail" id="detail" aria-label="Task">
-    <div class="empty">Pick a task to see it here, or create a new one.</div>
+  <section class="card" id="calCard" aria-label="Timeline" hidden>
+    <div class="tlhead1">
+      <h1>Team Planning</h1><span style="flex:1"></span>
+      <select id="calWho" aria-label="Whose jobs"><option value="">Everyone's jobs</option><option value="mine">Just my jobs</option></select>
+      <select id="calProj" aria-label="Project"><option value="">All projects</option></select>
+      <div class="modes" id="modes2" role="group" aria-label="Show as">
+        <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
+        <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
+      </div>
+      <button class="btn primary" id="newBtn2">New plan</button>
+    </div>
+    <div class="tlbar">
+      <button class="ib" id="calPrev" title="Earlier" aria-label="Earlier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+      <button class="ib" id="calNext" title="Later" aria-label="Later"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+      <button class="btn small" id="calToday" style="height:32px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>Today</button>
+      <span class="tlrange" id="calTitle"></span><span style="flex:1"></span>
+      <button class="ib" id="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/></svg></button>
+      <button class="ib" id="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/></svg></button>
+      <button class="btn small" id="zoomFit" style="height:32px" title="Fit the whole plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>Fit</button>
+    </div>
+    <div class="tlhint" id="calHint"></div>
+    <div class="tl" id="calGrid"></div>
+  </section>
+
+  <section class="card detail" id="detail" aria-label="Plan">
+    <div class="empty">Pick a plan to see it here, or create a new one.</div>
   </section>
 </main>
 
@@ -143,13 +273,17 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
 let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
+let MODE = 'list', CAL = null, JOBOPEN = null, NEWSTART = '';
+let RS = null, RE = null, DW = 34, FIT = true;   // timeline: first and last day shown, day width in px, fitted to the plan
+const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
 
-/** Who to suggest after @: the people on this task first, then everyone with Tasks. */
+/** Who to suggest after @: the people on this plan first, then everyone with Team Planning. */
 function mentionPeople() {
   const t = OPEN, out = [], add = (email, hint) => { if (email && email !== ME.email && !out.some(p => p.email === email)) out.push({ email, name: personName(email), hint }); };
   if (!t) return {};
   add(t.assignee, 'Assigned');
   add(t.createdBy, 'Created it');
+  (t.jobs || []).forEach(j => add(j.assignee, 'Has a job: ' + j.title));
   t.activity.forEach(a => { add(a.waitingOn, 'Asked a question'); add(a.author, 'In the thread'); });
   return { involved: out, everyone: PEOPLE.filter(p => p.email !== ME.email) };
 }
@@ -184,6 +318,19 @@ function withMentions(text) {
   return esc(text).replace(/@([\w.+-]+@[\w-]+\.[\w.-]+|[\w.-]+)/g, (m) => `<span class="mention">${m}</span>`);
 }
 
+/* Each plan gets its own colour on the timeline and beside its jobs. */
+const PALETTE = [['#0F41F3', '#E1EAF9', '#0B2A99'], ['#12A26F', '#D6FAEE', '#006B4A'], ['#7A5AF8', '#ECE8FD', '#4A3AB0'], ['#E39B12', '#FFF1D6', '#8A5300'],
+                 ['#D92D6B', '#FDE7EF', '#9E1747'], ['#0E9CB8', '#DDF5FA', '#0B6377'], ['#B54708', '#FCEBDD', '#8A3505'], ['#475467', '#ECEEF3', '#344054']];
+const colourOf = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; };
+const colourVars = id => { const [c, f, t] = colourOf(id); return `--c:${c};--f:${f};--t:${t}`; };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+const shortDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+const span = (a, b) => !a ? '' : a === b ? fmtDay(a) : `${fmtDay(a)} → ${fmtDay(b)}`;
+const days = n => `${n} day${n === 1 ? '' : 's'}`;
+const statusChip = st => `<span class="chip s-${esc(String(st).toLowerCase().replace(/\s+/g, ''))}">${esc(st)}</span>`;
+const findPerson = v => { v = String(v || '').trim(); const p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase()); return { assignee: p ? p.email : v, assigneeName: p ? p.name : '' }; };
+
 /* ---------- List ---------- */
 function drawTabs() {
   $('tabs').innerHTML = TABS.map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${k === VIEW}">${esc(label)}${COUNTS[k] != null && k !== 'done' ? `<span class="n">${COUNTS[k]}</span>` : ''}</button>`).join('');
@@ -198,17 +345,21 @@ async function load() {
     drawTabs(); drawRows();
     window.cpNavRefreshTasks?.();
   } catch (e) { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+  if (MODE === 'timeline') loadCal();
 }
 
 function drawRows() {
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   const rows = TASKS.filter(t => !words.length || words.every(w => `${t.ref} ${t.title} ${t.description} ${t.assigneeName} ${t.project?.name || ''}`.toLowerCase().includes(w)));
-  const empty = { mine: 'Nothing assigned to you. Nice.', asked: "You haven't given anyone a task.", waiting: 'No questions waiting on you.',
-                  mentioned: 'Nobody has mentioned you.', all: 'No open tasks.', done: 'Nothing done yet.' }[VIEW];
+  const empty = { mine: 'No plans or jobs assigned to you. Nice.', asked: "You haven't given anyone a plan.", waiting: 'No questions waiting on you.',
+                  mentioned: 'Nobody has mentioned you.', all: 'No open plans.', done: 'Nothing done yet.' }[VIEW];
   if (!rows.length) { $('rows').innerHTML = `<div class="empty">${TASKS.length ? 'Nothing matches.' : esc(empty)}</div>`; return; }
   $('rows').innerHTML = rows.map(t => {
     const done = t.status === 'Done', late = !done && t.due && t.due < today();
+    const jb = t.jobs || {};
     const meta = [
+      jb.total ? `<span>${jb.done}/${jb.total} job${jb.total === 1 ? '' : 's'} done${jb.mine ? ` · <b>${jb.mine} yours</b>` : ''}</span>` : '',
+      jb.start ? `<span>${esc(shortDay(jb.start))}${jb.end !== jb.start ? ' – ' + esc(shortDay(jb.end)) : ''}</span>` : '',
       t.due ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : 'Due '}${esc(fmtDay(t.due))}</span>` : '',
       t.status !== 'To do' && !done ? `<span>${esc(t.status)}${t.progress != null ? ' · ' + t.progress + '%' : ''}</span>` : '',
       t.waitingOnMe ? '<span class="q">Question for you</span>' : t.openQuestions ? `<span class="q">${t.openQuestions} open question${t.openQuestions > 1 ? 's' : ''}</span>` : '',
@@ -219,7 +370,7 @@ function drawRows() {
     const prog = !done && t.progress ? ` prog" style="--p:${t.progress}%` : '';
     return `<div class="trow ${done ? 'isdone' : ''}" data-id="${esc(t.id)}" aria-current="${OPEN?.id === t.id}" tabindex="0">
       <button type="button" class="check ${done ? 'done' : ''}${prog}" data-done="${esc(t.id)}" title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(t.title)}">✓</button>
-      <div class="tmain"><div class="ttitle">${esc(t.title)}</div><div class="tmeta">${meta}</div></div>${avatar(t)}</div>`;
+      <div class="tmain"><div class="ttitle"><span class="jdot" style="display:inline-block;margin-right:6px;background:${colourOf(t.id)[0]}"></span>${esc(t.title)}</div><div class="tmeta">${meta}</div></div>${avatar(t)}</div>`;
   }).join('');
   $('rows').querySelectorAll('.trow').forEach(r => {
     r.onclick = e => { if (!e.target.closest('[data-done]')) openTask(r.dataset.id); };
@@ -234,10 +385,22 @@ function drawRows() {
   });
 }
 
-/* ---------- One task ---------- */
-async function openTask(id) {
-  try { OPEN = await api('tasks/' + id); KIND = 'comment'; ANSWERING = null; drawDetail(); drawRows(); save(); }
-  catch (e) { $('detail').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+/* ---------- One plan ---------- */
+async function openTask(id, job = null) {
+  try {
+    if (OPEN?.id !== id) { KIND = 'comment'; ANSWERING = null; }
+    OPEN = await api('tasks/' + id); JOBOPEN = job; NEWSTART = '';
+    showDetail(); drawDetail(); drawRows(); if (MODE === 'timeline') drawCal(); save();
+    if (job) document.querySelector(`.job[data-job="${CSS.escape(job)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  catch (e) { showDetail(); $('detail').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+}
+
+function showDetail() { $('detail').hidden = false; $('main').classList.toggle('withdetail', MODE === 'timeline'); }
+function closeDetail() {
+  OPEN = null; JOBOPEN = null; $('detail').innerHTML = EMPTY_DETAIL;
+  if (MODE === 'timeline') { $('detail').hidden = true; $('main').classList.remove('withdetail'); drawCal(); }
+  drawRows(); save();
 }
 
 function projectOptions(selected) {
@@ -258,12 +421,13 @@ function drawDetail() {
       <div><label for="fStatus">Status</label><select id="fStatus" ${ro}>${opt(ME.statuses, t.status)}</select></div>
       <div><label for="fPriority">Priority</label><select id="fPriority" ${ro}>${opt(ME.priorities, t.priority)}</select></div>
       <div><label for="fDue">Due</label><input type="date" id="fDue" value="${esc(t.due)}" ${ro}></div>
-      <div class="two"><label for="fAssignee">Assigned to</label><input id="fAssignee" list="people" value="${esc(t.assignee)}" placeholder="Pick someone or type their email" ${ro}></div>
+      <div class="two"><label for="fAssignee">Owner</label><input id="fAssignee" list="people" value="${esc(t.assignee)}" placeholder="Pick someone or type their email" ${ro}></div>
       <div><label for="fProject">Project</label><select id="fProject" ${ro}>${projectOptions(t.project)}</select></div>
-      <div class="wide"><label for="fDesc">Description</label><textarea class="desc" id="fDesc" placeholder="What needs doing, and what done looks like" ${ro}>${esc(t.description)}</textarea></div>
+      <div class="wide"><label for="fDesc">Description</label><textarea class="desc" id="fDesc" placeholder="What this plan delivers, and what done looks like" ${ro}>${esc(t.description)}</textarea></div>
     </div>
     ${t.progress != null && t.status !== 'Done' ? `<div class="muted">Progress ${t.progress}%</div><div class="bigbar"><i style="width:${t.progress}%"></i></div>` : ''}
     <div id="dNotice" class="notice" hidden></div>
+    ${jobsSection(t)}
     <h2>Activity</h2>
     <div class="feed">${t.activity.map(ev).join('') || '<div class="muted">Nothing yet.</div>'}</div>
     <div class="composer" id="composer">
@@ -291,6 +455,10 @@ function ev(a) {
   const when = `<span class="when">${esc(ago(a.createdAt))}</span>`;
   const mine = a.author === ME.email || ME.admin;
   const del = mine && a.kind !== 'change' ? `<button type="button" data-del="${esc(a.id)}">Delete</button>` : '';
+  if (a.kind === 'change' && (a.data || {}).field === 'job') {
+    const d = a.data, verb = { added: 'added job', removed: 'removed job', done: 'finished job', scheduled: 'scheduled job' }[d.action] || 'changed job';
+    return `<div class="ev change"><span class="who2">${esc(a.authorName)}</span> ${esc(verb)} <b>${esc(d.to)}</b>${d.when ? ' · ' + esc(d.when) : ''} ${when}</div>`;
+  }
   if (a.kind === 'change') {
     const d = a.data || {}, label = { title: 'renamed it', status: 'set status', priority: 'set priority', due: 'set the due date', assignee: 'assigned it', project: 'moved it' }[d.field] || 'changed ' + d.field;
     let to = d.to || 'nothing';
@@ -313,16 +481,134 @@ function ev(a) {
     <div class="body">${withMentions(a.body)}</div>${del ? `<div class="act">${del}</div>` : ''}</div>`;
 }
 
+/* ---------- Jobs ---------- */
+function jobsSection(t) {
+  const jobs = t.jobs || [], done = jobs.filter(j => j.status === 'Done').length;
+  const starts = jobs.filter(j => j.start), first = starts.map(j => j.start).sort()[0], last = starts.map(j => j.end).sort().pop();
+  const sum = jobs.length ? `${done} of ${jobs.length} done${first ? ` · ${shortDay(first)}${last !== first ? ' – ' + shortDay(last) : ''}` : ''}` : '';
+  return `<div class="jobshead"><h2>Jobs</h2><span class="muted">${esc(sum)}</span>
+      ${t.canChange ? '<button class="btn small" id="addJob">+ Add job</button>' : ''}</div>
+    <div class="jobs" id="jobs">
+      ${jobs.map(j => jobRow(t, j)).join('')}
+      ${JOBOPEN === 'new' ? `<div class="job open" data-job="new">${jobForm(t, { title: '', start: NEWSTART, duration: 1, status: 'To do', assignee: '', description: '', note: '' })}</div>` : ''}
+      ${!jobs.length && JOBOPEN !== 'new' ? `<div class="jempty">No jobs yet. ${t.canChange ? 'Add the jobs that make up this plan, with when each is expected to start and how long it takes; they show on the timeline.' : ''}</div>` : ''}
+    </div>`;
+}
+
+function jobRow(t, j) {
+  const open = JOBOPEN === j.id, isDone = j.status === 'Done';
+  const late = !isDone && j.end && j.end < today();
+  const when = j.start ? `<span class="jw ${late ? 'late' : ''}" title="${esc(span(j.start, j.end))}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>`
+    : '<span class="jw unsched">Not scheduled</span>';
+  const who = j.assignee ? `<span class="av ${j.assignee === ME.email ? 'me' : ''}" title="${esc(j.assigneeName || j.assignee)}">${esc(initials(j.assigneeName || j.assignee))}</span>` : '<span class="av none" title="Unassigned">–</span>';
+  return `<div class="job ${open ? 'open' : ''} ${isDone ? 'isdone' : ''}" data-job="${esc(j.id)}" ${t.canChange ? 'draggable="true"' : ''}>
+    <div class="jh" data-toggle="${esc(j.id)}">
+      ${t.canChange ? '<span class="grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>' : ''}
+      <button type="button" class="check ${isDone ? 'done' : ''}" data-jdone="${esc(j.id)}" ${t.canChange ? '' : 'disabled'} title="${isDone ? 'Reopen' : 'Mark done'}" aria-label="${isDone ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+      <span class="jt">${esc(j.title)}</span>${j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
+    </div>
+    ${open ? (t.canChange ? jobForm(t, j) : jobText(j)) : ''}
+  </div>`;
+}
+
+function jobText(j) {
+  return `<div class="jb jtext">
+    <div class="muted" style="margin-top:8px">${j.start ? esc(span(j.start, j.end)) + ' · ' + days(j.duration) : 'Not scheduled'} · ${esc(j.status)}${j.assignee ? ' · ' + esc(j.assigneeName || j.assignee) : ''}</div>
+    ${j.description ? `<h3>Description</h3><div class="body">${withMentions(j.description)}</div>` : ''}
+    ${j.note ? `<h3>Note</h3><div class="jnote">${withMentions(j.note)}</div>` : ''}
+  </div>`;
+}
+
+function jobForm(t, j) {
+  const opt = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  return `<div class="jb"><div class="fields">
+      <div class="wide"><label for="jTitle">Job</label><input id="jTitle" value="${esc(j.title)}" maxlength="200" placeholder="What needs doing"></div>
+      <div><label for="jStart">Expected start</label><input type="date" id="jStart" value="${esc(j.start)}"></div>
+      <div><label for="jDur">Duration (days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
+      <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
+      <div class="two"><label for="jAssignee">Assigned to</label><input id="jAssignee" list="people" value="${esc(j.assignee)}" placeholder="Pick someone or type their email"></div>
+      <div><label for="jStatus">Status</label><select id="jStatus">${opt(ME.statuses, j.status)}</select></div>
+      <div class="wide"><label for="jDesc">Description</label><textarea class="desc" id="jDesc" placeholder="What the job involves">${esc(j.description)}</textarea></div>
+      <div class="wide"><label for="jNote">Note</label><textarea class="desc" id="jNote" style="min-height:56px" placeholder="Anything to remember: access, contacts, dependencies, kit">${esc(j.note)}</textarea></div>
+    </div>
+    <div id="jNotice" class="notice" hidden></div>
+    <div class="jactions"><button class="btn primary small" id="jSave">${j.id ? 'Save job' : 'Add job'}</button><button class="btn small" id="jCancel">Cancel</button>
+      <span style="flex:1"></span>${j.id ? '<button class="btn small danger" id="jDel">Delete job</button>' : ''}</div>
+  </div>`;
+}
+
+function wireJobs() {
+  const t = OPEN, box = $('jobs');
+  if (!box) return;
+  if ($('addJob')) $('addJob').onclick = () => { JOBOPEN = 'new'; NEWSTART = ''; drawDetail(); $('jTitle')?.focus(); };
+  box.querySelectorAll('[data-toggle]').forEach(h => h.onclick = e => {
+    if (e.target.closest('[data-jdone]')) return;
+    JOBOPEN = JOBOPEN === h.dataset.toggle ? null : h.dataset.toggle; drawDetail(); save();
+    if (MODE === 'timeline') drawCal();
+  });
+  box.querySelectorAll('[data-jdone]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const j = t.jobs.find(x => x.id === b.dataset.jdone);
+    try { OPEN = await send(`tasks/${t.id}/jobs/${j.id}`, { status: j.status === 'Done' ? 'To do' : 'Done' }, 'PATCH'); drawDetail(); load(); }
+    catch (err) { cp.alert(err.message); }
+  });
+  // The form (a job being edited or added)
+  if ($('jSave')) {
+    const ends = () => {
+      const st = $('jStart').value, n = Math.max(1, Number($('jDur').value) || 1);
+      $('jEnds').textContent = st ? `${fmtDay(addDays(st, n - 1))}` : '–';
+    };
+    $('jStart').oninput = ends; $('jDur').oninput = ends; ends();
+    $('jCancel').onclick = () => { JOBOPEN = null; NEWSTART = ''; drawDetail(); save(); };
+    $('jTitle').onkeydown = e => { if (e.key === 'Enter') $('jSave').click(); };
+    $('jSave').onclick = async () => {
+      const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(1, Number($('jDur').value) || 1),
+                     status: $('jStatus').value, description: $('jDesc').value, note: $('jNote').value, ...findPerson($('jAssignee').value) };
+      $('jSave').disabled = true;
+      try {
+        OPEN = JOBOPEN === 'new' ? await send(`tasks/${t.id}/jobs`, body) : await send(`tasks/${t.id}/jobs/${JOBOPEN}`, body, 'PATCH');
+        JOBOPEN = null; NEWSTART = ''; drawDetail(); load(); save();
+      } catch (e) { $('jNotice').hidden = false; $('jNotice').textContent = e.message; $('jSave').disabled = false; }
+    };
+    if ($('jDel')) $('jDel').onclick = async () => {
+      const j = t.jobs.find(x => x.id === JOBOPEN);
+      if (!(await cp.confirm({ title: `Delete “${j.title}”?`, message: "The job comes off this plan and the timeline. This can't be undone.", confirm: 'Delete job', danger: true }))) return;
+      try { OPEN = await api(`tasks/${t.id}/jobs/${j.id}`, { method: 'DELETE' }); JOBOPEN = null; drawDetail(); load(); save(); } catch (e) { cp.alert(e.message); }
+    };
+  }
+  // Drag to reorder
+  let dragged = null;
+  box.querySelectorAll('.job[draggable="true"]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      if (e.target.closest('input, textarea, select') || JOBOPEN) { e.preventDefault(); return; }
+      dragged = el; el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); box.querySelectorAll('.over').forEach(x => x.classList.remove('over')); });
+    el.addEventListener('dragover', e => { if (!dragged || dragged === el) return; e.preventDefault(); el.classList.add('over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', async e => {
+      e.preventDefault(); el.classList.remove('over');
+      if (!dragged || dragged === el) return;
+      const ids = t.jobs.map(j => j.id).filter(id => id !== dragged.dataset.job);
+      const at = ids.indexOf(el.dataset.job), below = e.offsetY > el.offsetHeight / 2;
+      ids.splice(at + (below ? 1 : 0), 0, dragged.dataset.job);
+      dragged = null;
+      try { OPEN = await send(`tasks/${t.id}/jobs/order`, { ids }); drawDetail(); } catch (err) { cp.alert(err.message); }
+    });
+  });
+}
+
 async function patch(body) {
   try { OPEN = await send('tasks/' + OPEN.id, body, 'PATCH'); drawDetail(); load(); }
   catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; }
 }
 
 function wireDetail() {
-  $('closeT').onclick = () => { OPEN = null; $('detail').innerHTML = '<div class="empty">Pick a task to see it here, or create a new one.</div>'; drawRows(); save(); };
+  $('closeT').onclick = closeDetail;
+  wireJobs();
   if ($('del')) $('del').onclick = async () => {
-    if (!(await cp.confirm({ title: `Delete ${OPEN.ref}?`, message: `“${OPEN.title}” and all its comments, questions and updates are deleted. This can't be undone.`, confirm: 'Delete task', danger: true }))) return;
-    try { await api('tasks/' + OPEN.id, { method: 'DELETE' }); $('closeT').click(); load(); } catch (e) { cp.alert(e.message); }
+    if (!(await cp.confirm({ title: `Delete ${OPEN.ref}?`, message: `“${OPEN.title}” with all its jobs, comments, questions and updates is deleted. This can't be undone.`, confirm: 'Delete plan', danger: true }))) return;
+    try { await api('tasks/' + OPEN.id, { method: 'DELETE' }); closeDetail(); load(); } catch (e) { cp.alert(e.message); }
   };
   const on = (id, ev, fn) => $(id) && $(id).addEventListener(ev, fn);
   on('fTitle', 'change', e => patch({ title: e.target.value }));
@@ -333,8 +619,7 @@ function wireDetail() {
   on('fProject', 'change', e => patch({ projectId: e.target.value || null }));
   on('fDesc', 'change', e => patch({ description: e.target.value }));
   on('fAssignee', 'change', e => {
-    const v = e.target.value.trim(), p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase());
-    patch({ assignee: p ? p.email : v, assigneeName: p ? p.name : '' });
+    patch(findPerson(e.target.value));
   });
   $('kinds').querySelectorAll('button').forEach(b => b.onclick = () => { KIND = b.dataset.kind; ANSWERING = null; drawDetail(); $('cBody').focus(); });
   on('cProg', 'input', e => { $('cProgV').textContent = e.target.value + '%'; });
@@ -363,23 +648,24 @@ function wireDetail() {
   $('cBody').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('cSend').click(); });
 }
 
-/* ---------- New task ---------- */
+/* ---------- New plan ---------- */
 function newTask() {
-  OPEN = null; drawRows();
+  OPEN = null; JOBOPEN = null; drawRows(); showDetail(); if (MODE === 'timeline') drawCal();
   const proj = $('proj').value;
   $('detail').innerHTML = `
-    <div style="display:flex;align-items:center"><b style="font-size:17px">New task</b><span style="flex:1"></span><button class="btn small" id="closeT">Close</button></div>
-    <input class="titlein" id="nTitle" placeholder="What needs doing?" aria-label="Title" maxlength="200" style="margin-top:10px">
+    <div style="display:flex;align-items:center"><b style="font-size:17px">New plan</b><span style="flex:1"></span><button class="btn small" id="closeT">Close</button></div>
+    <input class="titlein" id="nTitle" placeholder="What's the plan for?" aria-label="Title" maxlength="200" style="margin-top:10px">
     <div class="fields">
-      <div class="two"><label for="nAssignee">Assign to</label><input id="nAssignee" list="people" placeholder="Pick someone or type their email" value="${VIEW === 'mine' ? esc(ME.email) : ''}"></div>
+      <div class="two"><label for="nAssignee">Owner</label><input id="nAssignee" list="people" placeholder="Pick someone or type their email" value="${VIEW === 'mine' ? esc(ME.email) : ''}"></div>
       <div><label for="nDue">Due</label><input type="date" id="nDue"></div>
       <div><label for="nPriority">Priority</label><select id="nPriority">${ME.priorities.map(p => `<option ${p === 'Medium' ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
       <div class="two"><label for="nProject">Project</label><select id="nProject">${projectOptions(PROJECTS.find(p => p.id === proj))}</select></div>
-      <div class="wide"><label for="nDesc">Description</label><textarea class="desc" id="nDesc" placeholder="What needs doing, and what done looks like"></textarea></div>
+      <div class="wide"><label for="nDesc">Description</label><textarea class="desc" id="nDesc" placeholder="What this plan delivers, and what done looks like"></textarea></div>
     </div>
+    <div class="muted" style="margin-bottom:10px">Once it's created, add its jobs with their start dates and durations.</div>
     <div id="nNotice" class="notice" hidden></div>
-    <button class="btn primary" id="nCreate">Create task</button>`;
-  $('closeT').onclick = () => { $('detail').innerHTML = '<div class="empty">Pick a task to see it here, or create a new one.</div>'; };
+    <button class="btn primary" id="nCreate">Create plan</button>`;
+  $('closeT').onclick = closeDetail;
   $('nTitle').focus();
   $('nTitle').onkeydown = e => { if (e.key === 'Enter') $('nCreate').click(); };
   $('nCreate').onclick = async () => {
@@ -387,7 +673,7 @@ function newTask() {
     try {
       const t = await send('tasks', { title: $('nTitle').value, assignee: p ? p.email : v, assigneeName: p ? p.name : '', due: $('nDue').value,
         priority: $('nPriority').value, description: $('nDesc').value, projectId: $('nProject').value || null });
-      await load(); openTask(t.id);
+      await load(); await openTask(t.id); JOBOPEN = 'new'; drawDetail(); $('jTitle')?.focus();
     } catch (e) { $('nNotice').hidden = false; $('nNotice').textContent = e.message; }
   };
 }
@@ -398,7 +684,183 @@ function save() {
   if (VIEW !== 'mine') p.set('view', VIEW);
   if ($('proj').value) p.set('project', $('proj').value);
   if (OPEN) p.set('task', OPEN.id);
+  if (OPEN && JOBOPEN && JOBOPEN !== 'new') p.set('job', JOBOPEN);
+  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
   history.replaceState(null, '', '#' + p.toString());
+}
+
+/* ---------- Timeline ---------- */
+function setMode(m) {
+  MODE = m;
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('listCard').hidden = m === 'timeline'; $('calCard').hidden = m !== 'timeline';
+  $('main').classList.toggle('cal', m === 'timeline');
+  if (m === 'timeline') {
+    $('detail').hidden = !OPEN && !$('nTitle'); $('main').classList.toggle('withdetail', !$('detail').hidden);
+    loadCal();
+  } else { $('detail').hidden = false; $('main').classList.remove('withdetail'); if (!OPEN && !$('nTitle')) $('detail').innerHTML = EMPTY_DETAIL; }
+  save();
+}
+
+const LEFT = 280, ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60];
+const between = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
+const dmy = s => s ? new Date(s + 'T00:00:00').toLocaleDateString() : '';
+const said = st => st === 'To do' ? 'Not started' : st;
+const avail = () => Math.max(200, ($('calGrid').clientWidth || 900) - LEFT);
+
+async function loadCal() {
+  try {
+    CAL = await api('timeline?' + new URLSearchParams({ project: $('calProj').value, mine: $('calWho').value === 'mine' }));
+    if (!RS) fitRange();
+    drawCal();
+  } catch (e) { $('calGrid').innerHTML = `<div class="notice" style="margin:16px">${esc(e.message)}</div>`; }
+}
+
+/** Show the whole plan: from the first job (or due date) to the last, with a little room either side. */
+function fitRange() {
+  const ds = [];
+  (CAL?.plans || []).forEach(p => { if (p.due) ds.push(p.due); p.jobs.forEach(j => { if (j.start) ds.push(j.start, j.end); }); });
+  ds.sort();
+  if (!ds.length) { DW = 34; RS = addDays(today(), -7); RE = addDays(RS, Math.ceil(avail() / DW) - 1); }
+  else {
+    RS = addDays(ds[0], -2); RE = addDays(ds[ds.length - 1], 2);
+    if (today() >= addDays(RS, -14) && today() < RS) RS = addDays(today(), -1);   // keep today in view when it's close
+    const n = between(RS, RE) + 1;
+    DW = Math.max(ZOOMS[0], Math.min(60, Math.floor(avail() / n)));
+  }
+  FIT = true;
+}
+
+function zoom(dir) {
+  const n = between(RS, RE) + 1, mid = addDays(RS, Math.floor(n / 2));
+  const i = ZOOMS.findIndex(z => z >= DW), next = dir > 0 ? ZOOMS.find(z => z > DW) : [...ZOOMS].reverse().find(z => z < DW);
+  if (!next) return;
+  DW = next; const m = Math.ceil(avail() / DW);
+  RS = addDays(mid, -Math.floor(m / 2)); RE = addDays(RS, m - 1); FIT = false; drawCal(); save();
+}
+function shift(dir) { const n = between(RS, RE) + 1, by = Math.max(1, Math.round(n / 3)); RS = addDays(RS, dir * by); RE = addDays(RE, dir * by); FIT = false; drawCal(); save(); }
+function goToday() { const n = Math.max(between(RS, RE) + 1, Math.ceil(avail() / DW)); RS = addDays(today(), -Math.round(n / 4)); RE = addDays(RS, n - 1); FIT = false; drawCal(); save(); }
+
+function rangeLabel(a, b) {
+  const A = new Date(a + 'T00:00:00'), B = new Date(b + 'T00:00:00');
+  const left = A.toLocaleDateString(undefined, { day: 'numeric', month: 'short', ...(A.getFullYear() !== B.getFullYear() ? { year: 'numeric' } : {}) });
+  return `${left} – ${B.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+}
+
+function drawCal() {
+  if (!CAL || MODE !== 'timeline') return;
+  if (FIT) fitRange();   // also when the space changes, e.g. a plan opens beside the timeline
+  const n = Math.max(between(RS, RE) + 1, Math.ceil(avail() / DW)), end = addDays(RS, n - 1), W = n * DW, t0 = today();
+  const scale = DW >= 18 ? 'days' : DW >= 9 ? 'weeks' : 'months';
+  $('calTitle').innerHTML = `${esc(rangeLabel(RS, end))} <span>· ${scale}${FIT ? ' (fit to plan)' : ''}</span>`;
+  $('zoomIn').disabled = DW >= ZOOMS[ZOOMS.length - 1]; $('zoomOut').disabled = DW <= ZOOMS[0];
+  const x = d => between(RS, d) * DW;   // left edge of a day
+
+  // Header: months, then days; weekend columns and the today line behind everything.
+  let months = '', daysH = '', cols = '';
+  for (let i = 0; i < n; i++) {
+    const d = addDays(RS, i), dt = new Date(d + 'T00:00:00'), dow = dt.getDay(), we = dow === 0 || dow === 6;
+    if (i === 0 || dt.getDate() === 1) months += `<b style="left:${i * DW}px">${esc(dt.toLocaleDateString(undefined, { month: DW >= 12 ? 'long' : 'short', year: 'numeric' }))}</b>`;
+    if (we && DW >= 9) cols += `<i style="left:${i * DW}px;width:${DW}px"></i>`;
+    if (DW >= 18) daysH += `<span class="${we ? 'we' : ''} ${d === t0 ? 'td' : ''}" style="left:${i * DW}px;width:${DW}px">${DW >= 26 ? `<small>${esc(dt.toLocaleDateString(undefined, { weekday: 'narrow' }))}</small>` : '<small>&nbsp;</small>'}${dt.getDate()}</span>`;
+    else if (dow === 1) daysH += `<span class="mon ${d === t0 ? 'td' : ''}" style="left:${i * DW}px;width:${DW * 7}px"><small>wk</small>${dt.getDate()}</span>`;
+  }
+  const grid = DW >= 9 ? `background-image:repeating-linear-gradient(to right, transparent 0 ${DW - 1}px, #ECEFF5 ${DW - 1}px ${DW}px)` : '';
+  const todayLine = t0 >= RS && t0 <= end ? `<div class="tltoday" style="left:${LEFT + x(t0) + DW / 2 - 1}px"></div>` : '';
+
+  let rows = '';
+  for (const p of CAL.plans) {
+    const cv = colourVars(p.id), canAdd = p.canChange, gsel = OPEN?.id === p.id;
+    const spanBar = p.start ? `<div class="tlspan" style="left:${x(p.start)}px;width:${(between(p.start, p.end) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
+    const late = p.due && p.due < t0;
+    const due = p.due ? `<div class="diamond ${late ? 'late' : ''}" style="left:${x(p.due) + DW / 2}px;${cv}" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)} is due ${esc(fmtDay(p.due))}${late ? ' (overdue)' : ''}"></div>` : '';
+    rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="height:36px">
+      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" title="${esc(p.title)}${p.project ? ' · ' + esc(p.project) : ''}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><span class="ref">${esc(p.ref)}</span>
+        ${canAdd ? `<button type="button" class="tladd" data-add="${esc(p.id)}" title="Add a job to ${esc(p.title)}" aria-label="Add a job to ${esc(p.title)}">+</button>` : ''}</div>
+      <div class="tltrack ${canAdd ? 'pick' : ''}" style="width:${W}px" data-plan="${esc(p.id)}" ${canAdd ? 'title="Click a day to add a job starting then"' : ''}>${spanBar}${due}</div></div>`;
+    if (!p.jobs.length) rows += `<div class="tlrow tljob" style="height:44px"><div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}"><span class="tlnone">No jobs yet</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+    for (const j of p.jobs) {
+      const isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = gsel && JOBOPEN === j.id;
+      const sub = j.start ? `${dmy(j.start)} – ${dmy(j.end)} · ${said(j.status)}` : `Not scheduled · ${said(j.status)}`;
+      const who = j.assigneeName ? j.assigneeName.split(' ')[0] : '';
+      const bar = j.start && j.end >= RS && j.start <= end
+        ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv}"
+             data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(j.assigneeName) : ''}\n${esc(said(j.status))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? esc(j.title) + (who ? ' · ' + esc(who) : '') : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
+      rows += `<div class="tlrow tljob ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="height:48px">
+        <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}${who ? ' · ' + esc(j.assigneeName) : ''}</span></div>
+        <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
+    }
+  }
+  $('calGrid').innerHTML = `<div class="tlin" style="width:${LEFT + W}px">
+    <div class="tlcols" style="left:${LEFT}px;width:${W}px;${grid}">${cols}</div>${todayLine}
+    <div class="tlrow tlhd"><div class="tllab" style="width:${LEFT}px"></div><div style="width:${W}px"><div class="tlmonths">${months}</div><div class="tldays">${daysH}</div></div></div>
+    ${rows || `<div class="tlempty">${$('calWho').value === 'mine' ? 'No jobs for you in open plans.' : 'No open plans yet. Create one with New plan, then add its jobs.'}</div>`}
+  </div>`;
+  const unsched = CAL.plans.reduce((k, p) => k + p.jobs.filter(j => !j.start).length, 0);
+  $('calHint').textContent = [CAL.plans.some(p => p.canChange) ? 'Drag a bar to move a job, or its right edge to change how long it takes. Click a day in a plan’s row to add a job starting then.' : 'Click a job to see it.',
+    unsched ? `${unsched} job${unsched === 1 ? ' has' : 's have'} no start date: click a day in ${unsched === 1 ? 'its' : 'their'} row to schedule ${unsched === 1 ? 'it' : 'them'}.` : ''].filter(Boolean).join(' ');
+  wireTimeline();
+}
+
+const dayAt = (track, e) => addDays(RS, Math.floor((e.clientX - track.getBoundingClientRect().left) / DW));
+
+function wireTimeline() {
+  const g = $('calGrid');
+  g.querySelectorAll('.tllab[data-open], .diamond[data-open]').forEach(el => el.onclick = e => {
+    if (e.target.closest('[data-add]')) return;
+    openTask(el.dataset.open, el.dataset.job || null);
+  });
+  g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
+  g.querySelectorAll('.tlgroup .tltrack.pick').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
+  g.querySelectorAll('[data-sched]').forEach(t => t.onclick = async e => {
+    try { await send(`tasks/${t.dataset.plan}/jobs/${t.dataset.sched}`, { start: dayAt(t, e) }, 'PATCH'); afterJobChange(t.dataset.plan); }
+    catch (err) { cp.alert(err.message); }
+  });
+  g.querySelectorAll('.gbar').forEach(bar => {
+    bar.onpointerdown = e => {
+      if (e.button !== 0) return;
+      const plan = CAL.plans.find(p => p.id === bar.dataset.plan), job = plan.jobs.find(j => j.id === bar.dataset.job);
+      const resize = !!e.target.closest('.rh'), x0 = e.clientX, left0 = bar.offsetLeft, w0 = bar.offsetWidth;
+      let dd = 0, moved = false;
+      if (plan.canChange) bar.setPointerCapture(e.pointerId);
+      bar.onpointermove = ev => {
+        if (!plan.canChange) return;
+        const dx = ev.clientX - x0;
+        if (!moved && Math.abs(dx) < 4) return;
+        moved = true; bar.classList.add('dragging');
+        dd = Math.round(dx / DW);
+        if (resize) { const nd = Math.max(1, (job.duration || 1) + dd); dd = nd - (job.duration || 1); bar.style.width = nd * DW - 2 + 'px'; }
+        else bar.style.left = left0 + dd * DW + 'px';
+        const s = resize ? job.start : addDays(job.start, dd), len = resize ? (job.duration || 1) + dd : job.duration || 1;
+        bar.title = `${span(s, addDays(s, len - 1))} (${days(len)})`;
+        const lab = bar.closest('.tlrow').querySelector('.js');
+        if (lab) lab.textContent = `${dmy(s)} – ${dmy(addDays(s, len - 1))} · ${said(job.status)}`;
+      };
+      bar.onpointerup = async () => {
+        bar.onpointermove = bar.onpointerup = null;
+        if (!moved) { openTask(plan.id, job.id); return; }
+        bar.classList.remove('dragging');
+        if (!dd) return drawCal();
+        const body = resize ? { duration: (job.duration || 1) + dd } : { start: addDays(job.start, dd) };
+        try { await send(`tasks/${plan.id}/jobs/${job.id}`, body, 'PATCH'); afterJobChange(plan.id); }
+        catch (err) { cp.alert(err.message); drawCal(); }
+      };
+    };
+  });
+}
+
+async function afterJobChange(pid) {
+  FIT = false;   // keep the view still while you arrange jobs
+  await loadCal();
+  if (OPEN?.id === pid) { OPEN = await api('tasks/' + pid); drawDetail(); }
+  load();
+}
+
+async function addJobOn(pid, day) {
+  await openTask(pid);
+  if (!OPEN?.canChange) return;
+  JOBOPEN = 'new'; NEWSTART = day; drawDetail();
+  $('jobs')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('jTitle')?.focus();
 }
 
 /* ---------- Start ---------- */
@@ -407,7 +869,7 @@ function save() {
   $('who').textContent = ME.email;
   const fromHash = new URLSearchParams(location.hash.slice(1));
   VIEW = TABS.some(([k]) => k === fromHash.get('view')) ? fromHash.get('view') : 'mine';
-  // People to assign to: the portal's accounts with the Tasks tool; otherwise whoever Tasks already knows.
+  // People to assign to: the portal's accounts with the Team Planning tool; otherwise whoever Team Planning already knows.
   const portal = await fetch('/api/people?tool=tasks', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
   PEOPLE = portal?.people?.length ? portal.people : (await api('people')).people;
   $('people').innerHTML = PEOPLE.map(p => `<option value="${esc(p.email)}">${esc(p.name)}</option>`).join('');
@@ -415,13 +877,27 @@ function save() {
   PROJECTS = projects;
   const seen = new Map(PROJECTS.map(p => [p.id, p.name]));
   all.tasks.forEach(t => t.project && seen.set(t.project.id, t.project.name));
-  $('proj').innerHTML += [...seen].sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('');
-  if (fromHash.get('project')) $('proj').value = fromHash.get('project');
-  $('proj').onchange = () => { save(); load(); };
+  const projOpts = [...seen].sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('');
+  $('proj').innerHTML += projOpts; $('calProj').innerHTML += projOpts;
+  if (fromHash.get('project')) $('proj').value = $('calProj').value = fromHash.get('project');
+  $('proj').onchange = () => { $('calProj').value = $('proj').value; save(); load(); };
+  $('calProj').onchange = () => { $('proj').value = $('calProj').value; save(); load(); };
+  $('calWho').value = fromHash.get('who') === 'mine' ? 'mine' : '';
+  $('calWho').onchange = () => { FIT = true; save(); loadCal(); };
   $('q').oninput = drawRows;
-  $('newBtn').onclick = newTask;
+  $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
+    RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = false; RE = RS;
+  }
+  $('calPrev').onclick = () => shift(-1); $('calNext').onclick = () => shift(1);
+  $('calToday').onclick = goToday;
+  $('zoomIn').onclick = () => zoom(1); $('zoomOut').onclick = () => zoom(-1);
+  $('zoomFit').onclick = () => { FIT = true; drawCal(); save(); };
+  let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(drawCal, 150); });
+  document.querySelectorAll('.modes button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  setMode(['timeline', 'calendar'].includes(fromHash.get('mode')) ? 'timeline' : 'list');
   await load();
-  if (fromHash.get('task')) openTask(fromHash.get('task'));
+  if (fromHash.get('task')) openTask(fromHash.get('task'), fromHash.get('job'));
 })().catch(e => { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; });
 </script>
 </body>

@@ -1,28 +1,33 @@
-"""Nscale Tasks: a small shared task list, on Client Platforms at /tasks/.
+"""Nscale Team Planning (once called Tasks): shared plans of scheduled jobs, on Client Platforms at /tasks/.
 
-It runs in the Projects service and keeps its tasks in the same database, so a task can belong to
-a project and follow that project's Members.
+The tool's id, its URL and its tables keep the old name "tasks", so roles, links and data carry on;
+everything people see says Team Planning. In this file a "task" is a plan.
 
-A task has a title, description, assignee, due date, priority, status, progress and optionally a
-project. Its activity is one thread of:
+It runs in the Projects service and keeps its plans in the same database, so a plan can
+belong to a project and follow that project's Members.
+
+A plan has a title, description, assignee, due date, priority, status, progress and optionally a
+project, and a list of jobs. A job has a title, description, note, expected start date, duration
+in days (so an end date), an assignee and a status; scheduled jobs show on the calendar
+(GET /api/calendar). A plan's activity is one thread of:
     comment   discussion
     question  waits on one person (the assignee, or the creator if the assignee asked) until
               someone answers it
     answer    a reply to a question; it closes the question
-    update    a progress note, optionally with a percentage, which becomes the task's progress
-    change    written by the app: assigned, due date moved, status changed …
+    update    a progress note, optionally with a percentage, which becomes the plan's progress
+    change    written by the app: assigned, due date moved, status changed, job added …
 @name or @email in a comment mentions that person; their mentions are listed for them.
 
-Who sees a task:
-    a task with no project   everyone with the Tasks tool
-    a task in a project      that project's members, plus whoever created it or is assigned it
-Who changes it: whoever can see it, except that in a project, viewers can only comment.
+Who sees a plan:
+    no project      everyone with the Team Planning tool
+    in a project    that project's members, plus whoever created it, is assigned it or has a job in it
+Who changes it (and its jobs): whoever can see it, except that in a project, viewers can only comment.
 Only its creator, a project owner or a Client Platforms admin can delete it.
 """
 import json
 import re
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -84,14 +89,19 @@ def project_role(pid: str | None, user: User) -> str | None:
     return store().role(pid, user.email) or ("Owner" if user.admin else None)
 
 
+def _job_people(tid: str) -> set[str]:
+    with store().db() as db:
+        return {r["assignee"] for r in db.execute("SELECT assignee FROM pipeline_jobs WHERE task_id = ? AND assignee != ''", (tid,))}
+
+
 def can_see(t: dict, user: User) -> bool:
-    if user.admin or not t["project"] or user.email in (t["createdBy"], t["assignee"]):
+    if user.admin or not t["project"] or user.email in (t["createdBy"], t["assignee"]) or user.email in _job_people(t["id"]):
         return True
     return project_role(t["project"]["id"], user) is not None
 
 
 def can_change(t: dict, user: User) -> bool:
-    if user.admin or not t["project"] or user.email in (t["createdBy"], t["assignee"]):
+    if user.admin or not t["project"] or user.email in (t["createdBy"], t["assignee"]) or user.email in _job_people(t["id"]):
         return True
     return project_role(t["project"]["id"], user) in ("Owner", "Editor")
 
@@ -105,10 +115,12 @@ def visible_tasks(user: User) -> list[dict]:
     with store().db() as db:
         rows = db.execute("SELECT t.*, p.doc AS project_doc FROM tasks t LEFT JOIN projects p ON p.id = t.project_id").fetchall()
         mine = {r["project_id"] for r in db.execute("SELECT project_id FROM members WHERE email = ?", (user.email,))}
+        my_jobs = {r["task_id"] for r in db.execute("SELECT task_id FROM pipeline_jobs WHERE assignee = ?", (user.email,))}
     out = []
     for r in rows:
         t = _view(r)
-        if user.admin or not t["project"] or t["project"]["id"] in mine or user.email in (t["createdBy"], t["assignee"]):
+        if user.admin or not t["project"] or t["project"]["id"] in mine or user.email in (t["createdBy"], t["assignee"]) \
+                or t["id"] in my_jobs:
             out.append(t)
     return out
 
@@ -152,7 +164,7 @@ def _next_ref() -> str:
     with store().db() as db:
         refs = [r["ref"] for r in db.execute("SELECT ref FROM tasks")]
     n = max([int(re.sub(r"\D", "", r) or 0) for r in refs if r] or [0])
-    return f"TSK-{n + 1:03d}"
+    return f"PL-{n + 1:03d}"
 
 
 def picked_mentions(text: str, picked: list | None) -> list[str]:
@@ -181,9 +193,10 @@ def mentions_in(text: str, people: list[dict]) -> list[str]:
 
 
 def _people_known() -> list[dict]:
-    """Everyone the Tasks data knows by email (assignees, creators, authors, project members)."""
+    """Everyone the Team Planning data knows by email (assignees, creators, authors, project members)."""
     with store().db() as db:
         rows = db.execute("SELECT assignee AS email, assignee_name AS name FROM tasks WHERE assignee != '' "
+                          "UNION SELECT assignee, assignee_name FROM pipeline_jobs WHERE assignee != '' "
                           "UNION SELECT created_by, created_by_name FROM tasks "
                           "UNION SELECT author, author_name FROM task_activity "
                           "UNION SELECT email, name FROM members").fetchall()
@@ -219,14 +232,14 @@ class ActivityIn(BaseModel):
 def _found(tid: str, user: User) -> dict:
     t = get_task(tid)
     if not t or not can_see(t, user):
-        raise HTTPException(404, "Task not found.")
+        raise HTTPException(404, "Plan not found.")
     return t
 
 
 @router.get("/")
 def page(request: Request):
     if not current_user(request, TASKS):
-        return HTMLResponse(f"<!doctype html><title>Tasks</title><p style='font-family:system-ui;padding:40px'>"
+        return HTMLResponse(f"<!doctype html><title>Team Planning</title><p style='font-family:system-ui;padding:40px'>"
                             f"{access.sign_in_message()}</p>", status_code=403)
     return FileResponse(STATIC / "tasks.html", headers={"Cache-Control": "no-store"})
 
@@ -245,7 +258,9 @@ def list_tasks(view: str = "mine", project: str = "", user: User = Depends(requi
         raise HTTPException(422, f"view must be one of {', '.join(VIEWS)}")
     tasks = visible_tasks(user)
     st = _stats(user)
+    summary = _job_summary(user)
     for t in tasks:
+        t["jobs"] = summary.get(t["id"], {"total": 0, "done": 0, "start": "", "end": "", "mine": 0})
         t["comments"] = st["counts"].get(t["id"], 0)
         t["openQuestions"] = len(st["openQuestions"].get(t["id"], []))
         t["waitingOnMe"] = user.email in st["openQuestions"].get(t["id"], [])
@@ -253,7 +268,7 @@ def list_tasks(view: str = "mine", project: str = "", user: User = Depends(requi
         tasks = [t for t in tasks if t["project"] and t["project"]["id"] == project]
     open_ = [t for t in tasks if t["status"] != "Done"]
     views = {
-        "mine": [t for t in open_ if t["assignee"] == user.email],
+        "mine": [t for t in open_ if t["assignee"] == user.email or t["jobs"]["mine"]],
         "asked": [t for t in open_ if t["createdBy"] == user.email and t["assignee"] != user.email],
         "waiting": [t for t in tasks if t["waitingOnMe"]],
         "mentioned": [t for t in tasks if t["id"] in st["mentioned"]],
@@ -272,7 +287,8 @@ def counts(user: User = Depends(require_task_user)):
     """For the sidebar badge: open tasks assigned to me, and questions waiting on me."""
     tasks = visible_tasks(user)
     st = _stats(user)
-    mine = sum(1 for t in tasks if t["assignee"] == user.email and t["status"] != "Done")
+    summary = _job_summary(user)
+    mine = sum(1 for t in tasks if t["status"] != "Done" and (t["assignee"] == user.email or summary.get(t["id"], {}).get("mine")))
     waiting = sum(1 for t in tasks if user.email in st["openQuestions"].get(t["id"], []))
     overdue = sum(1 for t in tasks if t["assignee"] == user.email and t["status"] != "Done"
                   and t["due"] and t["due"] < date.today().isoformat())
@@ -283,7 +299,7 @@ def _clean(body: TaskIn, t: dict | None) -> dict:
     out = {}
     if body.title is not None:
         if not body.title.strip():
-            raise HTTPException(422, "Give the task a title.")
+            raise HTTPException(422, "Give the plan a title.")
         out["title"] = body.title.strip()
     if body.description is not None:
         out["description"] = body.description.strip()
@@ -317,7 +333,7 @@ def _check_project(pid: str, user: User) -> None:
 def create_task(body: TaskIn, user: User = Depends(require_task_user)):
     fields = _clean(body, None)
     if not fields.get("title"):
-        raise HTTPException(422, "Give the task a title.")
+        raise HTTPException(422, "Give the plan a title.")
     pid = body.projectId or None
     if pid:
         _check_project(pid, user)
@@ -359,7 +375,7 @@ def _due_line(t: dict) -> str:
 @router.get("/api/tasks/{tid}")
 def read_task(tid: str, user: User = Depends(require_task_user)):
     t = _found(tid, user)
-    return {**t, "activity": _activity(tid), "canChange": can_change(t, user), "canDelete": can_delete(t, user)}
+    return {**t, "jobs": jobs_of(tid), "activity": _activity(tid), "canChange": can_change(t, user), "canDelete": can_delete(t, user)}
 
 
 LABEL = {"title": "title", "status": "status", "priority": "priority", "assignee": "assignee", "due": "due date",
@@ -518,5 +534,237 @@ def linkable_projects(user: User = Depends(require_task_user)):
 
 @router.get("/api/people")
 def people(user: User = Depends(require_task_user)):
-    """People the Tasks data already knows, for when the portal's people list isn't available."""
+    """People the Team Planning data already knows, for when the portal's people list isn't available."""
     return {"people": sorted(_people_known(), key=lambda p: p["name"].lower())}
+
+
+# ---------- Jobs ----------
+
+def end_of(start: str, duration: int) -> str:
+    """The last day of a job that starts on `start` and lasts `duration` days (the start day counts)."""
+    try:
+        return (date.fromisoformat(start) + timedelta(days=max(1, duration or 1) - 1)).isoformat()
+    except (TypeError, ValueError):
+        return ""
+
+
+def _job(r) -> dict:
+    return {"id": r["id"], "pipelineId": r["task_id"], "position": r["position"], "title": r["title"],
+            "description": r["description"], "note": r["note"], "start": r["start"], "duration": r["duration"],
+            "end": end_of(r["start"], r["duration"]) if r["start"] else "", "assignee": r["assignee"],
+            "assigneeName": r["assignee_name"], "status": r["status"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
+
+
+def jobs_of(tid: str) -> list[dict]:
+    with store().db() as db:
+        rows = db.execute("SELECT * FROM pipeline_jobs WHERE task_id = ? ORDER BY position, created_at", (tid,)).fetchall()
+    return [_job(r) for r in rows]
+
+
+def _job_summary(user: User) -> dict:
+    """Per plan: how many jobs, how many done, the first start and last end, and how many open are mine."""
+    out = {}
+    with store().db() as db:
+        rows = db.execute("SELECT task_id, start, duration, status, assignee FROM pipeline_jobs").fetchall()
+    for r in rows:
+        s = out.setdefault(r["task_id"], {"total": 0, "done": 0, "start": "", "end": "", "mine": 0})
+        s["total"] += 1
+        s["done"] += r["status"] == "Done"
+        s["mine"] += r["assignee"] == user.email and r["status"] != "Done"
+        if r["start"]:
+            e = end_of(r["start"], r["duration"])
+            s["start"] = min(s["start"] or r["start"], r["start"])
+            s["end"] = max(s["end"], e)
+    return out
+
+
+class JobIn(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    note: str | None = Field(default=None, max_length=10000)
+    start: str | None = None
+    duration: int | None = Field(default=None, ge=1, le=365)
+    assignee: str | None = Field(default=None, max_length=254)
+    assigneeName: str | None = Field(default=None, max_length=100)
+    status: str | None = None
+
+
+class OrderIn(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+def _clean_job(body: JobIn) -> dict:
+    out = {}
+    if body.title is not None:
+        if not body.title.strip():
+            raise HTTPException(422, "Give the job a title.")
+        out["title"] = body.title.strip()
+    for k in ("description", "note"):
+        if getattr(body, k) is not None:
+            out[k] = getattr(body, k).strip()
+    if body.start is not None:
+        if body.start and not re.match(r"^\d{4}-\d{2}-\d{2}$", body.start):
+            raise HTTPException(422, "Start must be a date (YYYY-MM-DD).")
+        try:
+            body.start and date.fromisoformat(body.start)
+        except ValueError:
+            raise HTTPException(422, "Start must be a real date.")
+        out["start"] = body.start
+    if body.duration is not None:
+        out["duration"] = body.duration
+    if body.status is not None:
+        if body.status not in STATUSES:
+            raise HTTPException(422, f"Status must be one of {', '.join(STATUSES)}.")
+        out["status"] = body.status
+    if body.assignee is not None:
+        a = body.assignee.strip().lower()
+        if a and not EMAIL.match(a):
+            raise HTTPException(422, "Assign the job to someone's email address.")
+        out["assignee"] = a
+        out["assignee_name"] = (body.assigneeName or "").strip() or (access.display_name(a) if a else "")
+    return out
+
+
+def _changeable(tid: str, user: User) -> dict:
+    t = _found(tid, user)
+    if not can_change(t, user):
+        raise HTTPException(403, "Only the project's owners and editors can change this plan's jobs.")
+    return t
+
+
+def _job_row(tid: str, jid: str) -> dict:
+    with store().db() as db:
+        r = db.execute("SELECT * FROM pipeline_jobs WHERE id = ? AND task_id = ?", (jid, tid)).fetchone()
+    if not r:
+        raise HTTPException(404, "Job not found.")
+    return _job(r)
+
+
+def _when(j: dict) -> str:
+    if not j.get("start"):
+        return "Not scheduled yet"
+    days = j["duration"] or 1
+    return f"Starts {nice_date(j['start'])} · {days} day{'s' if days != 1 else ''}"
+
+
+def _tell_job_assignee(t: dict, j: dict, user: User) -> None:
+    notify(j["assignee"], "job_assigned", f"{user.name} gave you a job on {t['ref']} {t['title']}: {j['title']}", user,
+           _when(j), link(t["id"]) + f"&job={j['id']}")
+
+
+@router.post("/api/tasks/{tid}/jobs")
+def add_job(tid: str, body: JobIn, user: User = Depends(require_task_user)):
+    t = _changeable(tid, user)
+    f = _clean_job(body)
+    if not f.get("title"):
+        raise HTTPException(422, "Give the job a title.")
+    jid, stamp = uuid.uuid4().hex, now()
+    with store().lock, store().db() as db:
+        pos = db.execute("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM pipeline_jobs WHERE task_id = ?", (tid,)).fetchone()["n"]
+        db.execute("INSERT INTO pipeline_jobs (id, task_id, position, title, description, note, start, duration, assignee, "
+                   "assignee_name, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (jid, tid, pos, f["title"], f.get("description", ""), f.get("note", ""), f.get("start", ""),
+                    f.get("duration", 1), f.get("assignee", ""), f.get("assignee_name", ""), f.get("status", "To do"),
+                    user.email, stamp, stamp))
+    _add_activity(tid, "change", user, data={"field": "job", "action": "added", "to": f["title"]})
+    j = _job_row(tid, jid)
+    if j["assignee"]:
+        _tell_job_assignee(t, j, user)
+    return read_task(tid, user)
+
+
+@router.patch("/api/tasks/{tid}/jobs/{jid}")
+def update_job(tid: str, jid: str, body: JobIn, user: User = Depends(require_task_user)):
+    t = _changeable(tid, user)
+    before = _job_row(tid, jid)
+    f = _clean_job(body)
+    if f:
+        cols = ", ".join(f"{k} = ?" for k in f)
+        with store().lock, store().db() as db:
+            db.execute(f"UPDATE pipeline_jobs SET {cols}, updated_at = ? WHERE id = ?", (*f.values(), now(), jid))
+    j = _job_row(tid, jid)
+    if j["status"] != before["status"] and j["status"] == "Done":
+        _add_activity(tid, "change", user, data={"field": "job", "action": "done", "to": j["title"]})
+    elif before["start"] != j["start"] or before["duration"] != j["duration"]:
+        _add_activity(tid, "change", user, data={"field": "job", "action": "scheduled", "to": j["title"], "when": _when(j)})
+    if j["assignee"] and j["assignee"] != before["assignee"]:
+        _tell_job_assignee(t, j, user)
+    return read_task(tid, user)
+
+
+@router.delete("/api/tasks/{tid}/jobs/{jid}")
+def delete_job(tid: str, jid: str, user: User = Depends(require_task_user)):
+    _changeable(tid, user)
+    j = _job_row(tid, jid)
+    with store().lock, store().db() as db:
+        db.execute("DELETE FROM pipeline_jobs WHERE id = ?", (jid,))
+    _add_activity(tid, "change", user, data={"field": "job", "action": "removed", "to": j["title"]})
+    return read_task(tid, user)
+
+
+@router.post("/api/tasks/{tid}/jobs/order")
+def order_jobs(tid: str, body: OrderIn, user: User = Depends(require_task_user)):
+    _changeable(tid, user)
+    with store().lock, store().db() as db:
+        for i, jid in enumerate(body.ids):
+            db.execute("UPDATE pipeline_jobs SET position = ? WHERE id = ? AND task_id = ?", (i, jid, tid))
+    return read_task(tid, user)
+
+
+@router.get("/api/calendar")
+def calendar(start: str, end: str, project: str = "", mine: bool = False, user: User = Depends(require_task_user)):
+    """Scheduled jobs that overlap start..end (inclusive), and open plans due in that range."""
+    try:
+        a, b = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        raise HTTPException(422, "start and end must be dates (YYYY-MM-DD).")
+    if b < a or (b - a).days > 400:
+        raise HTTPException(422, "Pick a range of up to 400 days.")
+    seen = {t["id"]: t for t in visible_tasks(user) if not project or (t["project"] and t["project"]["id"] == project)}
+    with store().db() as db:
+        rows = db.execute("SELECT * FROM pipeline_jobs WHERE start != '' AND start <= ? ORDER BY start, position",
+                          (b.isoformat(),)).fetchall()
+        waiting = db.execute("SELECT task_id, COUNT(*) AS n FROM pipeline_jobs WHERE start = '' AND status != 'Done' "
+                             "GROUP BY task_id").fetchall()
+    jobs = []
+    for r in rows:
+        j = _job(r)
+        t = seen.get(j["pipelineId"])
+        if not t or j["end"] < a.isoformat() or (mine and j["assignee"] != user.email):
+            continue
+        j["pipeline"] = {"id": t["id"], "ref": t["ref"], "title": t["title"], "status": t["status"],
+                         "project": (t["project"] or {}).get("name", "")}
+        jobs.append(j)
+    due = [{"id": t["id"], "ref": t["ref"], "title": t["title"], "due": t["due"]} for t in seen.values()
+           if t["due"] and a.isoformat() <= t["due"] <= b.isoformat() and t["status"] != "Done"
+           and (not mine or t["assignee"] == user.email)]
+    unscheduled = sum(r["n"] for r in waiting if r["task_id"] in seen)
+    return {"jobs": jobs, "due": due, "unscheduled": unscheduled}
+
+
+@router.get("/api/timeline")
+def timeline(project: str = "", mine: bool = False, user: User = Depends(require_task_user)):
+    """Open plans with all their jobs (scheduled or not), for the timeline: one group per plan.
+    mine=true keeps plans you own or have a job in, and only your jobs within them."""
+    plans = [t for t in visible_tasks(user) if t["status"] != "Done"
+             and (not project or (t["project"] and t["project"]["id"] == project))]
+    with store().db() as db:
+        rows = db.execute("SELECT * FROM pipeline_jobs ORDER BY position, created_at").fetchall()
+    by_plan = {}
+    for r in rows:
+        by_plan.setdefault(r["task_id"], []).append(_job(r))
+    out = []
+    for t in plans:
+        jobs = by_plan.get(t["id"], [])
+        if mine:
+            jobs = [j for j in jobs if j["assignee"] == user.email]
+            if not jobs and t["assignee"] != user.email:
+                continue
+        starts = [j["start"] for j in jobs if j["start"]]
+        out.append({"id": t["id"], "ref": t["ref"], "title": t["title"], "status": t["status"], "due": t["due"],
+                    "priority": t["priority"], "assignee": t["assignee"], "assigneeName": t["assigneeName"],
+                    "project": (t["project"] or {}).get("name", ""), "canChange": can_change(t, user),
+                    "start": min(starts) if starts else "", "end": max((j["end"] for j in jobs if j["end"]), default=""),
+                    "jobs": jobs})
+    out.sort(key=lambda p: (p["start"] or p["due"] or "9999", p["ref"]))
+    return {"plans": out}

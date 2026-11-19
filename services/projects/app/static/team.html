@@ -240,7 +240,7 @@ function drawList() {
       <span class="av">${esc(initials(m.name))}</span>
       <div style="min-width:0"><div class="pname">${esc(m.name)}${m.email === ME.email ? ' <span class="chip blue">You</span>' : ''}</div>
         <div class="pmeta"><span>${esc(m.title || 'No role set')}</span>${m.managerName ? `<span>· reports to ${esc(m.managerName)}</span>` : ''}</div>
-        <div class="pmeta"><span>${m.projects} project${m.projects === 1 ? '' : 's'}</span><span>${m.openTasks} open task${m.openTasks === 1 ? '' : 's'}</span>
+        <div class="pmeta"><span>${m.projects} project${m.projects === 1 ? '' : 's'}</span><span>${m.openTasks} open plan${m.openTasks === 1 ? '' : 's'}</span>
           ${m.rights.personal && (m.lastOneToOne || m.manager) ? `<span>${m.lastOneToOne ? 'Last 1-2-1 ' + esc(ago(m.lastOneToOne)) : '<span class="late">No 1-2-1 yet</span>'}</span>` : ''}</div></div></div>`).join('')).join('');
   $('people').querySelectorAll('.prow').forEach(r => { r.onclick = () => openPerson(r.dataset.email); r.onkeydown = e => { if (e.key === 'Enter') openPerson(r.dataset.email); }; });
 }
@@ -280,7 +280,7 @@ function drawPerson() {
   $('person').querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); openPerson(a.dataset.go); });
   if ($('editP')) $('editP').onclick = () => profileForm();
   if ($('delP')) $('delP').onclick = async () => {
-    if (!(await cp.confirm({ title: `Take ${m.name} off the team?`, message: 'Their role, responsibilities, 1-2-1s, feedback and manager notes are deleted. Their projects and tasks stay.', confirm: 'Remove', danger: true }))) return;
+    if (!(await cp.confirm({ title: `Take ${m.name} off the team?`, message: 'Their role, responsibilities, 1-2-1s, feedback and manager notes are deleted. Their projects and plans stay.', confirm: 'Remove', danger: true }))) return;
     try { await api('members/' + enc(m.email), { method: 'DELETE' }); CUR = null; $('person').innerHTML = '<div class="empty">Removed.</div>'; loadList(); } catch (e) { cp.alert(e.message); }
   };
   ({ overview: drawOverview, work: drawWork, one_to_one: drawOneToOnes, feedback: drawFeedback, manager_note: drawNotes })[TAB]();
@@ -296,7 +296,7 @@ function drawOverview() {
     <h3>At a glance</h3>
     <div class="stats">
       <div class="stat"><div class="v">${w.projects.length}</div><div class="k">Projects</div></div>
-      <div class="stat"><div class="v">${w.openTasks.length}</div><div class="k">Open tasks</div></div>
+      <div class="stat"><div class="v">${w.openTasks.length}</div><div class="k">Open plans</div></div>
       <div class="stat"><div class="v ${w.overdue ? 'late' : ''}">${w.overdue}</div><div class="k">Overdue</div></div>
       <div class="stat"><div class="v">${w.doneRecently}</div><div class="k">Done in ${w.days} days</div></div>
     </div>
@@ -334,14 +334,14 @@ function drawWork() {
       <div class="pm">${p.openActions} open actions · ${p.openRisks} risks</div>
       ${p.next ? `<div class="pm">Next: ${esc(p.next.title)} · ${esc(fmtDate(p.next.endDate))}</div>` : ''}</a>`).join('')}</div>`
       : `<div class="muted">Not on any project you can see.</div>`}
-    <h3>Open tasks</h3>
+    <h3>Open plans</h3>
     ${w.openTasks.length ? `<div class="tlist">${w.openTasks.map(t => { const late = t.due && t.due < today();
       return `<a class="t" href="/tasks/#view=all&task=${esc(t.id)}"><span class="ref">${esc(t.ref)}</span><span style="flex:1">${esc(t.title)}${t.project ? ` <span class="muted">· ${esc(t.project.name)}</span>` : ''}</span>
         <span class="${late ? 'late' : 'muted'}">${t.due ? (late ? 'Overdue ' : 'Due ') + esc(fmtDate(t.due)) : ''}</span><span class="chip ${t.status === 'Blocked' ? 'red' : t.status === 'In progress' ? 'blue' : ''}">${esc(t.status)}${t.progress ? ' ' + t.progress + '%' : ''}</span></a>`; }).join('')}</div>`
-      : '<div class="muted">No open tasks.</div>'}
+      : '<div class="muted">No open plans.</div>'}
     <h3>Recent activity<span class="sp"></span><select id="days" class="btn small" aria-label="Period">${[30, 90, 365].map(d => `<option value="${d}" ${d === w.days ? 'selected' : ''}>Last ${d} days</option>`).join('')}</select></h3>
     ${w.activity.length ? `<div class="feed">${w.activity.map(a => `<a href="${esc(a.link)}"><div><span class="what">${esc(first(CUR.name))} ${esc(a.text)}</span>${a.where ? ` <span class="muted">· ${esc(a.where)}</span>` : ''}</div><div class="when">${esc(new Date(a.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}</div></a>`).join('')}</div>`
-      : `<div class="muted">Nothing in projects or tasks that you can see, in this period.</div>`}`;
+      : `<div class="muted">Nothing in projects or plans that you can see, in this period.</div>`}`;
   $('days').onchange = async e => { WORK = await api(`members/${enc(CUR.email)}/work?days=${e.target.value}`); drawWork(); };
 }
 

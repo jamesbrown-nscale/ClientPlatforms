@@ -128,7 +128,7 @@ def test_work_shows_only_what_the_viewer_can_see(c):
     assert [p["name"] for p in w["projects"]] == ["Laptop refresh"]
     assert {x["title"] for x in w["openTasks"]} == {"Order docks", "Loose task"}
     texts = " | ".join(a["text"] for a in w["activity"])
-    assert "risk RSK-001 Supply slips" in texts and "posted an update on TSK-001 Order docks (50%)" in texts
+    assert "risk RSK-001 Supply slips" in texts and "posted an update on PL-001 Order docks (50%)" in texts
     assert "Secret reorg" not in str(w)
     # Amy sees all of hers; an admin sees everything.
     assert {p["name"] for p in c.get(f"{BASE}/amy.chen@nscale.com/work", headers=AMY).json()["projects"]} == {"Laptop refresh", "Secret reorg"}

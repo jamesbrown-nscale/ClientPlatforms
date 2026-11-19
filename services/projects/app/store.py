@@ -3,7 +3,7 @@
     projects  one row per project (name, description, status, currency, approved budget)
     members   who can see each project, and as what: Owner, Editor or Viewer
     items     every record in every section, as JSON, with its reference number (RSK-001 …)
-    tasks, task_activity   the Tasks tool (tasks.py)
+    tasks, task_activity, pipeline_jobs   Team Planning (tasks.py; once called Tasks)
     team_*    the Team tool (team.py): people, responsibilities, 1-2-1s, feedback, manager notes
     notifications   each person's own notifications (inbox.py)
     change_*  Change management (changes.py): settings and flows, change requests, their activity
@@ -38,7 +38,7 @@ class Store:
                     created_at TEXT, created_by TEXT, updated_at TEXT, updated_by TEXT);
                 CREATE INDEX IF NOT EXISTS items_project ON items(project_id, module);
             """)
-            # Tasks (see tasks.py), in the same database so a task can belong to a project.
+            # Team Planning (see tasks.py), in the same database so a plan can belong to a project.
             db.executescript("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY, ref TEXT, title TEXT NOT NULL, description TEXT DEFAULT '',
@@ -54,6 +54,13 @@ class Store:
                 data TEXT, created_at TEXT);
             CREATE INDEX IF NOT EXISTS activity_task ON task_activity(task_id, created_at);
             CREATE INDEX IF NOT EXISTS activity_waiting ON task_activity(waiting_on);
+            CREATE TABLE IF NOT EXISTS pipeline_jobs (
+                id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, position INTEGER DEFAULT 0,
+                title TEXT NOT NULL, description TEXT DEFAULT '', note TEXT DEFAULT '', start TEXT DEFAULT '',
+                duration INTEGER DEFAULT 1, assignee TEXT DEFAULT '', assignee_name TEXT DEFAULT '', status TEXT NOT NULL,
+                created_by TEXT, created_at TEXT, updated_at TEXT);
+            CREATE INDEX IF NOT EXISTS jobs_task ON pipeline_jobs(task_id, position);
+            CREATE INDEX IF NOT EXISTS jobs_start ON pipeline_jobs(start);
             """)
             # Team (see team.py).
             db.executescript("""

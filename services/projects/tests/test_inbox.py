@@ -46,30 +46,30 @@ def test_sign_in_is_checked(c):
 
 def test_task_notifications(c):
     t = c.post("/tasks/api/tasks", headers=T[JAMES], json={"title": "Rebuild profile", "assignee": AMY, "due": "2026-12-01"}).json()
-    assert titles(c, AMY) == ["James Brown assigned you TSK-001 Rebuild profile"]
+    assert titles(c, AMY) == ["James Brown assigned you PL-001 Rebuild profile"]
     assert inbox_of(c, AMY)["notifications"][0]["body"].startswith("Due 1 Dec")
     assert titles(c, JAMES) == []   # never told about your own doing
     tid = t["id"]
     # Amy asks; it waits on James (the creator). Her update tells James, not her.
     c.post(f"/tasks/api/tasks/{tid}/activity", headers=T[AMY], json={"kind": "question", "body": "Old profile too?"})
-    assert titles(c, JAMES)[0] == "Amy Chen asked you a question on TSK-001 Rebuild profile"
+    assert titles(c, JAMES)[0] == "Amy Chen asked you a question on PL-001 Rebuild profile"
     c.post(f"/tasks/api/tasks/{tid}/activity", headers=T[AMY], json={"kind": "update", "body": "Half done", "progress": 50})
-    assert titles(c, JAMES)[0] == "Amy Chen posted an update (50%) on TSK-001 Rebuild profile"
+    assert titles(c, JAMES)[0] == "Amy Chen posted an update (50%) on PL-001 Rebuild profile"
     q = [a for a in c.get(f"/tasks/api/tasks/{tid}", headers=T[JAMES]).json()["activity"] if a["kind"] == "question"][0]
     c.post(f"/tasks/api/tasks/{tid}/activity", headers=T[JAMES], json={"kind": "answer", "answers": q["id"], "body": "Move all."})
-    assert titles(c, AMY)[0] == "James Brown answered your question on TSK-001 Rebuild profile"
+    assert titles(c, AMY)[0] == "James Brown answered your question on PL-001 Rebuild profile"
     # A mention tells the person once, as a mention.
     c.post(f"/tasks/api/tasks/{tid}/activity", headers=T[JAMES], json={"body": "@bob.smith can you help @amy.chen?"})
     assert titles(c, BOB) == []   # Bob isn't known to Tasks yet, so @bob.smith matches nobody
     c.post("/tasks/api/tasks", headers=T[BOB], json={"title": "Bob's own"})
     c.post(f"/tasks/api/tasks/{tid}/activity", headers=T[JAMES], json={"body": "@bob.smith over to you"})
-    assert titles(c, BOB) == ["James Brown mentioned you on TSK-001 Rebuild profile"]
-    assert titles(c, AMY)[0] == "James Brown commented on TSK-001 Rebuild profile"
+    assert titles(c, BOB) == ["James Brown mentioned you on PL-001 Rebuild profile"]
+    assert titles(c, AMY)[0] == "James Brown commented on PL-001 Rebuild profile"
     # Reassigning tells the new assignee; done tells the creator.
     c.patch(f"/tasks/api/tasks/{tid}", headers=T[JAMES], json={"assignee": BOB})
-    assert titles(c, BOB)[0] == "James Brown assigned you TSK-001 Rebuild profile"
+    assert titles(c, BOB)[0] == "James Brown assigned you PL-001 Rebuild profile"
     c.patch(f"/tasks/api/tasks/{tid}", headers=T[BOB], json={"status": "Done"})
-    assert titles(c, JAMES)[0] == "Bob Smith marked done: TSK-001 Rebuild profile"
+    assert titles(c, JAMES)[0] == "Bob Smith marked done: PL-001 Rebuild profile"
 
 
 def test_read_unread_and_dismiss(c):

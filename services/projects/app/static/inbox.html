@@ -102,7 +102,7 @@ const ICONS = {
   project: ['', '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/>'],
 };
 const KIND = { task_assigned: 'task', task_change: 'task', task_comment: 'comment', task_question: 'question', task_answer: 'answer',
-               task_done: 'done', mention: 'mention', one_to_one: 'people', action: 'action', feedback: 'feedback', project_member: 'project', change: 'change' };
+               task_done: 'done', job_assigned: 'task', mention: 'mention', one_to_one: 'people', action: 'action', feedback: 'feedback', project_member: 'project', change: 'change' };
 const icon = k => { const [cls, path] = ICONS[KIND[k]] || ICONS.task;
   return `<span class="ic ${cls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></span>`; };
 
@@ -159,7 +159,7 @@ function draw() {
   const list = DATA.notifications;
   if (!list.length) {
     $('list').innerHTML = FILTER === 'unread' ? '<div class="empty"><b>You\'re all caught up</b>No unread notifications.</div>'
-      : '<div class="empty"><b>Nothing yet</b>When someone assigns you a task, asks you something, mentions you or records your 1-2-1, it shows up here.</div>';
+      : '<div class="empty"><b>Nothing yet</b>When someone assigns you a plan or job, asks you something, mentions you or records your 1-2-1, it shows up here.</div>';
     return;
   }
   let html = '', last = '';

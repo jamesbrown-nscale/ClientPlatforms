@@ -159,12 +159,12 @@
     }
     if ((me.tools || []).some(t => t.id === 'tasks')) {
       taskBadge(side);
-      window.cpNavRefreshTasks = () => taskBadge(side);   // the Tasks page calls this after changes
+      window.cpNavRefreshTasks = () => taskBadge(side);   // the Team Planning page calls this after changes
     }   // first in the page, so each tool's own panels and overlays sit above it
     document.body.classList.add('cp-has-side');
   }
 
-  /** How many tasks are assigned to you and questions are waiting on you, beside Tasks (and its heading). */
+  /** How many plans and jobs are assigned to you and questions are waiting on you, beside Team Planning (and its heading). */
   async function taskBadge(side) {
     try {
       const r = await fetch('/tasks/api/counts', { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
@@ -178,7 +178,7 @@
       const link = side.querySelector('a[data-tool="tasks"]');
       if (!link) return;
       link.append(badge());
-      link.setAttribute('aria-label', `Tasks: ${title}`);
+      link.setAttribute('aria-label', `Team Planning: ${title}`);
       // A folded heading gets a dot, so the count isn't hidden away.
       const heading = side.querySelector(`button.cp-label[aria-controls="${link.parentElement.id}"]`);
       if (heading) {

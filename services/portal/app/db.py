@@ -31,8 +31,8 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",
      "about": "Small project workspaces: status reports, timeline, RAID, actions, decisions, budget and closure."},
-    {"id": "tasks", "group": "Project Management", "name": "Tasks", "icon": "tasks", "url": "/tasks/",
-     "about": "A shared task list: assign work, ask questions, post updates and see who's waiting on whom."},
+    {"id": "tasks", "group": "Project Management", "name": "Team Planning", "icon": "tasks", "url": "/tasks/",
+     "about": "Team plans of scheduled jobs: assign work, plan start dates and durations on a timeline, ask questions and post updates."},
     {"id": "team", "group": "People", "name": "Team", "icon": "team", "url": "/team/",
      "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
 ]

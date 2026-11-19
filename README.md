@@ -10,7 +10,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/changes/` | Change management: raise, review and approve changes, through a flow per change type | [`services/projects`](services/projects) (`app/changes.py`) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
-| `/tasks/` | Tasks: a shared task list with assignees, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
+| `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
 | `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
@@ -142,20 +142,26 @@ Small project workspaces with the sections of TechOps' Project Management worksp
 
 **Who sees what.** Give people the **Projects** tool under Settings → People. Anyone with it can create a project and becomes its owner. Each project's **Members** list decides who else sees it: *Owners* change everything, including members and the project's details; *Editors* add and change records; *Viewers* only look. A project always keeps at least one owner. Client Platforms admins can open every project as an owner.
 
-## Tasks
+## Team Planning
 
-A shared task list. Each task has a title, description, assignee, due date, priority, status (To do, In progress, Blocked, Done) and optionally a project. Its activity is one thread:
+Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address and the `tasks` tool id, so roles and links carry on). Each plan has a title, description, owner, due date, priority, status (To do, In progress, Blocked, Done), optionally a project, and its **jobs**.
+
+**Jobs.** Each job has a title, description, a note (access, contacts, dependencies…), an expected start date, a duration in days (which gives its end date), an assignee and a status. Add them with **+ Add job**, tick them off, and drag to reorder. Whoever is given a job is notified, and the plan shows under their **Mine**.
+
+**Timeline.** Switch between **List** and **Timeline** at the top. The timeline is a Gantt chart: one group per open plan (with its due date as a diamond), and each job as a bar from its start to its end. Drag a bar to move a job, or its right edge to change its duration; click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. Move earlier or later, jump to today, zoom in and out, or **Fit** to show the whole plan. Filter by project or to just your jobs.
+
+A plan's activity is one thread:
 
 | Entry | What it does |
 |---|---|
 | **Comment** | Discussion. `@first.last` (or `@first`, or a full email) mentions someone; it shows under their **Mentions**. |
-| **Question** | Waits on one person (the assignee, or the creator if the assignee asks, or whoever you pick) until someone answers. It's highlighted until then and listed under **Waiting on me**. |
-| **Update** | A progress note with an optional percentage. It sets the task's progress, and starts a task that was still *To do*. |
-| *Changes* | Recorded by the app: assigned, status, priority, due date, project. |
+| **Question** | Waits on one person (the owner, or the creator if the owner asks, or whoever you pick) until someone answers. It's highlighted until then and listed under **Waiting on me**. |
+| **Update** | A progress note with an optional percentage. It sets the plan's progress, and starts one that was still *To do*. |
+| *Changes* | Recorded by the app: owner, status, priority, due date, project, and jobs added, scheduled, finished or removed. |
 
-The list's views are **Mine**, **I asked** (tasks you gave someone else), **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. The sidebar shows how many tasks are assigned to you plus questions waiting on you (red when something's overdue or a question is waiting).
+The list's views are **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. The sidebar shows how many are yours plus questions waiting on you.
 
-**Who sees what.** A task with no project: everyone with the **Tasks** tool. A task in a project: that project's members, plus whoever created it or is assigned it. In a project, viewers can comment but not change the task. Only its creator, a project owner or an admin can delete it. People to assign come from the portal's accounts that have the Tasks tool. Tasks runs inside the projects service (same database), so each project links to its tasks.
+**Who sees what.** A plan with no project: everyone with the **Team Planning** tool. In a project: that project's members, plus whoever created it, owns it or has a job in it. In a project, viewers can comment but not change it or its jobs. Only its creator, a project owner or an admin can delete it. Team Planning runs inside the projects service (same database).
 
 ## Team
 
@@ -201,7 +207,7 @@ Three flows come ready to edit: **Standard** (pre-approved), **Normal** (two rev
 
 | From | What |
 |---|---|
-| Tasks | a task is assigned to you; someone comments, posts an update or changes a task you're assigned to or created; a question is waiting on you; your question is answered; a task you created is done; someone @mentions you |
+| Team Planning | a plan or a job in one is given to you; someone comments, posts an update or changes a task you're assigned to or created; a question is waiting on you; your question is answered; a task you created is done; someone @mentions you |
 | Team | your 1-2-1 is recorded; an action from any 1-2-1 is given to you (by name or email); feedback about you is added. **Manager notes never notify anyone.** |
 | Projects | you're added to a project, or your role changes |
 | Change management | your turn on a change; your change approved, declined or sent back; comments, tags and updates on changes you're involved in; completed or failed |

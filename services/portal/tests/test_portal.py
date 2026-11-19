@@ -290,6 +290,6 @@ def test_existing_accounts_move_to_roles(tmp_path):
     assert users["boss@x.com"]["admin"] and users["boss@x.com"]["levels"]["team"] == "admin"
     assert users["amy@x.com"]["levels"] == {"tasks": "edit", "restart": "edit"} and users["amy@x.com"]["perms"] == []
     assert users["bob@x.com"]["roles"] == ["tasks-editor"]
-    assert {r["name"] for r in d.roles()} == {"Administrator", "Tasks editor", "Restart reminder editor"}
+    assert {r["name"] for r in d.roles()} == {"Administrator", "Team Planning editor", "Restart reminder editor"}
     DB(path)   # running again changes nothing
     assert len(d.roles()) == 3
