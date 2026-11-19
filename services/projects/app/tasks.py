@@ -587,6 +587,7 @@ class JobIn(BaseModel):
     assignee: str | None = Field(default=None, max_length=254)
     assigneeName: str | None = Field(default=None, max_length=100)
     status: str | None = None
+    mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list in the note or description
 
 
 class OrderIn(BaseModel):
@@ -647,6 +648,19 @@ def _when(j: dict) -> str:
     return f"Starts {nice_date(j['start'])} · {days} day{'s' if days != 1 else ''}"
 
 
+def _job_mentions(j: dict, picked: list[str]) -> set[str]:
+    text = f"{j.get('description', '')}\n{j.get('note', '')}"
+    return set(picked_mentions(text, picked) + mentions_in(text, _people_known()))
+
+
+def _tell_job_mentions(t: dict, j: dict, body: "JobIn", before: dict | None, user: User) -> None:
+    """Tell people @mentioned in a job's note or description, the first time they're mentioned there."""
+    new = _job_mentions(j, body.mentions) - (_job_mentions(before, body.mentions) if before else set())
+    if new:
+        notify(new, "mention", f"{user.name} mentioned you on {t['ref']} {t['title']}: {j['title']}", user,
+               (j.get("note") or j.get("description") or "")[:300], link(t["id"]) + f"&job={j['id']}")
+
+
 def _tell_job_assignee(t: dict, j: dict, user: User) -> None:
     notify(j["assignee"], "job_assigned", f"{user.name} gave you a job on {t['ref']} {t['title']}: {j['title']}", user,
            _when(j), link(t["id"]) + f"&job={j['id']}")
@@ -670,6 +684,7 @@ def add_job(tid: str, body: JobIn, user: User = Depends(require_task_user)):
     j = _job_row(tid, jid)
     if j["assignee"]:
         _tell_job_assignee(t, j, user)
+    _tell_job_mentions(t, j, body, None, user)
     return read_task(tid, user)
 
 
@@ -689,6 +704,7 @@ def update_job(tid: str, jid: str, body: JobIn, user: User = Depends(require_tas
         _add_activity(tid, "change", user, data={"field": "job", "action": "scheduled", "to": j["title"], "when": _when(j)})
     if j["assignee"] and j["assignee"] != before["assignee"]:
         _tell_job_assignee(t, j, user)
+    _tell_job_mentions(t, j, body, before, user)
     return read_task(tid, user)
 
 

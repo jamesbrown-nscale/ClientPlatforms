@@ -146,9 +146,9 @@ Small project workspaces with the sections of TechOps' Project Management worksp
 
 Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address and the `tasks` tool id, so roles and links carry on). Each plan has a title, description, owner, due date, priority, status (To do, In progress, Blocked, Done), optionally a project, and its **jobs**.
 
-**Jobs.** Each job has a title, description, a note (access, contacts, dependencies…), an expected start date, a duration in days (which gives its end date), an assignee and a status. Add them with **+ Add job**, tick them off, and drag to reorder. Whoever is given a job is notified, and the plan shows under their **Mine**.
+**Jobs.** Each job has a title, description, a note (access, contacts, dependencies…), an expected start date, a duration in days (which gives its end date), an assignee and a status. Add them with **+ Add job**, tick them off, and drag to reorder. Type `@` in a job's note or description to tag someone; they're notified. Whoever is given a job is notified, and the plan shows under their **Mine**.
 
-**Timeline.** Switch between **List** and **Timeline** at the top. The timeline is a Gantt chart: one group per open plan (with its due date as a diamond), and each job as a bar from its start to its end. Drag a bar to move a job, or its right edge to change its duration; click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. Move earlier or later, jump to today, zoom in and out, or **Fit** to show the whole plan. Filter by project or to just your jobs.
+**Timeline.** Switch between **List** and **Timeline** at the top. The timeline is a Gantt chart with each job as a bar from its start to its end, grouped **By person** (every staff member with Team Planning, their jobs listed under them, a faint line where they're busy and red where two of their jobs overlap; **+** adds a job for them) or **By plan** (one group per open plan, its due date as a diamond). Drag a bar to move a job, or its right edge to change its duration; click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. Move earlier or later, jump to today, zoom in and out, or **Fit** to show the whole plan. Filter by project or to just your jobs.
 
 A plan's activity is one thread:
 

@@ -162,7 +162,7 @@
   .tlrange { font-weight: 600; margin-left: 6px; white-space: nowrap; }
   .tlrange span { font-weight: 400; color: var(--muted); }
   .tlhint { font-size: 12.5px; color: var(--text2); padding: 0 16px 10px; }
-  .tl { overflow: auto; border-top: 1px solid var(--surface); max-height: calc(100vh - 230px); min-height: 260px; border-radius: 0 0 12px 12px; }
+  .tl { user-select: none; -webkit-user-select: none; cursor: grab; overflow: auto; border-top: 1px solid var(--surface); max-height: calc(100vh - 230px); min-height: 260px; border-radius: 0 0 12px 12px; }
   .tlin { position: relative; min-width: 100%; }
   .tlcols { position: absolute; top: 0; bottom: 0; z-index: 0; pointer-events: none; }
   .tlcols i { position: absolute; top: 0; bottom: 0; background: #F2F4F8; }
@@ -173,6 +173,8 @@
   .tltrack { position: relative; flex-shrink: 0; z-index: 1; }
   .tlhd { position: sticky; top: 0; z-index: 6; background: #fff; border-bottom: 1px solid var(--surface); }
   .tlhd .tllab { z-index: 7; cursor: default; }
+  .tl.panning, .tl.panning * { cursor: grabbing !important; }
+  .tllab, .tltrack.pick { cursor: pointer; }
   .tlmonths { position: relative; height: 22px; }
   .tlmonths b { position: absolute; top: 4px; font-size: 12.5px; white-space: nowrap; padding-left: 6px; border-left: 1px solid var(--border); }
   .tldays { position: relative; height: 30px; }
@@ -181,16 +183,21 @@
   .tldays span.we { background: #ECEEF3; }
   .tldays span.td { color: #E5484D; font-weight: 700; }
   .tldays span.mon { text-align: left; padding-left: 3px; border-left: 1px solid var(--surface); }
-  .tlgroup .tllab { background: var(--soft); flex-direction: row; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
-  .tlgroup .tllab .gt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tlgroup .tllab { background: var(--soft); flex-direction: row; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text); padding-top: 6px; padding-bottom: 6px; }
+  .tlgroup .tllab .gt { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
   .tlgroup .tllab .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
   .tlgroup .tltrack { background: rgba(247,249,254,.75); }
   .tlgroup, .tljob { border-bottom: 1px solid var(--surface); }
   .sq { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
   .tladd { border: 0; background: transparent; color: var(--primary); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; border-radius: 6px; }
   .tladd:hover { background: var(--surface); }
-  .tljob .tllab .jn { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tljob .tllab .js { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tljob .tllab { padding-top: 6px; padding-bottom: 6px; }
+  .tljob .tllab .jn, .tljob .tllab .js { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tljob .tllab .jn { font-size: 14px; line-height: 1.3; }
+  .tljob .tllab .js { font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .colgrip { position: absolute; right: -4px; top: 0; bottom: 0; width: 9px; cursor: col-resize; z-index: 8; }
+  .colgrip::after { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--border); opacity: 0; transition: opacity .15s; }
+  .tlhd:hover .colgrip::after, .colgrip.on::after { opacity: 1; }
   .tljob.isdone .tllab .jn { text-decoration: line-through; color: var(--text2); }
   .tljob.sel .tllab, .tlgroup.sel .tllab { box-shadow: inset 3px 0 0 var(--primary); }
   .tljob.sel .tllab { background: #F5F8FF; }
@@ -208,6 +215,18 @@
   .diamond { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; transform: rotate(45deg); border-radius: 2px; background: var(--c); cursor: pointer;
              box-shadow: 0 0 0 2px #fff; z-index: 2; }
   .diamond.late { background: #E5484D; }
+  .pav { width: 24px; height: 24px; border-radius: 50%; background: var(--violet-fill); color: var(--violet); display: grid; place-items: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
+  .pav.me { background: var(--ok-fill); color: var(--ok-text); }
+  .pav.none { background: var(--grey-fill); color: var(--muted); }
+  .tlgroup .tllab .cnt { font-weight: 400; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .tlbusy { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--violet); opacity: .25; }
+  .tlbusy.over { background: #E5484D; opacity: .55; }
+  .planmenu { position: absolute; z-index: 1000; min-width: 240px; max-width: 340px; max-height: 300px; overflow: auto; background: #FDFFF8; border: 1px solid var(--border); border-radius: 10px;
+              box-shadow: 0 12px 32px rgba(4,14,39,.18); padding: 4px; }
+  .planmenu .g { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 8px 8px 4px; }
+  .planmenu button { display: flex; gap: 8px; align-items: center; width: 100%; border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .planmenu button:hover, .planmenu button:focus { background: var(--surface); outline: none; }
+  .planmenu .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
   .tlnone { color: var(--muted); font-size: 13px; font-style: italic; }
   .tlempty { padding: 50px 16px; text-align: center; color: var(--text2); }
 
@@ -240,6 +259,7 @@
   <section class="card" id="calCard" aria-label="Timeline" hidden>
     <div class="tlhead1">
       <h1>Team Planning</h1><span style="flex:1"></span>
+      <select id="calGroup" aria-label="Group rows"><option value="person">By person</option><option value="plan">By plan</option></select>
       <select id="calWho" aria-label="Whose jobs"><option value="">Everyone's jobs</option><option value="mine">Just my jobs</option></select>
       <select id="calProj" aria-label="Project"><option value="">All projects</option></select>
       <div class="modes" id="modes2" role="group" aria-label="Show as">
@@ -273,7 +293,9 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
 let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
-let MODE = 'list', CAL = null, JOBOPEN = null, NEWSTART = '';
+let JM = {};   // @mention pickers on the job form's description and note
+let MODE = 'list', CAL = null, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
+let GROUP = (() => { try { return localStorage.getItem('cp.tl.group') === 'plan' ? 'plan' : 'person'; } catch { return 'person'; } })();   // timeline rows: by person or by plan
 let RS = null, RE = null, DW = 34, FIT = true;   // timeline: first and last day shown, day width in px, fitted to the plan
 const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
 
@@ -389,7 +411,7 @@ function drawRows() {
 async function openTask(id, job = null) {
   try {
     if (OPEN?.id !== id) { KIND = 'comment'; ANSWERING = null; }
-    OPEN = await api('tasks/' + id); JOBOPEN = job; NEWSTART = '';
+    OPEN = await api('tasks/' + id); JOBOPEN = job; NEWSTART = ''; NEWASSIGNEE = '';
     showDetail(); drawDetail(); drawRows(); if (MODE === 'timeline') drawCal(); save();
     if (job) document.querySelector(`.job[data-job="${CSS.escape(job)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -490,7 +512,7 @@ function jobsSection(t) {
       ${t.canChange ? '<button class="btn small" id="addJob">+ Add job</button>' : ''}</div>
     <div class="jobs" id="jobs">
       ${jobs.map(j => jobRow(t, j)).join('')}
-      ${JOBOPEN === 'new' ? `<div class="job open" data-job="new">${jobForm(t, { title: '', start: NEWSTART, duration: 1, status: 'To do', assignee: '', description: '', note: '' })}</div>` : ''}
+      ${JOBOPEN === 'new' ? `<div class="job open" data-job="new">${jobForm(t, { title: '', start: NEWSTART, duration: 1, status: 'To do', assignee: NEWASSIGNEE, description: '', note: '' })}</div>` : ''}
       ${!jobs.length && JOBOPEN !== 'new' ? `<div class="jempty">No jobs yet. ${t.canChange ? 'Add the jobs that make up this plan, with when each is expected to start and how long it takes; they show on the timeline.' : ''}</div>` : ''}
     </div>`;
 }
@@ -528,8 +550,8 @@ function jobForm(t, j) {
       <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
       <div class="two"><label for="jAssignee">Assigned to</label><input id="jAssignee" list="people" value="${esc(j.assignee)}" placeholder="Pick someone or type their email"></div>
       <div><label for="jStatus">Status</label><select id="jStatus">${opt(ME.statuses, j.status)}</select></div>
-      <div class="wide"><label for="jDesc">Description</label><textarea class="desc" id="jDesc" placeholder="What the job involves">${esc(j.description)}</textarea></div>
-      <div class="wide"><label for="jNote">Note</label><textarea class="desc" id="jNote" style="min-height:56px" placeholder="Anything to remember: access, contacts, dependencies, kit">${esc(j.note)}</textarea></div>
+      <div class="wide"><label for="jDesc">Description</label><textarea class="desc" id="jDesc" placeholder="What the job involves. @name to tag someone.">${esc(j.description)}</textarea></div>
+      <div class="wide"><label for="jNote">Note</label><textarea class="desc" id="jNote" style="min-height:56px" placeholder="Anything to remember: access, contacts, dependencies, kit. @name to tag someone.">${esc(j.note)}</textarea></div>
     </div>
     <div id="jNotice" class="notice" hidden></div>
     <div class="jactions"><button class="btn primary small" id="jSave">${j.id ? 'Save job' : 'Add job'}</button><button class="btn small" id="jCancel">Cancel</button>
@@ -540,7 +562,7 @@ function jobForm(t, j) {
 function wireJobs() {
   const t = OPEN, box = $('jobs');
   if (!box) return;
-  if ($('addJob')) $('addJob').onclick = () => { JOBOPEN = 'new'; NEWSTART = ''; drawDetail(); $('jTitle')?.focus(); };
+  if ($('addJob')) $('addJob').onclick = () => { JOBOPEN = 'new'; NEWSTART = ''; NEWASSIGNEE = ''; drawDetail(); $('jTitle')?.focus(); };
   box.querySelectorAll('[data-toggle]').forEach(h => h.onclick = e => {
     if (e.target.closest('[data-jdone]')) return;
     JOBOPEN = JOBOPEN === h.dataset.toggle ? null : h.dataset.toggle; drawDetail(); save();
@@ -559,11 +581,14 @@ function wireJobs() {
       $('jEnds').textContent = st ? `${fmtDay(addDays(st, n - 1))}` : '–';
     };
     $('jStart').oninput = ends; $('jDur').oninput = ends; ends();
+    JM.desc?.destroy(); JM.note?.destroy();
+    JM = { desc: cpMention.attach($('jDesc'), mentionPeople), note: cpMention.attach($('jNote'), mentionPeople) };
     $('jCancel').onclick = () => { JOBOPEN = null; NEWSTART = ''; drawDetail(); save(); };
     $('jTitle').onkeydown = e => { if (e.key === 'Enter') $('jSave').click(); };
     $('jSave').onclick = async () => {
       const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(1, Number($('jDur').value) || 1),
-                     status: $('jStatus').value, description: $('jDesc').value, note: $('jNote').value, ...findPerson($('jAssignee').value) };
+                     status: $('jStatus').value, description: $('jDesc').value, note: $('jNote').value, ...findPerson($('jAssignee').value),
+                     mentions: [...new Set([...(JM.desc?.picked() || []), ...(JM.note?.picked() || [])])] };
       $('jSave').disabled = true;
       try {
         OPEN = JOBOPEN === 'new' ? await send(`tasks/${t.id}/jobs`, body) : await send(`tasks/${t.id}/jobs/${JOBOPEN}`, body, 'PATCH');
@@ -685,7 +710,7 @@ function save() {
   if ($('proj').value) p.set('project', $('proj').value);
   if (OPEN) p.set('task', OPEN.id);
   if (OPEN && JOBOPEN && JOBOPEN !== 'new') p.set('job', JOBOPEN);
-  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
+  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); p.set('by', GROUP); }
   history.replaceState(null, '', '#' + p.toString());
 }
 
@@ -702,7 +727,8 @@ function setMode(m) {
   save();
 }
 
-const LEFT = 280, ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60];
+let LEFT = (() => { try { return Math.min(560, Math.max(200, Number(localStorage.getItem('cp.tl.left')) || 280)); } catch { return 280; } })();
+const ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60];
 const between = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
 const dmy = s => s ? new Date(s + 'T00:00:00').toLocaleDateString() : '';
 const said = st => st === 'To do' ? 'Not started' : st;
@@ -768,38 +794,131 @@ function drawCal() {
   const grid = DW >= 9 ? `background-image:repeating-linear-gradient(to right, transparent 0 ${DW - 1}px, #ECEFF5 ${DW - 1}px ${DW}px)` : '';
   const todayLine = t0 >= RS && t0 <= end ? `<div class="tltoday" style="left:${LEFT + x(t0) + DW / 2 - 1}px"></div>` : '';
 
+  const jobRow = (p, j, byPerson) => {
+    const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
+    const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
+    const who = j.assigneeName ? j.assigneeName.split(' ')[0] : '';
+    const sub = byPerson ? `${p.ref} ${p.title} · ${dates} · ${said(j.status)}` : `${dates} · ${said(j.status)}${who ? ' · ' + j.assigneeName : ''}`;
+    const label = byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '');
+    const bar = j.start && j.end >= RS && j.start <= end
+      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv}"
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(j.assigneeName) : ''}\n${esc(said(j.status))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
+    return `<div class="tlrow tljob ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:48px">
+      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}">${byPerson ? `<span class="jn"><span class="sq" style="display:inline-block;width:9px;height:9px;margin-right:6px;background:${colourOf(p.id)[0]}"></span>${esc(j.title)}</span>` : `<span class="jn">${esc(j.title)}</span>`}<span class="js">${esc(sub)}</span></div>
+      <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
+  };
+  const anyChange = CAL.plans.some(p => p.canChange);
   let rows = '';
-  for (const p of CAL.plans) {
+  if (GROUP === 'plan') for (const p of CAL.plans) {
     const cv = colourVars(p.id), canAdd = p.canChange, gsel = OPEN?.id === p.id;
     const spanBar = p.start ? `<div class="tlspan" style="left:${x(p.start)}px;width:${(between(p.start, p.end) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
     const late = p.due && p.due < t0;
     const due = p.due ? `<div class="diamond ${late ? 'late' : ''}" style="left:${x(p.due) + DW / 2}px;${cv}" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)} is due ${esc(fmtDay(p.due))}${late ? ' (overdue)' : ''}"></div>` : '';
-    rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="height:36px">
+    rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="min-height:36px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" title="${esc(p.title)}${p.project ? ' · ' + esc(p.project) : ''}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><span class="ref">${esc(p.ref)}</span>
         ${canAdd ? `<button type="button" class="tladd" data-add="${esc(p.id)}" title="Add a job to ${esc(p.title)}" aria-label="Add a job to ${esc(p.title)}">+</button>` : ''}</div>
       <div class="tltrack ${canAdd ? 'pick' : ''}" style="width:${W}px" data-plan="${esc(p.id)}" ${canAdd ? 'title="Click a day to add a job starting then"' : ''}>${spanBar}${due}</div></div>`;
-    if (!p.jobs.length) rows += `<div class="tlrow tljob" style="height:44px"><div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}"><span class="tlnone">No jobs yet</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
-    for (const j of p.jobs) {
-      const isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = gsel && JOBOPEN === j.id;
-      const sub = j.start ? `${dmy(j.start)} – ${dmy(j.end)} · ${said(j.status)}` : `Not scheduled · ${said(j.status)}`;
-      const who = j.assigneeName ? j.assigneeName.split(' ')[0] : '';
-      const bar = j.start && j.end >= RS && j.start <= end
-        ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv}"
-             data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(j.assigneeName) : ''}\n${esc(said(j.status))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? esc(j.title) + (who ? ' · ' + esc(who) : '') : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
-      rows += `<div class="tlrow tljob ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="height:48px">
-        <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}${who ? ' · ' + esc(j.assigneeName) : ''}</span></div>
-        <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
+    if (!p.jobs.length) rows += `<div class="tlrow tljob" style="min-height:44px"><div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}"><span class="tlnone">No jobs yet</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+    for (const j of p.jobs) rows += jobRow(p, j, false);
+  }
+  else {
+    // One group per staff member (everyone with Team Planning), their jobs under them; then anyone else with jobs, then unassigned.
+    const mine = $('calWho').value === 'mine', byWho = new Map();
+    const person = (email, name) => { if (!byWho.has(email)) byWho.set(email, { email, name: name || personName(email), jobs: [] }); return byWho.get(email); };
+    (mine ? PEOPLE.filter(p => p.email === ME.email) : PEOPLE).forEach(p => person(p.email, p.name));
+    if (mine && !byWho.size) person(ME.email, ME.name);
+    CAL.plans.forEach(p => p.jobs.forEach(j => person(j.assignee || '', j.assignee ? j.assigneeName : 'Unassigned').jobs.push({ p, j })));
+    const groups = [...byWho.values()].sort((a, b) => (a.email === '') - (b.email === '') || (b.email === ME.email) - (a.email === ME.email) || a.name.localeCompare(b.name));
+    for (const g of groups) {
+      g.jobs.sort((a, b) => (a.j.start || '9999').localeCompare(b.j.start || '9999') || a.p.ref.localeCompare(b.p.ref));
+      // A faint line where they're busy; red where two of their open jobs overlap.
+      const load = {};
+      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (let d = j.start; d <= j.end; d = addDays(d, 1)) load[d] = (load[d] || 0) + 1; });
+      let busy = '';
+      for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) busy += `<div class="tlbusy ${load[d] > 1 ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${load[d] > 1 ? `title="${load[d]} jobs at once on ${esc(fmtDay(d))}"` : ''}></div>`; }
+      const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
+      const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
+      rows += `<div class="tlrow tlgroup" style="min-height:40px">
+        <div class="tllab" style="width:${LEFT}px;cursor:default" title="${esc(g.name)}${g.email ? ' · ' + esc(g.email) : ''}">${av}<span class="gt">${esc(g.name)}${g.email === ME.email ? ' (you)' : ''}</span><span class="cnt">${open} open</span>
+          ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>
+        <div class="tltrack ${anyChange ? 'pick' : ''}" style="width:${W}px" data-person="${esc(g.email)}" ${anyChange ? `title="Click a day to add a job for ${esc(g.name)} starting then"` : ''}>${busy}</div></div>`;
+      if (!g.jobs.length) rows += `<div class="tlrow tljob" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+      for (const { p, j } of g.jobs) rows += jobRow(p, j, true);
     }
   }
   $('calGrid').innerHTML = `<div class="tlin" style="width:${LEFT + W}px">
     <div class="tlcols" style="left:${LEFT}px;width:${W}px;${grid}">${cols}</div>${todayLine}
-    <div class="tlrow tlhd"><div class="tllab" style="width:${LEFT}px"></div><div style="width:${W}px"><div class="tlmonths">${months}</div><div class="tldays">${daysH}</div></div></div>
+    <div class="tlrow tlhd"><div class="tllab" style="width:${LEFT}px"><span class="colgrip" id="colGrip" title="Drag to widen or narrow the names"></span></div><div style="width:${W}px"><div class="tlmonths">${months}</div><div class="tldays">${daysH}</div></div></div>
     ${rows || `<div class="tlempty">${$('calWho').value === 'mine' ? 'No jobs for you in open plans.' : 'No open plans yet. Create one with New plan, then add its jobs.'}</div>`}
   </div>`;
   const unsched = CAL.plans.reduce((k, p) => k + p.jobs.filter(j => !j.start).length, 0);
-  $('calHint').textContent = [CAL.plans.some(p => p.canChange) ? 'Drag a bar to move a job, or its right edge to change how long it takes. Click a day in a plan’s row to add a job starting then.' : 'Click a job to see it.',
+  $('calHint').textContent = [anyChange ? `Drag the dates to move along. Drag a bar to move a job, or its right edge to change how long it takes. Click a day in ${GROUP === 'person' ? 'someone’s' : 'a plan’s'} row to add a job starting then.${GROUP === 'person' ? ' Red under a name means two jobs at once.' : ''}` : 'Drag the dates to move along. Click a job to see it.',
     unsched ? `${unsched} job${unsched === 1 ? ' has' : 's have'} no start date: click a day in ${unsched === 1 ? 'its' : 'their'} row to schedule ${unsched === 1 ? 'it' : 'them'}.` : ''].filter(Boolean).join(' ');
   wireTimeline();
+  $('colGrip').onpointerdown = e => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, l0 = LEFT;
+    const move = ev => { const l = Math.min(560, Math.max(200, l0 + ev.clientX - x0)); if (l !== LEFT) { LEFT = l; drawCal(); $('colGrip').classList.add('on'); } };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      try { localStorage.setItem('cp.tl.left', LEFT); } catch {} drawCal(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+}
+
+/** Drag the dates (anywhere that isn't a bar or a name) to move earlier or later; a sideways scroll does the same. */
+function wirePanning() {
+  const g = $('calGrid');
+  let pan = null, swallow = false, acc = 0;
+  g.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.target.closest('.gbar, .tllab, .diamond, button')) return;
+    pan = { x: e.clientX, rs: RS, re: RE, moved: false };
+  });
+  window.addEventListener('pointermove', e => {
+    if (!pan) return;
+    const dx = e.clientX - pan.x;
+    if (!pan.moved && Math.abs(dx) < 5) return;
+    if (!pan.moved) { pan.moved = true; g.classList.add('panning'); }
+    const dd = Math.round(-dx / DW);
+    if (addDays(pan.rs, dd) !== RS) { RS = addDays(pan.rs, dd); RE = addDays(pan.re, dd); FIT = false; drawCal(); }
+  });
+  window.addEventListener('pointerup', () => {
+    if (!pan) return;
+    if (pan.moved) { swallow = true; g.classList.remove('panning'); save(); setTimeout(() => { swallow = false; }, 0); }
+    pan = null;
+  });
+  g.addEventListener('click', e => { if (swallow) { e.stopPropagation(); e.preventDefault(); swallow = false; } }, true);
+  g.addEventListener('wheel', e => {
+    if (MODE !== 'timeline' || !RS || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    acc += e.deltaX;
+    const dd = Math.trunc(acc / DW);
+    if (dd) { acc -= dd * DW; RS = addDays(RS, dd); RE = addDays(RE, dd); FIT = false; drawCal(); clearTimeout(g._save); g._save = setTimeout(save, 300); }
+  }, { passive: false });
+}
+
+/** Adding a job for someone: which plan is it part of? (Straight in if there's only one, or one is open.) */
+function planMenu(e, email, day) {
+  document.querySelector('.planmenu')?.remove();
+  const plans = CAL.plans.filter(p => p.canChange);
+  if (!plans.length) { cp.alert('Create a plan first, then add jobs to it.'); return; }
+  if (plans.length === 1) return addJobOn(plans[0].id, day, email);
+  const name = email ? personName(email) : 'nobody yet';
+  const m = document.createElement('div');
+  m.className = 'planmenu'; m.setAttribute('role', 'menu');
+  const first = OPEN && plans.find(p => p.id === OPEN.id);
+  const list = first ? [first, ...plans.filter(p => p !== first)] : plans;
+  m.innerHTML = `<div class="g">Add a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''} to…</div>` +
+    list.map(p => `<button type="button" role="menuitem" data-pick="${esc(p.id)}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span>${esc(p.title)}<span class="ref">${esc(p.ref)}</span></button>`).join('');
+  document.body.append(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(e.pageX, window.scrollX + document.documentElement.clientWidth - r.width - 12) + 'px';
+  m.style.top = Math.min(e.pageY + 6, window.scrollY + window.innerHeight - r.height - 12) + 'px';
+  const close = () => { m.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key, true); };
+  const away = ev => { if (!m.contains(ev.target)) close(); };
+  const key = ev => { if (ev.key === 'Escape') close(); };
+  setTimeout(() => { document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key, true); }, 0);
+  m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
+  m.querySelector('button')?.focus();
 }
 
 const dayAt = (track, e) => addDays(RS, Math.floor((e.clientX - track.getBoundingClientRect().left) / DW));
@@ -811,7 +930,9 @@ function wireTimeline() {
     openTask(el.dataset.open, el.dataset.job || null);
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
-  g.querySelectorAll('.tlgroup .tltrack.pick').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
+  g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
+  g.querySelectorAll('.tlgroup .tltrack.pick[data-person]').forEach(t => t.onclick = e => planMenu(e, t.dataset.person, dayAt(t, e)));
+  g.querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); planMenu(e, b.dataset.addp, ''); });
   g.querySelectorAll('[data-sched]').forEach(t => t.onclick = async e => {
     try { await send(`tasks/${t.dataset.plan}/jobs/${t.dataset.sched}`, { start: dayAt(t, e) }, 'PATCH'); afterJobChange(t.dataset.plan); }
     catch (err) { cp.alert(err.message); }
@@ -856,10 +977,10 @@ async function afterJobChange(pid) {
   load();
 }
 
-async function addJobOn(pid, day) {
+async function addJobOn(pid, day, assignee = '') {
   await openTask(pid);
   if (!OPEN?.canChange) return;
-  JOBOPEN = 'new'; NEWSTART = day; drawDetail();
+  JOBOPEN = 'new'; NEWSTART = day; NEWASSIGNEE = assignee; drawDetail();
   $('jobs')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $('jTitle')?.focus();
 }
 
@@ -884,11 +1005,15 @@ async function addJobOn(pid, day) {
   $('calProj').onchange = () => { $('proj').value = $('calProj').value; save(); load(); };
   $('calWho').value = fromHash.get('who') === 'mine' ? 'mine' : '';
   $('calWho').onchange = () => { FIT = true; save(); loadCal(); };
+  if (['person', 'plan'].includes(fromHash.get('by'))) GROUP = fromHash.get('by');
+  $('calGroup').value = GROUP;
+  $('calGroup').onchange = () => { GROUP = $('calGroup').value; try { localStorage.setItem('cp.tl.group', GROUP); } catch {} save(); drawCal(); };
   $('q').oninput = drawRows;
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
     RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = false; RE = RS;
   }
+  wirePanning();
   $('calPrev').onclick = () => shift(-1); $('calNext').onclick = () => shift(1);
   $('calToday').onclick = goToday;
   $('zoomIn').onclick = () => zoom(1); $('zoomOut').onclick = () => zoom(-1);

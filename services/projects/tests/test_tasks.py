@@ -216,3 +216,16 @@ def test_timeline(c):
     assert [j["title"] for j in d["jobs"]] == ["Interviews", "Write up"]
     mine = c.get("/tasks/api/timeline", headers=BOB, params={"mine": True}).json()["plans"]
     assert [(p["title"], [j["title"] for j in p["jobs"]]) for p in mine] == [("Discovery", ["Interviews"])]
+
+
+def test_tag_people_in_job_notes(c):
+    t = new(c, title="Rollout")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    r = c.post(J, headers=AMY, json={"title": "Inventory", "note": "@val.jones has the list", "mentions": ["val.jones@nscale.com"]}).json()
+    jid = r["jobs"][0]["id"]
+    assert inbox_titles(c, "val.jones@nscale.com") == ["Amy Chen mentioned you on PL-001 Rollout: Inventory"]
+    # Saving again doesn't tell her twice; a newly tagged person is told.
+    c.patch(f"{J}/{jid}", headers=AMY, json={"note": "@val.jones has the list, @bob.smith checks it",
+                                              "mentions": ["val.jones@nscale.com", "bob.smith@nscale.com"]})
+    assert len(inbox_titles(c, "val.jones@nscale.com")) == 1
+    assert inbox_titles(c, "bob.smith@nscale.com") == ["Amy Chen mentioned you on PL-001 Rollout: Inventory"]
