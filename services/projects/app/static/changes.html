@@ -126,6 +126,72 @@
   .flowpick label:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); background: var(--soft); }
   .flowpick b { display: block; }
   .flowpick .st { font-size: 11.5px; color: var(--text2); margin-top: 4px; }
+  .steps-ed { display: flex; flex-direction: column; gap: 6px; }
+  .srow { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; }
+  .srow .num { width: 26px; height: 26px; border-radius: 50%; background: var(--surface); color: var(--primary); font-weight: 700; font-size: 12.5px; display: grid; place-items: center; }
+  .srow input { height: 36px; width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; }
+  .srow input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .srow .tools { display: flex; gap: 2px; }
+  .srow .tools button { width: 28px; height: 30px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--text2); font-size: 14px; }
+  .srow .tools button:hover { background: var(--surface); color: var(--primary); }
+  .srow .tools button.x:hover { background: var(--err-fill); color: var(--err); }
+  .addstep { align-self: flex-start; margin-left: 36px; height: 32px; border: 1px dashed var(--border); background: #fff; color: var(--primary); font-weight: 600; border-radius: 8px; padding: 0 12px; cursor: pointer; }
+  .addstep:hover { border-color: var(--primary); background: var(--soft); }
+  ol.plan { margin: 4px 0 0; padding: 0; list-style: none; counter-reset: s; }
+  ol.plan li { counter-increment: s; display: flex; gap: 10px; align-items: flex-start; padding: 4px 0; }
+  ol.plan li::before { content: counter(s); width: 22px; height: 22px; border-radius: 50%; background: var(--grey-fill); color: var(--text2); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
+  ol.plan li.done::before { content: "✓"; background: var(--ok); color: #fff; }
+  ol.plan li.done .tx { color: var(--text2); text-decoration: line-through; }
+  ol.plan .by { font-size: 12px; color: var(--muted); }
+  .check { list-style: none; margin: 10px 0 8px; padding: 0; background: #fff; border: 1px solid var(--surface); border-radius: 10px; }
+  .check li { border-bottom: 1px solid var(--surface); }
+  .check li:last-child { border-bottom: 0; }
+  .check label { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--ok); cursor: pointer; flex-shrink: 0; }
+  .check .n { color: var(--muted); font-weight: 700; font-size: 12.5px; min-width: 18px; }
+  .check li.done .tx { text-decoration: line-through; color: var(--text2); }
+  .check .by { display: block; font-size: 12px; color: var(--muted); }
+  .bar2 { height: 8px; border-radius: 4px; background: var(--grey-fill); overflow: hidden; flex: 1; min-width: 120px; }
+  .bar2 i { display: block; height: 100%; background: var(--ok); }
+  .glance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; }
+  .glance .k { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text2); }
+  .glance .v { font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
+  .secs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .scard { background: #fff; border: 1px solid var(--surface); border-radius: 12px; padding: 14px 16px; min-width: 0; scroll-margin-top: 16px; }
+  .scard.wide { grid-column: span 2; }
+  .scard.changed { border-color: #F5C97A; box-shadow: inset 3px 0 0 #E39B12; }
+  .scard.flash { animation: flash 1.2s ease-out; }
+  @keyframes flash { 0% { box-shadow: 0 0 0 4px rgba(15,65,243,.35); } 100% { box-shadow: 0 0 0 0 rgba(15,65,243,0); } }
+  .sh { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sh .si { width: 26px; height: 26px; border-radius: 8px; background: var(--surface); color: var(--primary); display: grid; place-items: center; flex-shrink: 0; }
+  .sh .si svg { width: 15px; height: 15px; }
+  .sh h4 { margin: 0; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--text2); }
+  .sh .sp { flex: 1; }
+  .sh .ccount { font-size: 12px; color: var(--text2); display: inline-flex; gap: 4px; align-items: center; }
+  .plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: #fff; color: var(--primary); cursor: pointer; font-size: 18px; line-height: 1; display: grid; place-items: center; padding: 0; }
+  .plus:hover, .plus[aria-expanded="true"] { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .sbody { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+  .sbody.none { color: var(--muted); font-style: italic; }
+  .badge-chg { font-size: 11.5px; font-weight: 700; color: var(--warn); background: var(--warn-fill); border-radius: 10px; padding: 1px 8px; }
+  details.before { margin-top: 8px; }
+  details.before summary { cursor: pointer; font-size: 12.5px; color: var(--warn); font-weight: 600; }
+  .old { margin-top: 6px; background: #FFF4F2; border: 1px dashed #F2B8B0; border-radius: 8px; padding: 8px 10px; color: #7A271A; white-space: pre-wrap; text-decoration: line-through; text-decoration-color: rgba(122,39,26,.35); }
+  ol.plan li.added .tx::after { content: "New"; margin-left: 8px; font-size: 11px; font-weight: 700; color: var(--ok-text); background: var(--ok-fill); border-radius: 8px; padding: 0 6px; text-decoration: none; display: inline-block; }
+  .scomments { margin-top: 10px; border-top: 1px dashed var(--surface); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .scomments .sc { background: var(--soft); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  .scomments .sc b { font-size: 12.5px; }
+  .scomments .sc .when { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+  .scomments .sc .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sform { margin-top: 10px; }
+  .sform textarea { width: 100%; min-height: 60px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; resize: vertical; outline: none; background: #fff; }
+  .sform textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .revision { border: 1px solid #F5C97A; background: #FFFAF0; border-radius: 12px; padding: 12px 16px; margin: 0 0 12px; }
+  .revision h3 { margin: 0 0 2px; font-size: 15px; color: var(--warn); }
+  .revision .chg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .revision .chg button { border: 1px solid #F5C97A; background: #fff; color: var(--warn); border-radius: 14px; padding: 2px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .revision .chg button:hover { background: var(--warn-fill); }
+  .onsec { font-size: 12px; color: var(--primary); background: var(--surface); border-radius: 8px; padding: 0 6px; margin-left: 4px; cursor: pointer; border: 0; }
+  @media (max-width: 800px) { .secs { grid-template-columns: 1fr; } .scard.wide { grid-column: auto; } .glance { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 1050px) { main { grid-template-columns: 1fr; } }
   @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; } .grid2 { grid-template-columns: 1fr; } .fv.full { grid-column: auto; }
     .fld, .fld.third { grid-column: span 6; } .detail { padding: 18px; } }
@@ -208,7 +274,7 @@ function drawRows() {
 
 /* ---------- One change ---------- */
 async function openChange(id) {
-  try { CUR = await api('changes/' + id); KIND = 'comment'; drawDetail(); drawRows(); remember(); }
+  try { if (CUR?.id !== id) OPEN_SEC.clear(); CUR = await api('changes/' + id); KIND = 'comment'; drawDetail(); drawRows(); remember(); }
   catch (e) { $('detail').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
 
@@ -232,7 +298,7 @@ function actionPanel(c) {
     <div class="acts" style="margin-top:10px"><button class="btn primary" data-do="submit">Submit</button><button class="btn" data-edit>Edit</button><span style="flex:1"></span><button class="btn danger" data-delete>Delete draft</button></div></div>` : '';
   if (c.state === 'changes_requested') {
     const ask = [...c.activity].reverse().find(a => a.kind === 'request_changes');
-    return `<div class="panel amber"><h3>Changes requested${ask ? ' by ' + esc(ask.authorName) : ''}</h3>${ask ? `<div class="body" style="white-space:pre-wrap">${esc(ask.body)}</div>` : ''}
+    return `<div class="panel amber"><h3>Returned to ${mine ? 'you' : esc(c.requestorName)}${ask ? ' by ' + esc(ask.authorName) : ''}</h3>${ask ? `<div class="body" style="white-space:pre-wrap">${esc(ask.body)}</div>` : ''}
       ${mine ? `<textarea id="pBody" placeholder="What you changed (optional)"></textarea><div class="acts"><button class="btn" data-edit>Edit the change</button><button class="btn primary" data-do="submit">Resubmit</button><span style="flex:1"></span><button class="btn danger" data-do="cancel">Cancel change</button></div>`
         : `<div class="muted" style="margin-top:6px">Waiting on ${esc(c.requestorName)} to update and resubmit.</div>`}</div>`;
   }
@@ -247,8 +313,8 @@ function actionPanel(c) {
   if (['review', 'verify'].includes(step.type)) {
     const appr = `<div class="approvers">${c.stepActors.map(e => `<span class="chip ${c.stepApprovals.includes(e) ? 'green' : ''}">${c.stepApprovals.includes(e) ? '✓ ' : ''}${esc(name(e))}</span>`).join('') || '<span class="muted">No reviewers set up yet: an admin can act, or add Change reviewers in Settings.</span>'}</div>`;
     const head = `<h3>${esc(step.name)}</h3><div class="muted">${c.stepApprovals.length} of ${c.stepNeeded} approval${c.stepNeeded > 1 ? 's' : ''} needed</div>${appr}`;
-    return canAct ? `<div class="panel">${head}<textarea id="pBody" placeholder="Note (needed to decline or ask for changes)"></textarea>
-      <div class="acts"><button class="btn ok" data-do="approve">${step.type === 'verify' ? 'Confirm it worked' : 'Approve'}</button><button class="btn warn" data-do="request_changes">Ask for changes</button><button class="btn danger" data-do="decline">Decline</button></div></div>`
+    return canAct ? `<div class="panel">${head}<textarea id="pBody" placeholder="Note (needed to decline or return it: say what needs changing)"></textarea>
+      <div class="acts"><button class="btn ok" data-do="approve">${step.type === 'verify' ? 'Confirm it worked' : 'Approve'}</button><button class="btn warn" data-do="request_changes">Return to requestor</button><button class="btn danger" data-do="decline">Decline</button></div></div>`
       : `<div class="panel">${head}<div class="muted" style="margin-top:8px">${waiting.length ? 'Waiting on ' + esc(waiting.join(', ')) : ''}</div></div>`;
   }
   if (step.type === 'schedule') {
@@ -259,11 +325,15 @@ function actionPanel(c) {
       : `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">Waiting on ${esc(waiting.join(', ') || c.requestorName)} to confirm the window.</div></div>`;
   }
   if (step.type === 'implement') {
-    return c.myTurn ? `<div class="panel ${c.started ? '' : ''}"><h3>${esc(step.name)}</h3><div class="muted">Window: ${esc(fmtWindow(c.fields))}</div>
-      <textarea id="pBody" placeholder="${c.started ? 'What happened (needed if it failed)' : 'Note (optional)'}"></textarea>
+    const ps = c.fields.planSteps || [], done = ps.filter(x => x.done).length;
+    const list = ps.length ? `<div class="acts" style="margin-top:10px"><span class="muted">${done} of ${ps.length} steps done</span><div class="bar2"><i style="width:${Math.round(100 * done / ps.length)}%"></i></div></div>
+      <ul class="check">${ps.map((x, i) => `<li class="${x.done ? 'done' : ''}"><label><input type="checkbox" data-check="${esc(x.id)}" ${x.done ? 'checked' : ''} ${c.myTurn ? '' : 'disabled'}>
+        <span class="n">${i + 1}</span><span><span class="tx">${esc(x.text)}</span>${x.done ? `<span class="by">${esc(x.doneBy || '')} · ${esc(fmtWhen(x.doneAt))}</span>` : ''}</span></label></li>`).join('')}</ul>` : '';
+    return c.myTurn ? `<div class="panel ${c.started ? '' : ''}"><h3>${esc(step.name)}</h3><div class="muted">Window: ${esc(fmtWindow(c.fields))}${ps.length && !c.started ? ' · ticking the first step starts it' : ''}</div>
+      ${list}<textarea id="pBody" placeholder="${c.started ? 'What happened (needed if it failed, or if steps are left)' : 'Note (optional)'}"></textarea>
       <div class="acts">${c.started ? '<button class="btn ok" data-do="complete">Mark complete</button><button class="btn danger" data-do="fail">Failed / rolled back</button>'
         : '<button class="btn primary" data-do="start">Start implementing</button>'}<span style="flex:1"></span><button class="btn danger" data-do="cancel">Cancel change</button></div></div>`
-      : `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">${c.started ? 'In progress' : 'Scheduled for ' + esc(fmtWindow(c.fields))} · ${esc(waiting.join(', ') || c.requestorName)}</div></div>`;
+      : `<div class="panel"><h3>${esc(step.name)}</h3><div class="muted">${c.started ? 'In progress' : 'Scheduled for ' + esc(fmtWindow(c.fields))} · ${esc(waiting.join(', ') || c.requestorName)}</div>${list}</div>`;
   }
   return '';
 }
@@ -272,36 +342,125 @@ function evRow(a) {
   const when = `<span class="when">${esc(fmtWhen(a.createdAt))}</span>`;
   const sysText = { submit: 'submitted the change', resubmit: 'resubmitted it', schedule: `scheduled it for ${a.data ? fmtWindow(a.data) : ''}`,
                     start: 'started implementing', complete: 'marked it complete', cancel: 'cancelled the change' };
+  if (a.kind === 'resubmit') {
+    const ch = a.data?.changes || [];
+    return `<div class="ev sys"><span class="who2">${esc(a.authorName)}</span> resubmitted it${ch.length ? ` · changed ${ch.map(d => `<button type="button" class="onsec" data-go="${esc(d.section)}">${esc(d.label)}</button>`).join(' ')}` : ' with no changes'} ${when}${a.body ? `<div class="body" style="color:var(--text)">${withMentions(a.body)}</div>` : ''}</div>`;
+  }
+  if (a.kind === 'check') return `<div class="ev sys"><span class="who2">${esc(a.authorName)}</span> ${a.data?.done ? 'ticked off' : 'unticked'} “${esc(a.body)}” <span class="muted">${esc(a.data?.of || '')}</span> ${when}</div>`;
   if (a.kind === 'step') return `<div class="ev sys">→ <b>${esc(a.body)}</b> ${when}</div>`;
   if (a.kind === 'status') return `<div class="ev sys">${esc(a.body)} ${when}</div>`;
   if (sysText[a.kind]) return `<div class="ev sys"><span class="who2">${esc(a.authorName)}</span> ${esc(sysText[a.kind])} ${when}${a.body ? `<div class="body" style="color:var(--text)">${withMentions(a.body)}</div>` : ''}</div>`;
-  const label = { approve: 'Approved', decline: 'Declined', request_changes: 'Asked for changes', fail: 'Failed', update: 'Update' }[a.kind];
+  const label = { approve: 'Approved', decline: 'Declined', request_changes: 'Returned to requestor', fail: 'Failed', update: 'Update' }[a.kind];
   if (label) return `<div class="ev box ${a.kind}"><div style="font-size:12px"><b>${label}</b> · ${esc(a.authorName)} ${when}</div>${a.body ? `<div class="body">${withMentions(a.body)}</div>` : ''}</div>`;
-  return `<div class="ev"><span class="who2">${esc(a.authorName)}</span> ${when}<div class="body">${withMentions(a.body)}</div></div>`;
+  const on = a.data?.section ? `<button type="button" class="onsec" data-go="${esc(a.data.section)}">on ${esc(CUR.sections?.[a.data.section] || a.data.section)}</button>` : '';
+  return `<div class="ev"><span class="who2">${esc(a.authorName)}</span>${on} ${when}<div class="body">${withMentions(a.body)}</div></div>`;
+}
+
+const SECTION_ICON = {
+  details: '<path d="M4 6h16M4 12h16M4 18h10"/>', summary: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  reason: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  impact: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  scope: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>', plan: '<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 7h8M13 17h8"/>',
+  test: '<path d="M9 2v6L4 18a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L15 8V2M8 2h8M7 14h10"/>', rollback: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>',
+};
+const OPEN_SEC = new Set();   // sections whose comment box is open
+
+function sectionCard(key, title, content, opts = {}) {
+  const c = CUR, rev = c.revision?.changes || [];
+  const changed = rev.filter(d => d.section === key);
+  const comments = c.activity.filter(a => a.kind === 'comment' && a.data?.section === key);
+  const before = changed.filter(d => d.field !== 'plan' || d.removed?.length).map(d => {
+    const was = d.field === 'plan' ? d.removed.map(x => '• ' + x).join('\n') : Array.isArray(d.from) ? d.from.join('\n') : (d.field === 'start' || d.field === 'end') ? fmtWhen(d.from) : d.from;
+    return `${changed.length > 1 || key === 'details' ? `<div class="muted" style="margin-top:6px">${esc(d.label)}${d.field === 'plan' ? ': removed steps' : ''}</div>` : d.field === 'plan' ? '<div class="muted" style="margin-top:6px">Removed steps</div>' : ''}<div class="old">${esc(was || '(empty)')}</div>`;
+  }).join('');
+  const open = OPEN_SEC.has(key);
+  return `<section class="scard ${opts.wide ? 'wide' : ''} ${changed.length ? 'changed' : ''}" id="sec-${key}" aria-label="${esc(title)}">
+    <div class="sh"><span class="si">${svgi(SECTION_ICON[key])}</span><h4>${esc(title)}</h4>${changed.length ? '<span class="badge-chg">Changed</span>' : ''}<span class="sp"></span>
+      ${comments.length ? `<span class="ccount" title="${comments.length} comment${comments.length > 1 ? 's' : ''}">${svgi('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', 14)} ${comments.length}</span>` : ''}
+      ${c.state !== 'draft' ? `<button type="button" class="plus" data-sec="${key}" aria-expanded="${open}" aria-label="Comment on ${esc(title)}" title="Comment on ${esc(title)}">+</button>` : ''}</div>
+    ${content}
+    ${before ? `<details class="before"><summary>Show what it said before</summary>${before}</details>` : ''}
+    ${comments.length ? `<div class="scomments">${comments.map(a => `<div class="sc"><b>${esc(a.authorName)}</b><span class="when">${esc(fmtWhen(a.createdAt))}</span><div class="body">${withMentions(a.body)}</div></div>`).join('')}</div>` : ''}
+    ${open ? `<div class="sform"><textarea id="sc-${key}" placeholder="Comment on ${esc(title.toLowerCase())}. @name to tag someone."></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px"><button type="button" class="btn small" data-sccancel="${key}">Cancel</button><button type="button" class="btn small primary" data-scsend="${key}">Comment</button></div></div>` : ''}
+  </section>`;
+}
+const svgi = (path, size = 15) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+
+function textBody(k) {
+  const v = CUR.fields[k];
+  return v ? `<div class="sbody">${esc(v)}</div>` : '<div class="sbody none">Not given</div>';
+}
+function planBody() {
+  const f = CUR.fields, added = new Set((CUR.revision?.changes || []).find(d => d.field === 'plan')?.added || []);
+  if (!(f.planSteps || []).length) return textBody('plan');
+  return `<ol class="plan">${f.planSteps.map(x => `<li class="${x.done ? 'done' : ''} ${added.has(x.text) ? 'added' : ''}"><span><span class="tx">${esc(x.text)}</span>${x.done ? ` <span class="by">· ${esc(x.doneBy || '')} · ${esc(fmtWhen(x.doneAt))}</span>` : ''}</span></li>`).join('')}</ol>`;
 }
 
 function drawDetail() {
   const c = CUR, f = c.fields;
-  const fv = (k, label, full) => f[k] ? `<div class="fv ${full ? 'full' : ''}"><h4>${esc(label)}</h4><div>${esc(f[k])}</div></div>` : '';
+  const rev = c.revision && c.revision.changes.length ? c.revision : null;
+  const glance = `<div class="glance">
+      <div><div class="k">Change type</div><div class="v">${esc(c.flow.name)}</div></div>
+      <div><div class="k">Category</div><div class="v">${esc(f.category || '—')}</div></div>
+      <div><div class="k">Risk</div><div class="v">${f.risk ? riskChip(f.risk) : '—'}</div></div>
+      <div><div class="k">Planned window</div><div class="v">${esc(fmtWindow(f))}</div></div>
+      <div><div class="k">Requestor</div><div class="v">${esc(c.requestorName)}</div></div>
+      <div><div class="k">Submitted</div><div class="v">${esc(c.submittedAt ? fmtWhen(c.submittedAt) : 'Not yet')}</div></div></div>`;
   $('detail').innerHTML = `
     <div class="dh"><span class="ref">${esc(c.ref)}</span>${chip(c.status)}<span class="chip">${esc(c.flow.name)}</span>${riskChip(f.risk)}${f.category ? `<span class="chip">${esc(f.category)}</span>` : ''}
       <span style="flex:1"></span><button class="btn small" id="closeD">Close</button></div>
     <h2>${esc(c.title)}</h2>
-    <div class="facts"><span>Raised by ${esc(c.requestorName)}</span>${c.submittedAt ? `<span>Submitted ${esc(fmtWhen(c.submittedAt))}</span>` : ''}<span>Window: ${esc(fmtWindow(f))}</span></div>
     ${c.state === 'draft' ? '' : flowStrip(c)}
     ${actionPanel(c)}
-    <div class="grid2">${fv('summary', "What's changing", true)}${fv('reason', 'Why')}${fv('impact', "Impact and who's affected")}${fv('scope', 'Devices, groups or services', true)}
-      ${fv('plan', 'Implementation plan', true)}${fv('test', 'Test plan')}${fv('rollback', 'Rollback plan')}</div>
+    ${rev ? `<div class="revision" role="status"><h3>Resubmitted with ${rev.changes.length} change${rev.changes.length > 1 ? 's' : ''}</h3>
+      <div class="muted">${esc(rev.by)} · ${esc(fmtWhen(rev.at))}${rev.returnedBy ? ` · after ${esc(rev.returnedBy)} returned it` : ''}</div>
+      ${rev.note ? `<div style="margin-top:6px;white-space:pre-wrap">${withMentions(rev.note)}</div>` : ''}
+      <div class="chg">${rev.changes.map(d => `<button type="button" data-go="${esc(d.section)}">${esc(d.label)}${d.field === 'plan' ? ` (+${d.added.length} −${d.removed.length})` : ''}</button>`).join('')}</div></div>` : ''}
+    <div class="secs">
+      ${sectionCard('details', 'At a glance', glance, { wide: true })}
+      ${sectionCard('summary', "What's changing", textBody('summary'), { wide: true })}
+      ${sectionCard('reason', 'Why', textBody('reason'))}
+      ${sectionCard('impact', "Impact and who's affected", textBody('impact'))}
+      ${sectionCard('scope', 'Devices, groups or services', textBody('scope'), { wide: true })}
+      ${sectionCard('plan', 'Implementation plan', planBody(), { wide: true })}
+      ${sectionCard('test', 'Test plan', textBody('test'))}
+      ${sectionCard('rollback', 'Rollback plan', textBody('rollback'))}
+    </div>
     ${c.state === 'draft' ? '' : `<h3 class="sec">Activity</h3><div class="feed">${c.activity.map(evRow).join('') || '<div class="muted">Nothing yet.</div>'}</div>
     <div class="composer"><div class="kinds">${[['comment', 'Comment'], ...(c.requestor === ME.email ? [['update', 'Update']] : [])].map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${k === KIND}">${l}</button>`).join('')}</div>
       <textarea id="cBody" placeholder="${KIND === 'update' ? 'Where it stands' : 'Comment or ask a question. @name to tag someone.'}"></textarea>
       <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="cSend">${KIND === 'update' ? 'Post update' : 'Comment'}</button></div></div>`}`;
   $('closeD').onclick = () => { CUR = null; $('detail').innerHTML = '<div class="empty">Pick a change, or raise a new one.</div>'; drawRows(); remember(); };
   $('detail').querySelectorAll('[data-do]').forEach(b => b.onclick = () => doAction(b.dataset.do));
+  $('detail').querySelectorAll('[data-check]').forEach(cb => cb.onchange = () => tick(cb.dataset.check, cb.checked));
   $('detail').querySelector('[data-edit]')?.addEventListener('click', () => form(CUR));
   $('detail').querySelector('[data-delete]')?.addEventListener('click', async () => {
     if (!(await cp.confirm({ title: `Delete ${c.ref}?`, message: 'The draft is deleted. Nobody else has seen it.', confirm: 'Delete draft', danger: true }))) return;
     try { await api('changes/' + c.id, { method: 'DELETE' }); CUR = null; $('detail').innerHTML = '<div class="empty">Deleted.</div>'; load(); } catch (e) { cp.alert(e.message); }
+  });
+  $('detail').querySelectorAll('[data-go]').forEach(b => b.onclick = () => {   // jump to a section
+    const el = $('sec-' + b.dataset.go); if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    el.querySelector('details.before')?.setAttribute('open', '');
+  });
+  // The + on each section: a comment on that part.
+  $('detail').querySelectorAll('[data-sec]').forEach(b => b.onclick = () => {
+    const k = b.dataset.sec;
+    OPEN_SEC.has(k) ? OPEN_SEC.delete(k) : OPEN_SEC.add(k);
+    const y = window.scrollY; drawDetail(); window.scrollTo(0, y);
+    $('sc-' + k)?.focus();
+  });
+  $('detail').querySelectorAll('[data-sccancel]').forEach(b => b.onclick = () => { OPEN_SEC.delete(b.dataset.sccancel); const y = window.scrollY; drawDetail(); window.scrollTo(0, y); });
+  const secMentions = {};
+  $('detail').querySelectorAll('.sform textarea').forEach(ta => { secMentions[ta.id] = cpMention.attach(ta, mentionPeople); });
+  $('detail').querySelectorAll('[data-scsend]').forEach(b => b.onclick = async () => {
+    const k = b.dataset.scsend, ta = $('sc-' + k);
+    try {
+      CUR = await send(`changes/${c.id}/act`, { action: 'comment', section: k, body: ta.value, mentions: secMentions[ta.id]?.picked() || [] });
+      OPEN_SEC.delete(k); Object.values(secMentions).forEach(m => m.destroy());
+      const y = window.scrollY; drawDetail(); window.scrollTo(0, y); load();
+    } catch (e) { cp.alert(e.message); }
   });
   $('detail').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { KIND = b.dataset.k; drawDetail(); $('cBody').focus(); });
   MENTION?.destroy(); MENTION = $('cBody') ? cpMention.attach($('cBody'), mentionPeople) : null;
@@ -311,8 +470,22 @@ function drawDetail() {
   };
 }
 
+async function tick(id, done) {
+  try { CUR = await send(`changes/${CUR.id}/act`, { action: 'check', stepId: id, done }); drawDetail(); load(); }
+  catch (e) { cp.alert(e.message); drawDetail(); }
+}
+
 async function doAction(a) {
-  const c = CUR, body = $('pBody')?.value || '';
+  const c = CUR;
+  let body = $('pBody')?.value || '';
+  const left = (c.fields.planSteps || []).filter(x => !x.done);
+  if (a === 'complete' && left.length && !body.trim()) {
+    const note = await cp.prompt({ title: `${left.length} step${left.length > 1 ? 's' : ''} not ticked off`, icon: 'warn',
+      message: left.map(x => '• ' + x.text).join('\n'), label: 'Why are you completing it anyway?', placeholder: 'Done another way, not needed, moved to the next wave…', confirm: 'Mark complete' });
+    if (note === null) return;
+    if (!note.trim()) { cp.alert({ title: 'Add a note', message: 'Say why the remaining steps were left.' }); return; }
+    body = note;
+  }
   const confirmText = { decline: ['Decline this change?', 'It closes and the requestor is told why. They would raise a new change to try again.', 'Decline'],
                         cancel: ['Cancel this change?', 'It closes and everyone involved is told.', 'Cancel change'],
                         fail: ['Mark it as failed?', 'It closes as failed and the reviewers are told.', 'Mark failed'] }[a];
@@ -340,12 +513,52 @@ function form(c) {
       <div class="fld"><label for="f_end">Planned end</label><input type="datetime-local" id="f_end" value="${esc(v(f.end))}"></div>
       ${ta('summary', 3, true, 'What exactly will change')}${ta('reason', 2, true, 'Why it is needed: the problem, request or finding')}
       ${ta('impact', 2, false, 'Who and what is affected, and what they will notice')}${ta('scope', 2, false, 'Device groups, policies, apps or services')}
-      ${ta('plan', 4, true, 'The steps, in order')}${ta('test', 2, false, 'How you will know it worked')}${ta('rollback', 3, true, 'How to undo it if it goes wrong')}
+      <div class="fld full"><label>Implementation plan <span class="req">*</span></label>
+        <div class="steps-ed" id="f_steps"></div><div class="hint">One step per line. Enter adds the next. The implementer ticks them off as they go.</div></div>
+      ${ta('test', 2, false, 'How you will know it worked')}${ta('rollback', 3, true, 'How to undo it if it goes wrong')}
     </div>
     <div style="display:flex;gap:8px;margin-top:14px"><span style="flex:1"></span><button class="btn" id="fSave">${c ? 'Save' : 'Save draft'}</button>${!c || c.state === 'draft' ? '<button class="btn primary" id="fSubmit">Save and submit</button>' : ''}</div>`;
   $('fClose').onclick = () => c ? openChange(c.id) : ($('detail').innerHTML = '<div class="empty">Pick a change, or raise a new one.</div>');
+  // The plan: a numbered list of steps.
+  let steps = (f.planSteps || []).map(x => ({ id: x.id, text: x.text }));
+  if (!steps.length) steps = [{ text: '' }];
+  const drawSteps = focusAt => {
+    $('f_steps').innerHTML = steps.map((x, i) => `<div class="srow"><span class="num">${i + 1}</span>
+      <input data-si="${i}" value="${esc(x.text)}" maxlength="500" placeholder="${i === 0 ? 'Assign the policy to the Pilot group' : 'Next step'}" aria-label="Step ${i + 1}">
+      <span class="tools"><button type="button" data-mv="${i}:-1" title="Move up" aria-label="Move step ${i + 1} up">↑</button><button type="button" data-mv="${i}:1" title="Move down" aria-label="Move step ${i + 1} down">↓</button>
+        <button type="button" class="x" data-rm="${i}" title="Remove" aria-label="Remove step ${i + 1}">×</button></span></div>`).join('')
+      + '<button type="button" class="addstep" id="f_add">+ Add step</button>';
+    $('f_steps').querySelectorAll('[data-si]').forEach(inp => {
+      inp.oninput = () => { steps[inp.dataset.si].text = inp.value; };
+      inp.onkeydown = e => {
+        const i = Number(inp.dataset.si);
+        if (e.key === 'Enter') { e.preventDefault(); steps.splice(i + 1, 0, { text: '' }); drawSteps(i + 1); }
+        if (e.key === 'Backspace' && !inp.value && steps.length > 1) { e.preventDefault(); steps.splice(i, 1); drawSteps(Math.max(0, i - 1)); }
+      };
+      inp.onpaste = e => {   // pasting several lines makes several steps
+        const lines = e.clipboardData.getData('text/plain').split(/\r?\n/).map(l => l.replace(/^\s*(\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+        if (lines.length < 2) return;
+        e.preventDefault();
+        const i = Number(inp.dataset.si);
+        steps.splice(i, inp.value ? 0 : 1, ...lines.map(t => ({ text: t })));
+        drawSteps(i + lines.length - 1);
+      };
+    });
+    $('f_steps').querySelectorAll('[data-mv]').forEach(b => b.onclick = () => {
+      const [i, d] = b.dataset.mv.split(':').map(Number), j = i + d;
+      if (j < 0 || j >= steps.length) return;
+      [steps[i], steps[j]] = [steps[j], steps[i]]; drawSteps(j);
+    });
+    $('f_steps').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+      steps.splice(Number(b.dataset.rm), 1); if (!steps.length) steps.push({ text: '' }); drawSteps(Math.min(Number(b.dataset.rm), steps.length - 1));
+    });
+    $('f_add').onclick = () => { steps.push({ text: '' }); drawSteps(steps.length - 1); };
+    if (focusAt != null) { const el = $('f_steps').querySelector(`[data-si="${focusAt}"]`); el?.focus(); }
+  };
+  drawSteps();
   const collect = () => ({ title: $('f_title').value, flowId: document.querySelector('input[name=flow]:checked')?.value, category: $('f_category').value, risk: $('f_risk').value,
-    start: $('f_start').value, end: $('f_end').value, fields: Object.fromEntries(Object.keys(ME.fields).map(k => [k, $('f_' + k).value])) });
+    start: $('f_start').value, end: $('f_end').value, planSteps: steps.filter(x => x.text.trim()),
+    fields: Object.fromEntries(Object.keys(ME.fields).filter(k => k !== 'plan').map(k => [k, $('f_' + k).value])) });
   const save = async submit => {
     try {
       let r = c ? await send('changes/' + c.id, collect(), 'PATCH') : await send('changes', collect());

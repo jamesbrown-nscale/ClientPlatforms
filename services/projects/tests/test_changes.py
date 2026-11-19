@@ -100,7 +100,7 @@ def test_normal_flow_end_to_end(c):
     r = act(c, cid, CAT, "request_changes", "Add a test plan").json()
     assert r["status"] == "Changes requested" and not r["canEdit"]   # Cat can't; Amy can
     assert c.get(f"{API}/changes/{cid}", headers=AMY).json()["canEdit"]
-    assert inbox_titles(c, "amy.chen@nscale.com")[0] == "Cat Jones asked for changes to CHG-001 BitLocker policy"
+    assert inbox_titles(c, "amy.chen@nscale.com")[0] == "Cat Jones returned CHG-001 BitLocker policy to you for changes"
     c.patch(f"{API}/changes/{cid}", headers=AMY, json={"fields": {"test": "Pilot group of 5"}})
     r = act(c, cid, AMY, "submit", "Added a test plan").json()
     assert r["status"] == "In review" and r["stepApprovals"] == []
@@ -179,3 +179,65 @@ def test_people_picked_from_the_at_list_are_tagged(c):
     r = act(c, ch["id"], BOB, "comment", "@dan.ray please check the scope", mentions=["dan.ray@nscale.com", "eve@nscale.com", "not-an-email"]).json()
     assert r["activity"][-1]["mentions"] == ["dan.ray@nscale.com"]   # Eve's tag isn't in the text
     assert inbox_titles(c, "dan.ray@nscale.com")[0] == "Bob Smith tagged you on CHG-001 BitLocker policy"
+
+
+def test_plan_steps_and_the_implementation_checklist(c):
+    form = {**FORM, "fields": {k: v for k, v in FORM["fields"].items() if k != "plan"}}
+    r = c.post(f"{API}/changes", headers=AMY, json={"title": "Steps", "flowId": "emergency", **form,
+               "planSteps": [{"text": "Assign to pilot"}, {"text": "  "}, {"text": "Check compliance"}, {"text": "Assign to all"}]}).json()
+    steps = r["fields"]["planSteps"]
+    assert [x["text"] for x in steps] == ["Assign to pilot", "Check compliance", "Assign to all"]
+    assert r["fields"]["plan"] == "1. Assign to pilot\n2. Check compliance\n3. Assign to all"
+    cid = r["id"]
+    # Reordering keeps ids (and, later, ticks).
+    c.patch(f"{API}/changes/{cid}", headers=AMY, json={"planSteps": [steps[1], steps[0], steps[2]]})
+    act(c, cid, AMY, "submit")
+    assert act(c, cid, AMY, "check", stepId=steps[0]["id"]).status_code == 403   # still in review: not her turn
+    act(c, cid, BOB, "approve")
+    # Ticking the first step starts it; others can't tick.
+    assert act(c, cid, BOB, "check", stepId=steps[0]["id"]).status_code == 403
+    r = act(c, cid, AMY, "check", stepId=steps[1]["id"]).json()
+    assert r["status"] == "In progress" and r["fields"]["planSteps"][0]["done"] and r["fields"]["planSteps"][0]["doneBy"] == "Amy Chen"
+    assert act(c, cid, AMY, "check", stepId="nope").status_code == 404
+    # Complete with steps left needs a note.
+    assert "aren't ticked off" in act(c, cid, AMY, "complete").json()["detail"]
+    act(c, cid, AMY, "check", stepId=steps[0]["id"])
+    act(c, cid, AMY, "check", stepId=steps[2]["id"])
+    r = act(c, cid, AMY, "check", stepId=steps[2]["id"], done=False).json()
+    assert [x["done"] for x in r["fields"]["planSteps"]] == [True, True, False]
+    assert act(c, cid, AMY, "complete", "Step 3 left for tomorrow's wave").json()["status"] == "In review"   # retrospective review
+    assert [a["data"]["of"] for a in r["activity"] if a["kind"] == "check"] == ["1/3", "2/3", "3/3", "2/3"]
+
+
+def test_older_typed_plans_become_steps(c):
+    ch = raise_change(c, fields={**FORM["fields"], "plan": "1. Pilot\n2) Check\n- All laptops\n\n"})
+    assert [x["text"] for x in ch["fields"]["planSteps"]] == ["Pilot", "Check", "All laptops"]
+
+
+def test_section_comments_return_and_what_changed(c):
+    ch = raise_change(c, planSteps=[{"text": "Assign to pilot"}, {"text": "Assign to all"}])
+    cid = ch["id"]
+    act(c, cid, AMY, "submit")
+    # A comment on one section.
+    r = act(c, cid, BOB, "comment", "Which pilot group?", section="plan").json()
+    assert r["activity"][-1]["data"] == {"section": "plan"} and r["sections"]["plan"] == "Implementation plan"
+    assert inbox_titles(c, "amy.chen@nscale.com")[0] == "Bob Smith commented on CHG-001 BitLocker policy (Implementation plan)"
+    assert act(c, cid, BOB, "comment", "x", section="nope").status_code == 422
+    # Returned; Amy edits the plan, the reason and the risk, then resubmits.
+    act(c, cid, CAT, "request_changes", "Name the pilot group, and this is higher risk")
+    steps = c.get(f"{API}/changes/{cid}", headers=AMY).json()["fields"]["planSteps"]
+    c.patch(f"{API}/changes/{cid}", headers=AMY, json={"risk": "High", "fields": {"reason": "Audit finding: 14 unencrypted"},
+            "planSteps": [{"id": steps[0]["id"], "text": "Assign to IT-Pilot (20 devices)"}, steps[1], {"text": "Check compliance next day"}]})
+    r = act(c, cid, AMY, "submit", "Named the group and raised the risk").json()
+    rev = r["revision"]
+    assert rev["by"] == "Amy Chen" and rev["returnedBy"] == "Cat Jones" and rev["note"] == "Named the group and raised the risk"
+    got = {d["field"]: d for d in rev["changes"]}
+    assert set(got) == {"risk", "reason", "plan"}
+    assert got["risk"]["from"] == "Medium" and got["risk"]["to"] == "High" and got["risk"]["section"] == "details"
+    assert got["plan"]["added"] == ["Assign to IT-Pilot (20 devices)", "Check compliance next day"] and got["plan"]["removed"] == ["Assign to pilot"]
+    assert inbox_titles(c, "bob.smith@nscale.com")[0] == "Amy Chen resubmitted CHG-001 BitLocker policy: 3 changes"
+    # Once approved and moved on, the latest revision is still what it was.
+    act(c, cid, BOB, "approve"); act(c, cid, CAT, "approve")
+    assert c.get(f"{API}/changes/{cid}", headers=BOB).json()["revision"]["changes"] == rev["changes"]
+    # A change that was never returned has no revision.
+    assert raise_change(c)["revision"] is None

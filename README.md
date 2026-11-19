@@ -191,7 +191,9 @@ Three flows come ready to edit: **Standard** (pre-approved), **Normal** (two rev
 
 **Rules:** nobody approves their own change; if no reviewers are set, admins can approve. When a reviewer asks for changes, the requestor edits and resubmits, and approvals on that step start again. A change keeps the flow it was submitted with, so editing a flow never disturbs changes under way. Everyone with the tool sees submitted changes; drafts are private.
 
-**Talking about it:** anyone can comment and @tag people; the requestor posts updates. Notifications go to everyone's inbox: your turn to review, schedule, implement or verify; approved, declined, changes requested; comments, tags and updates; completed or failed.
+**Reading and reviewing:** each change shows an *At a glance* strip and a card per section; the implementation plan is a list of steps the implementer ticks off. The **+** on any section comments on just that part (shown under it, and in the thread as "on Why"). Reviewers can **Return to requestor** with what needs changing; when the requestor resubmits, the change says what's different since it was returned: a summary at the top, a *Changed* badge on each section, new plan steps marked *New*, and "Show what it said before".
+
+**Talking about it:** anyone can comment and @tag people (typing @ lists the people involved first); the requestor posts updates. Notifications go to everyone's inbox: your turn to review, schedule, implement or verify; approved, declined, changes requested; comments, tags and updates; completed or failed.
 
 ## Notifications (your own)
 

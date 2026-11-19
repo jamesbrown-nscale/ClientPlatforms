@@ -58,6 +58,40 @@ FIELDS = {   # the change form: key → (label, max length)
     "rollback": ("Rollback plan", 4000),
 }
 
+# Parts of a change people can comment on (the + on each section), and what's compared after it's
+# returned to the requestor and resubmitted.
+SECTIONS = {"details": "Details", "summary": "What's changing", "reason": "Why", "impact": "Impact and who's affected",
+            "scope": "Devices, groups or services", "plan": "Implementation plan", "test": "Test plan", "rollback": "Rollback plan"}
+COMPARED = [("title", "Title"), ("category", "Category"), ("risk", "Risk"), ("start", "Planned start"), ("end", "Planned end"),
+            ("summary", "What's changing"), ("reason", "Why"), ("impact", "Impact and who's affected"),
+            ("scope", "Devices, groups or services"), ("plan", "Implementation plan"), ("test", "Test plan"), ("rollback", "Rollback plan")]
+
+
+def snapshot(c: dict) -> dict:
+    """The parts of a change that are compared later, as they stand now."""
+    f = c["fields"]
+    out = {k: f.get(k, "") or "" for k, _ in COMPARED if k != "title"}
+    out["title"] = c["title"]
+    out["plan"] = [x["text"] for x in f.get("planSteps") or []] or [ln for ln in (f.get("plan") or "").splitlines() if ln.strip()]
+    return out
+
+
+def differences(before: dict, after: dict) -> list[dict]:
+    """What changed between two snapshots, field by field; for the plan, which steps were added, removed or reworded."""
+    out = []
+    for k, label in COMPARED:
+        a, b = before.get(k, "" if k != "plan" else []), after.get(k, "" if k != "plan" else [])
+        if a == b:
+            continue
+        item = {"field": k, "section": k if k in SECTIONS else "details", "label": label, "from": a, "to": b}
+        if k == "plan":
+            item["added"] = [x for x in b if x not in a]
+            item["removed"] = [x for x in a if x not in b]
+            item["reordered"] = not item["added"] and not item["removed"]
+        out.append(item)
+    return out
+
+
 DEFAULTS = {
     "roles": {"requestors": "everyone", "reviewers": []},
     "categories": ["Intune policy", "Jamf policy", "Software deployment", "OS update", "Device build", "Identity and access",
@@ -189,8 +223,11 @@ def is_reviewer(user: User, s: dict | None = None) -> bool:
 
 def _change(r) -> dict:
     flow = json.loads(r["flow"])
+    fields = json.loads(r["fields"])
+    if "planSteps" not in fields and fields.get("plan"):
+        fields["planSteps"] = steps_from_text(fields["plan"])
     return {"id": r["id"], "ref": r["ref"], "title": r["title"], "flow": flow, "state": r["state"], "step": r["step"],
-            "stepStartedAt": r["step_started_at"], "started": bool(r["started"]), "fields": json.loads(r["fields"]),
+            "stepStartedAt": r["step_started_at"], "started": bool(r["started"]), "fields": fields,
             "requestor": r["requestor"], "requestorName": r["requestor_name"], "createdAt": r["created_at"],
             "updatedAt": r["updated_at"], "submittedAt": r["submitted_at"], "closedAt": r["closed_at"]}
 
@@ -278,7 +315,12 @@ def view(c: dict, user: User, s: dict | None = None, full: bool = False) -> dict
     if full:
         acts = actors(c, step, s) if step else []
         appr = approvals(c) if step and step["type"] in ("review", "verify") else []
-        out.update(activity=_activity(c["id"]), stepActors=acts, stepApprovals=[a["author"] for a in appr],
+        activity = _activity(c["id"])
+        last = next((x for x in reversed(activity) if x["kind"] in ("resubmit", "request_changes")), None)
+        revision = ({"at": last["createdAt"], "by": last["authorName"], "returnedBy": (last["data"] or {}).get("returnedBy"),
+                     "note": last["body"], "changes": (last["data"] or {}).get("changes", [])}
+                    if last and last["kind"] == "resubmit" else None)
+        out.update(activity=activity, revision=revision, sections=SECTIONS, stepActors=acts, stepApprovals=[a["author"] for a in appr],
                    stepNeeded=needed(step, len(acts)) if step and step["type"] in ("review", "verify") else 0,
                    canEdit=c["requestor"] == user.email and c["state"] in ("draft", "changes_requested"),
                    canCancel=(c["requestor"] == user.email or user.admin) and c["state"] not in TERMINAL)
@@ -343,6 +385,7 @@ def _advance(cid: str, user: User, s: dict) -> None:
 
 class ChangeIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)
+    planSteps: list[dict] | None = Field(default=None, max_length=100)   # the implementation plan, one step each
     flowId: str | None = None
     category: str | None = None
     risk: str | None = None
@@ -353,6 +396,9 @@ class ChangeIn(BaseModel):
 
 class ActIn(BaseModel):
     action: str
+    section: str | None = None   # a comment on one part of the change (the + on each section)
+    stepId: str | None = None   # "check": which plan step
+    done: bool = True
     body: str = Field(default="", max_length=10000)
     mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list
     start: str | None = None
@@ -439,11 +485,40 @@ def _fields(body: ChangeIn, current: dict, s: dict) -> dict:
     for k, v in (body.fields or {}).items():
         if k in FIELDS:
             f[k] = str(v or "").strip()[:FIELDS[k][1]]
+    if body.planSteps is not None:
+        f["planSteps"] = clean_steps(body.planSteps, f.get("planSteps") or [])
+        f["plan"] = plan_text(f["planSteps"])
     return f
 
 
+def clean_steps(raw: list, old: list) -> list[dict]:
+    """The implementation plan's steps, in order. Keeps the ticks on steps that are still there."""
+    before = {x["id"]: x for x in old}
+    out = []
+    for x in raw[:100]:
+        text = str((x or {}).get("text", "")).strip()[:500]
+        if not text:
+            continue
+        sid = x.get("id") if isinstance(x.get("id"), str) and re.fullmatch(r"[\w-]{1,40}", x["id"]) else uuid.uuid4().hex[:10]
+        prev = before.get(sid, {})
+        out.append({"id": sid, "text": text, "done": bool(prev.get("done")), "doneBy": prev.get("doneBy"), "doneAt": prev.get("doneAt")})
+    return out
+
+
+def plan_text(steps: list[dict]) -> str:
+    return "\n".join(f"{i}. {x['text']}" for i, x in enumerate(steps, 1))
+
+
+def steps_from_text(text: str) -> list[dict]:
+    """An older change's typed plan, as steps: one per line, without its own numbering or bullets."""
+    lines = [re.sub(r"^\s*(\d+[.)]|[-*•])\s*", "", ln).strip() for ln in (text or "").splitlines()]
+    return [{"id": f"p{i}", "text": ln[:500], "done": False, "doneBy": None, "doneAt": None} for i, ln in enumerate(lines) if ln]
+
+
 def _ready(c: dict) -> None:
-    missing = [lbl for k, lbl in (("summary", "What's changing"), ("reason", "Why"), ("plan", "Implementation plan"),
+    if not c["fields"].get("planSteps") and c["fields"].get("plan"):
+        c["fields"]["planSteps"] = steps_from_text(c["fields"]["plan"])
+    missing = [lbl for k, lbl in (("summary", "What's changing"), ("reason", "Why"), ("planSteps", "Implementation plan"),
                                   ("rollback", "Rollback plan")) if not c["fields"].get(k)]
     if not c["fields"].get("risk"):
         missing.append("Risk")
@@ -517,7 +592,8 @@ def delete_draft(cid: str, user: User = Depends(require_changes_user)):
     return {"ok": True}
 
 
-ACTIONS = ("submit", "approve", "decline", "request_changes", "schedule", "start", "complete", "fail", "cancel", "comment", "update")
+ACTIONS = ("submit", "approve", "decline", "request_changes", "schedule", "start", "check", "complete", "fail", "cancel", "comment",
+           "update")
 
 
 @router.post("/api/changes/{cid}/act")
@@ -537,12 +613,15 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
             raise HTTPException(422, "Write something first.")
         if a == "update" and c["requestor"] != user.email:
             raise HTTPException(403, "Updates come from the requestor; use a comment.")
-        _add(cid, a, user, text, c["step"], mentions=mentions)
+        if body.section and body.section not in SECTIONS:
+            raise HTTPException(422, "Unknown section.")
+        _add(cid, a, user, text, c["step"], {"section": body.section} if body.section else None, mentions=mentions)
+        on = f" ({SECTIONS[body.section]})" if body.section else ""
         if mentions:
-            notify(mentions, "mention", f"{user.name} tagged you on {label}", user, text, url)
+            notify(mentions, "mention", f"{user.name} tagged you on {label}{on}", user, text, url)
         involved = {c["requestor"], *(actors(c, step, s) if step else []), *{x["author"] for x in _activity(cid) if x["author"]}}
         notify([e for e in involved if e not in mentions], "change",
-               f"{user.name} {'posted an update on' if a == 'update' else 'commented on'} {label}", user, text, url)
+               f"{user.name} {'posted an update on' if a == 'update' else 'commented on'} {label}{on}", user, text, url)
         return read_change(cid, user)
 
     if a == "cancel":
@@ -562,8 +641,14 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
             _add(cid, "submit", user, text, 0)
             _enter_step(cid, user, s)
         else:
-            _add(cid, "resubmit", user, text, c["step"])
+            returned = next((x for x in reversed(_activity(cid)) if x["kind"] == "request_changes"), None)
+            diff = differences(((returned or {}).get("data") or {}).get("snapshot") or snapshot(c), snapshot(c))
+            _add(cid, "resubmit", user, text, c["step"], {"changes": diff, "returnedBy": (returned or {}).get("authorName")})
             _enter_step(cid, user, s)   # the same step again; approvals on it start over
+            if diff:
+                notify(actors(get_change(cid), current_step(get_change(cid)) or {"who": "reviewers", "type": "review", "people": []}, s),
+                       "change", f"{user.name} resubmitted {label}: {len(diff)} change{'s' if len(diff) > 1 else ''}", user,
+                       ", ".join(d["label"] for d in diff), url)
         return read_change(cid, user)
 
     if c["state"] != "active" or not step:
@@ -594,8 +679,8 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
             notify([c["requestor"], *who], "change", f"{user.name} declined {label}", user, text, url)
         else:
             _set(cid, state="changes_requested")
-            _add(cid, "request_changes", user, text, c["step"])
-            notify(c["requestor"], "change", f"{user.name} asked for changes to {label}", user, text, url)
+            _add(cid, "request_changes", user, text, c["step"], {"snapshot": snapshot(c)})   # to show what changed later
+            notify(c["requestor"], "change", f"{user.name} returned {label} to you for changes", user, text, url)
         return read_change(cid, user)
 
     if a == "schedule":
@@ -609,14 +694,32 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
         _advance(cid, user, s)
         return read_change(cid, user)
 
-    if a in ("start", "complete", "fail"):
+    if a in ("start", "check", "complete", "fail"):
         if step["type"] != "implement":
             raise HTTPException(409, "This step isn't implementation.")
+        if a == "check":
+            steps = c["fields"].get("planSteps") or []
+            x = next((p for p in steps if p["id"] == body.stepId), None)
+            if not x:
+                raise HTTPException(404, "That step isn't in the plan.")
+            x.update(done=body.done, doneBy=user.name if body.done else None, doneAt=now() if body.done else None)
+            _set(cid, fields=json.dumps({**c["fields"], "planSteps": steps}))
+            if not c["started"]:   # ticking the first step starts it
+                _set(cid, started=1)
+                _add(cid, "start", user, "", c["step"])
+                notify(s["roles"]["reviewers"], "change", f"{user.name} started implementing {label}", user, "", url)
+            done = sum(1 for p in steps if p["done"])
+            _add(cid, "check", user, x["text"], c["step"], {"done": body.done, "of": f"{done}/{len(steps)}"})
+            return read_change(cid, user)
         if a == "start":
             _set(cid, started=1)
             _add(cid, "start", user, text, c["step"])
             notify(s["roles"]["reviewers"], "change", f"{user.name} started implementing {label}", user, text, url)
         elif a == "complete":
+            left = [p for p in c["fields"].get("planSteps") or [] if not p["done"]]
+            if left and not text:
+                raise HTTPException(422, f"{len(left)} step{'s' if len(left) > 1 else ''} of the plan aren't ticked off. "
+                                         "Say why in a note, or tick them first.")
             _add(cid, "complete", user, text, c["step"])
             _advance(cid, user, s)
         else:
