@@ -66,6 +66,11 @@
         font-size: 11px; font-weight: 700; flex-shrink: 0; }
   .av.me { background: var(--ok-fill); color: var(--ok-text); }
   .av.none { background: var(--grey-fill); color: var(--muted); }
+  .pgroup { border-bottom: 1px solid var(--surface); }
+  .pgroup:last-child { border-bottom: 0; }
+  .pgroup .ph { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--soft); border-bottom: 1px solid var(--surface); position: sticky; top: 0; z-index: 1; }
+  .pgroup .trow { padding-left: 26px; }
+  .pgroup .trow:last-child { border-bottom: 0; }
   .empty { color: var(--text2); text-align: center; padding: 40px 16px; }
 
   .detail { padding: 20px; position: sticky; top: 16px; }
@@ -107,6 +112,23 @@
   .composer .opts { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   .composer .opts input[type=range] { width: 160px; padding: 0; border: 0; background: none; box-shadow: none; }
   .composer .opts input.ask { max-width: 260px; height: 32px; }
+  .actbtn { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px;
+            background: #fff; cursor: pointer; text-align: left; }
+  .actbtn:hover { background: var(--soft); border-color: var(--primary); }
+  .actbtn.ask { border-color: #F7B4B4; background: #FFF8F8; }
+  .actbtn > svg { width: 22px; height: 22px; color: var(--primary); flex-shrink: 0; }
+  .actbtn .at { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .actbtn .go { color: var(--primary); font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .modal { position: fixed; inset: 0; z-index: 900; background: rgba(4,14,39,.45); display: grid; place-items: center; padding: 24px; }
+  .mpanel { background: var(--bg); border-radius: 14px; width: min(760px, 100%); max-height: min(86vh, 900px); display: flex; flex-direction: column;
+            box-shadow: 0 24px 60px rgba(4,14,39,.3); overflow: hidden; }
+  .mhead { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px 20px; border-bottom: 1px solid var(--surface); }
+  .mhead h2 { margin: 0; flex: 1; min-width: 0; font-size: 17px; text-transform: none; letter-spacing: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mhead h2 .muted { font-size: 14px; font-weight: 400; margin-left: 6px; }
+  .mbody { padding: 18px 20px; overflow: auto; flex: 1; min-height: 120px; }
+  .mfoot { padding: 0 20px 16px; border-top: 1px solid var(--surface); }
+  .mfoot .composer { margin-top: 12px; }
+  @media (max-width: 700px) { .modal { padding: 0; } .mpanel { max-height: 100vh; height: 100%; border-radius: 0; } }
   .replying { font-size: 12.5px; color: var(--warn); margin-bottom: 6px; }
 
   /* List / Calendar switch */
@@ -250,6 +272,7 @@
       </div><button class="btn primary" id="newBtn">New plan</button></div>
     <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
     <div class="filters">
+      <select id="listGroup" aria-label="Group"><option value="person">By person</option><option value="plan">By plan</option></select>
       <input type="search" id="q" placeholder="Search plans" aria-label="Search">
       <select id="proj" aria-label="Project"><option value="">All projects</option></select>
     </div>
@@ -285,6 +308,14 @@
     <div class="empty">Pick a plan to see it here, or create a new one.</div>
   </section>
 </main>
+
+<div class="modal" id="actModal" hidden>
+  <div class="mpanel" role="dialog" aria-modal="true" aria-labelledby="actTitle">
+    <div class="mhead"><h2 id="actTitle">Activity</h2><button type="button" class="ib" id="actClose" aria-label="Close" title="Close (Esc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div class="mbody" id="actBody"></div>
+    <div class="mfoot" id="actFoot"></div>
+  </div>
+</div>
 
 <datalist id="people"></datalist>
 
@@ -353,6 +384,65 @@ const days = n => `${n} day${n === 1 ? '' : 's'}`;
 const statusChip = st => `<span class="chip s-${esc(String(st).toLowerCase().replace(/\s+/g, ''))}">${esc(st)}</span>`;
 const findPerson = v => { v = String(v || '').trim(); const p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase()); return { assignee: p ? p.email : v, assigneeName: p ? p.name : '' }; };
 
+/** Everyone with Team Planning (you first), each with their jobs from CAL's open plans; then anyone else with jobs, then unassigned. */
+function peopleGroups(mine) {
+  const byWho = new Map();
+  const person = (email, name) => { if (!byWho.has(email)) byWho.set(email, { email, name: name || personName(email), jobs: [] }); return byWho.get(email); };
+  (mine ? PEOPLE.filter(p => p.email === ME.email) : PEOPLE).forEach(p => person(p.email, p.name));
+  if (mine && !byWho.size) person(ME.email, ME.name);
+  (CAL?.plans || []).forEach(p => p.jobs.forEach(j => person(j.assignee || '', j.assignee ? j.assigneeName : 'Unassigned').jobs.push({ p, j })));
+  const groups = [...byWho.values()].sort((a, b) => (a.email === '') - (b.email === '') || (b.email === ME.email) - (a.email === ME.email) || a.name.localeCompare(b.name));
+  groups.forEach(g => g.jobs.sort((a, b) => (a.j.status === 'Done') - (b.j.status === 'Done') || (a.j.start || '9999').localeCompare(b.j.start || '9999') || a.p.ref.localeCompare(b.p.ref)));
+  return groups;
+}
+
+function setGroup(g) {
+  GROUP = g; $('calGroup').value = $('listGroup').value = g;
+  try { localStorage.setItem('cp.tl.group', g); } catch {}
+  save();
+  if (MODE === 'timeline') drawCal(); else load();
+}
+
+/* By person: each staff member, with their jobs underneath. */
+function drawPeople() {
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), t0 = today();
+  const anyChange = (CAL?.plans || []).some(p => p.canChange);
+  const groups = peopleGroups(false).map(g => ({ ...g, jobs: g.jobs.filter(({ p, j }) => !words.length
+    || words.every(w => `${g.name} ${g.email} ${j.title} ${p.ref} ${p.title} ${j.note} ${j.description}`.toLowerCase().includes(w))) }))
+    .filter(g => !words.length || g.jobs.length);
+  if (!groups.length) { $('rows').innerHTML = `<div class="empty">${words.length ? 'Nothing matches.' : 'Nobody has Team Planning yet.'}</div>`; return; }
+  $('rows').innerHTML = groups.map(g => {
+    const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
+    const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
+    const jobs = g.jobs.map(({ p, j }) => {
+      const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
+      const meta = [
+        `<span><span class="jdot" style="display:inline-block;margin-right:5px;background:${colourOf(p.id)[0]}"></span>${esc(p.ref)} ${esc(p.title)}</span>`,
+        j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
+        j.status !== 'To do' && !done ? `<span>${esc(j.status)}</span>` : '',
+        j.note ? '<span title="Has a note">📝 Note</span>' : '',
+      ].filter(Boolean).join('');
+      return `<div class="trow ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
+        <button type="button" class="check ${done ? 'done' : ''}" data-pdone="${esc(j.id)}" data-pplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+        <div class="tmain"><div class="ttitle">${esc(j.title)}</div><div class="tmeta">${meta}</div></div></div>`;
+    }).join('') || '<div class="trow" style="cursor:default"><span class="muted" style="font-style:italic;padding-left:30px">Nothing planned</span></div>';
+    return `<div class="pgroup"><div class="ph">${av}<b>${esc(g.name)}${g.email === ME.email ? ' <span class="muted">(you)</span>' : ''}</b><span class="muted">${open} open</span><span style="flex:1"></span>
+        ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>${jobs}</div>`;
+  }).join('');
+  $('rows').querySelectorAll('.trow[data-job]').forEach(r => {
+    r.onclick = e => { if (!e.target.closest('[data-pdone]')) openTask(r.dataset.plan, r.dataset.job); };
+    r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.plan, r.dataset.job); };
+  });
+  $('rows').querySelectorAll('[data-pdone]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const j = CAL.plans.find(p => p.id === b.dataset.pplan).jobs.find(x => x.id === b.dataset.pdone);
+    try { const r = await send(`tasks/${b.dataset.pplan}/jobs/${j.id}`, { status: j.status === 'Done' ? 'To do' : 'Done' }, 'PATCH');
+      if (OPEN?.id === r.id) { OPEN = r; drawDetail(); } load(); }
+    catch (err) { cp.alert(err.message); }
+  });
+  $('rows').querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); planMenu(e, b.dataset.addp, ''); });
+}
+
 /* ---------- List ---------- */
 function drawTabs() {
   $('tabs').innerHTML = TABS.map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${k === VIEW}">${esc(label)}${COUNTS[k] != null && k !== 'done' ? `<span class="n">${COUNTS[k]}</span>` : ''}</button>`).join('');
@@ -364,6 +454,7 @@ async function load() {
   try {
     const r = await api('tasks?' + params);
     TASKS = r.tasks; COUNTS = r.counts;
+    if (MODE === 'list' && GROUP === 'person') CAL = await api('timeline?' + new URLSearchParams({ project: $('proj').value }));
     drawTabs(); drawRows();
     window.cpNavRefreshTasks?.();
   } catch (e) { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
@@ -371,6 +462,9 @@ async function load() {
 }
 
 function drawRows() {
+  $('tabs').hidden = GROUP === 'person';
+  $('q').placeholder = GROUP === 'person' ? 'Search people and jobs' : 'Search plans';
+  if (GROUP === 'person') return drawPeople();
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   const rows = TASKS.filter(t => !words.length || words.every(w => `${t.ref} ${t.title} ${t.description} ${t.assigneeName} ${t.project?.name || ''}`.toLowerCase().includes(w)));
   const empty = { mine: 'No plans or jobs assigned to you. Nice.', asked: "You haven't given anyone a plan.", waiting: 'No questions waiting on you.',
@@ -420,6 +514,7 @@ async function openTask(id, job = null) {
 
 function showDetail() { $('detail').hidden = false; $('main').classList.toggle('withdetail', MODE === 'timeline'); }
 function closeDetail() {
+  if (ACT_OPEN) closeActivity();
   OPEN = null; JOBOPEN = null; $('detail').innerHTML = EMPTY_DETAIL;
   if (MODE === 'timeline') { $('detail').hidden = true; $('main').classList.remove('withdetail'); drawCal(); }
   drawRows(); save();
@@ -450,21 +545,7 @@ function drawDetail() {
     ${t.progress != null && t.status !== 'Done' ? `<div class="muted">Progress ${t.progress}%</div><div class="bigbar"><i style="width:${t.progress}%"></i></div>` : ''}
     <div id="dNotice" class="notice" hidden></div>
     ${jobsSection(t)}
-    <h2>Activity</h2>
-    <div class="feed">${t.activity.map(ev).join('') || '<div class="muted">Nothing yet.</div>'}</div>
-    <div class="composer" id="composer">
-      <div class="kinds" id="kinds">
-        ${[['comment', 'Comment'], ['question', 'Question'], ['update', 'Update']].filter(([k]) => k !== 'update' || t.canChange)
-          .map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${k === KIND && !ANSWERING}">${l}</button>`).join('')}
-      </div>
-      <div class="replying" id="replying" ${ANSWERING ? '' : 'hidden'}>Answering: “${esc(ANSWERING?.body.slice(0, 80) || '')}” · <a href="#" id="cancelAnswer">cancel</a></div>
-      <textarea id="cBody" placeholder="${KIND === 'question' ? 'What do you need to know?' : KIND === 'update' ? 'Where it stands' : 'Write a comment. @name to mention someone.'}"></textarea>
-      <div class="opts">
-        ${KIND === 'question' && !ANSWERING ? `<label class="muted" for="cTo">Ask</label><input class="ask" id="cTo" list="people" placeholder="${esc(defaultAsk())}">` : ''}
-        ${KIND === 'update' && !ANSWERING ? `<label class="muted" for="cProg">Progress</label><input type="range" id="cProg" min="0" max="100" step="10" value="${t.progress ?? 0}"><span id="cProgV" class="muted">${t.progress ?? 0}%</span>` : ''}
-        <span style="flex:1"></span><button class="btn primary" id="cSend">${ANSWERING ? 'Answer' : KIND === 'question' ? 'Ask' : KIND === 'update' ? 'Post update' : 'Comment'}</button>
-      </div>
-    </div>`;
+    ${activityButton(t)}`;
   wireDetail();
 }
 
@@ -646,13 +727,70 @@ function wireDetail() {
   on('fAssignee', 'change', e => {
     patch(findPerson(e.target.value));
   });
-  $('kinds').querySelectorAll('button').forEach(b => b.onclick = () => { KIND = b.dataset.kind; ANSWERING = null; drawDetail(); $('cBody').focus(); });
+  $('openAct').onclick = openActivity;
+  if (ACT_OPEN) drawActivity();
+}
+
+/* ---------- Activity (its own window) ---------- */
+let ACT_OPEN = false;
+
+function activityButton(t) {
+  const talk = t.activity.filter(a => a.kind !== 'change');
+  const openQ = t.activity.filter(a => a.kind === 'question' && !a.answeredAt);
+  const forMe = openQ.filter(a => a.waitingOn === ME.email).length;
+  const last = t.activity[t.activity.length - 1];
+  return `<button type="button" class="actbtn ${forMe ? 'ask' : ''}" id="openAct" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>
+      <span class="at"><b>Activity</b><span class="muted">${t.activity.length} entr${t.activity.length === 1 ? 'y' : 'ies'}${talk.length ? ` · ${talk.length} message${talk.length === 1 ? '' : 's'}` : ''}${last ? ` · last ${esc(ago(last.createdAt))}` : ''}</span></span>
+      ${forMe ? `<span class="chip s-blocked">${forMe} question${forMe === 1 ? '' : 's'} for you</span>` : openQ.length ? `<span class="chip">${openQ.length} open question${openQ.length === 1 ? '' : 's'}</span>` : ''}
+      <span class="go">Open ›</span></button>`;
+}
+
+function openActivity() {
+  ACT_OPEN = true;
+  $('actModal').hidden = false; document.body.style.overflow = 'hidden';
+  drawActivity();
+  $('cBody')?.focus();
+}
+function closeActivity() {
+  ACT_OPEN = false; $('actModal').hidden = true; document.body.style.overflow = '';
+  MENTION?.destroy(); MENTION = null;
+  $('openAct')?.focus();
+}
+
+function drawActivity() {
+  const t = OPEN;
+  if (!t) return closeActivity();
+  $('actTitle').innerHTML = `Activity <span class="muted">${esc(t.ref)} ${esc(t.title)}</span>`;
+  $('actBody').innerHTML = `<div class="feed">${t.activity.map(ev).join('') || '<div class="muted">Nothing yet. Start the conversation below.</div>'}</div>`;
+  $('actFoot').innerHTML = `
+    <div id="aNotice" class="notice" hidden></div>
+    <div class="composer" id="composer">
+      <div class="kinds" id="kinds">
+        ${[['comment', 'Comment'], ['question', 'Question'], ['update', 'Update']].filter(([k]) => k !== 'update' || t.canChange)
+          .map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${k === KIND && !ANSWERING}">${l}</button>`).join('')}
+      </div>
+      <div class="replying" id="replying" ${ANSWERING ? '' : 'hidden'}>Answering: “${esc(ANSWERING?.body.slice(0, 80) || '')}” · <a href="#" id="cancelAnswer">cancel</a></div>
+      <textarea id="cBody" placeholder="${KIND === 'question' ? 'What do you need to know?' : KIND === 'update' ? 'Where it stands' : 'Write a comment. @name to mention someone.'}"></textarea>
+      <div class="opts">
+        ${KIND === 'question' && !ANSWERING ? `<label class="muted" for="cTo">Ask</label><input class="ask" id="cTo" list="people" placeholder="${esc(defaultAsk())}">` : ''}
+        ${KIND === 'update' && !ANSWERING ? `<label class="muted" for="cProg">Progress</label><input type="range" id="cProg" min="0" max="100" step="10" value="${t.progress ?? 0}"><span id="cProgV" class="muted">${t.progress ?? 0}%</span>` : ''}
+        <span class="muted" style="flex:1">⌘/Ctrl + Enter to send</span><button class="btn primary" id="cSend">${ANSWERING ? 'Answer' : KIND === 'question' ? 'Ask' : KIND === 'update' ? 'Post update' : 'Comment'}</button>
+      </div>
+    </div>`;
+  wireActivity();
+  $('actBody').scrollTop = $('actBody').scrollHeight;
+}
+
+function wireActivity() {
+  const on = (id, ev, fn) => $(id) && $(id).addEventListener(ev, fn);
+  $('kinds').querySelectorAll('button').forEach(b => b.onclick = () => { KIND = b.dataset.kind; ANSWERING = null; drawActivity(); $('cBody').focus(); });
   on('cProg', 'input', e => { $('cProgV').textContent = e.target.value + '%'; });
-  on('cancelAnswer', 'click', e => { e.preventDefault(); ANSWERING = null; drawDetail(); });
-  $('detail').querySelectorAll('[data-answer]').forEach(b => b.onclick = () => {
-    ANSWERING = OPEN.activity.find(a => a.id === b.dataset.answer); KIND = 'comment'; drawDetail(); $('cBody').focus();
+  on('cancelAnswer', 'click', e => { e.preventDefault(); ANSWERING = null; drawActivity(); });
+  $('actBody').querySelectorAll('[data-answer]').forEach(b => b.onclick = () => {
+    ANSWERING = OPEN.activity.find(a => a.id === b.dataset.answer); KIND = 'comment'; drawActivity(); $('cBody').focus();
   });
-  $('detail').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+  $('actBody').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const what = OPEN.activity.find(a => a.id === b.dataset.del)?.kind || 'comment';
     if (!(await cp.confirm({ title: `Delete this ${what}?`, message: what === 'answer' ? 'The question it answered opens again.' : "This can't be undone.", confirm: 'Delete', danger: true }))) return;
     try { OPEN = await api(`tasks/${OPEN.id}/activity/${b.dataset.del}`, { method: 'DELETE' }); drawDetail(); load(); } catch (e) { cp.alert(e.message); }
@@ -667,10 +805,11 @@ function wireDetail() {
     }
     if (KIND === 'update' && !ANSWERING) body.progress = Number($('cProg').value);
     $('cSend').disabled = true;
-    try { OPEN = await send(`tasks/${OPEN.id}/activity`, body); ANSWERING = null; KIND = 'comment'; drawDetail(); load(); }
-    catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; $('cSend').disabled = false; }
+    try { OPEN = await send(`tasks/${OPEN.id}/activity`, body); ANSWERING = null; KIND = 'comment'; drawDetail(); load(); $('cBody')?.focus(); }
+    catch (e) { $('aNotice').hidden = false; $('aNotice').textContent = e.message; $('cSend').disabled = false; }
   };
   $('cBody').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('cSend').click(); });
+
 }
 
 /* ---------- New plan ---------- */
@@ -710,7 +849,8 @@ function save() {
   if ($('proj').value) p.set('project', $('proj').value);
   if (OPEN) p.set('task', OPEN.id);
   if (OPEN && JOBOPEN && JOBOPEN !== 'new') p.set('job', JOBOPEN);
-  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); p.set('by', GROUP); }
+  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
+  p.set('by', GROUP);
   history.replaceState(null, '', '#' + p.toString());
 }
 
@@ -723,7 +863,7 @@ function setMode(m) {
   if (m === 'timeline') {
     $('detail').hidden = !OPEN && !$('nTitle'); $('main').classList.toggle('withdetail', !$('detail').hidden);
     loadCal();
-  } else { $('detail').hidden = false; $('main').classList.remove('withdetail'); if (!OPEN && !$('nTitle')) $('detail').innerHTML = EMPTY_DETAIL; }
+  } else { $('detail').hidden = false; $('main').classList.remove('withdetail'); if (!OPEN && !$('nTitle')) $('detail').innerHTML = EMPTY_DETAIL; if (ME) load(); }
   save();
 }
 
@@ -823,14 +963,8 @@ function drawCal() {
   }
   else {
     // One group per staff member (everyone with Team Planning), their jobs under them; then anyone else with jobs, then unassigned.
-    const mine = $('calWho').value === 'mine', byWho = new Map();
-    const person = (email, name) => { if (!byWho.has(email)) byWho.set(email, { email, name: name || personName(email), jobs: [] }); return byWho.get(email); };
-    (mine ? PEOPLE.filter(p => p.email === ME.email) : PEOPLE).forEach(p => person(p.email, p.name));
-    if (mine && !byWho.size) person(ME.email, ME.name);
-    CAL.plans.forEach(p => p.jobs.forEach(j => person(j.assignee || '', j.assignee ? j.assigneeName : 'Unassigned').jobs.push({ p, j })));
-    const groups = [...byWho.values()].sort((a, b) => (a.email === '') - (b.email === '') || (b.email === ME.email) - (a.email === ME.email) || a.name.localeCompare(b.name));
+    const groups = peopleGroups($('calWho').value === 'mine');
     for (const g of groups) {
-      g.jobs.sort((a, b) => (a.j.start || '9999').localeCompare(b.j.start || '9999') || a.p.ref.localeCompare(b.p.ref));
       // A faint line where they're busy; red where two of their open jobs overlap.
       const load = {};
       g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (let d = j.start; d <= j.end; d = addDays(d, 1)) load[d] = (load[d] || 0) + 1; });
@@ -1007,8 +1141,13 @@ async function addJobOn(pid, day, assignee = '') {
   $('calWho').onchange = () => { FIT = true; save(); loadCal(); };
   if (['person', 'plan'].includes(fromHash.get('by'))) GROUP = fromHash.get('by');
   $('calGroup').value = GROUP;
-  $('calGroup').onchange = () => { GROUP = $('calGroup').value; try { localStorage.setItem('cp.tl.group', GROUP); } catch {} save(); drawCal(); };
+  $('calGroup').value = $('listGroup').value = GROUP;
+  $('calGroup').onchange = () => setGroup($('calGroup').value);
+  $('listGroup').onchange = () => setGroup($('listGroup').value);
   $('q').oninput = drawRows;
+  $('actClose').onclick = closeActivity;
+  $('actModal').addEventListener('click', e => { if (e.target === $('actModal')) closeActivity(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACT_OPEN && !document.querySelector('.cp-mention:not([hidden]), dialog[open]')) closeActivity(); });
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
     RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = false; RE = RS;
