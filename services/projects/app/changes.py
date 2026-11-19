@@ -18,6 +18,8 @@ A change keeps a copy of the flow it was submitted with, so editing a flow never
 already under way. The requestor never approves their own change.
 
 States:  draft → active (on a step) → completed | declined | failed | cancelled
+         active → recalled (the requestor took it back before implementation started) → edited and
+         resubmitted from the start of its flow, or deleted
          active → changes_requested (a reviewer asked) → active again when the requestor resubmits;
          approvals on that step start again.
 Everyone involved is told in their notifications (inbox.py): submitted, approved, declined, changes
@@ -288,6 +290,8 @@ def approvals(c: dict) -> list[dict]:
 def status(c: dict) -> str:
     if c["state"] == "draft":
         return "Draft"
+    if c["state"] == "recalled":
+        return "Recalled"
     if c["state"] == "changes_requested":
         return "Changes requested"
     if c["state"] in TERMINAL:
@@ -302,10 +306,19 @@ def status(c: dict) -> str:
 def my_turn(c: dict, user: User, s: dict | None = None) -> bool:
     step = current_step(c)
     if not step or c["state"] != "active":
-        return c["state"] in ("draft", "changes_requested") and c["requestor"] == user.email
+        return c["state"] in ("draft", "changes_requested", "recalled") and c["requestor"] == user.email
     if step["type"] in ("review", "verify"):
         return user.email in actors(c, step, s) and user.email not in {a["author"] for a in approvals(c)}
     return user.email in actors(c, step, s)
+
+
+def can_recall(c: dict) -> bool:
+    """The requestor can take a change back until implementation starts."""
+    if c["state"] not in ("active", "changes_requested"):
+        return False
+    step = current_step(c)
+    reached_implement = any(x["type"] == "implement" for x in c["flow"]["steps"][:c["step"]])
+    return not reached_implement and not (step and step["type"] == "implement" and c["started"])
 
 
 def view(c: dict, user: User, s: dict | None = None, full: bool = False) -> dict:
@@ -316,13 +329,15 @@ def view(c: dict, user: User, s: dict | None = None, full: bool = False) -> dict
         acts = actors(c, step, s) if step else []
         appr = approvals(c) if step and step["type"] in ("review", "verify") else []
         activity = _activity(c["id"])
-        last = next((x for x in reversed(activity) if x["kind"] in ("resubmit", "request_changes")), None)
+        last = next((x for x in reversed(activity) if x["kind"] in ("resubmit", "request_changes", "recall")), None)
         revision = ({"at": last["createdAt"], "by": last["authorName"], "returnedBy": (last["data"] or {}).get("returnedBy"),
+                     "recalled": bool((last["data"] or {}).get("recalled")),
                      "note": last["body"], "changes": (last["data"] or {}).get("changes", [])}
                     if last and last["kind"] == "resubmit" else None)
         out.update(activity=activity, revision=revision, sections=SECTIONS, stepActors=acts, stepApprovals=[a["author"] for a in appr],
                    stepNeeded=needed(step, len(acts)) if step and step["type"] in ("review", "verify") else 0,
-                   canEdit=c["requestor"] == user.email and c["state"] in ("draft", "changes_requested"),
+                   canEdit=c["requestor"] == user.email and c["state"] in ("draft", "changes_requested", "recalled"),
+                   canRecall=c["requestor"] == user.email and can_recall(c),
                    canCancel=(c["requestor"] == user.email or user.admin) and c["state"] not in TERMINAL)
     return out
 
@@ -563,8 +578,8 @@ def read_change(cid: str, user: User = Depends(require_changes_user)):
 @router.patch("/api/changes/{cid}")
 def edit_change(cid: str, body: ChangeIn, user: User = Depends(require_changes_user)):
     c = _found(cid, user)
-    if c["requestor"] != user.email or c["state"] not in ("draft", "changes_requested"):
-        raise HTTPException(403, "Only the requestor edits a change, while it's a draft or sent back to them.")
+    if c["requestor"] != user.email or c["state"] not in ("draft", "changes_requested", "recalled"):
+        raise HTTPException(403, "Only the requestor edits a change, while it's a draft, returned to them or recalled.")
     s = settings()
     cols = {"fields": json.dumps(_fields(body, c["fields"], s))}
     if body.title is not None:
@@ -572,8 +587,8 @@ def edit_change(cid: str, body: ChangeIn, user: User = Depends(require_changes_u
             raise HTTPException(422, "Give the change a title.")
         cols["title"] = body.title.strip()
     if body.flowId is not None and body.flowId != c["flow"]["id"]:
-        if c["state"] != "draft":
-            raise HTTPException(422, "The change type can only be changed while it's a draft.")
+        if c["state"] not in ("draft", "recalled"):
+            raise HTTPException(422, "The change type can only be changed while it's a draft or recalled.")
         flow = next((f for f in s["flows"] if f["id"] == body.flowId), None)
         if not flow:
             raise HTTPException(422, "Pick a change type.")
@@ -585,14 +600,14 @@ def edit_change(cid: str, body: ChangeIn, user: User = Depends(require_changes_u
 @router.delete("/api/changes/{cid}")
 def delete_draft(cid: str, user: User = Depends(require_changes_user)):
     c = _found(cid, user)
-    if c["state"] != "draft" or (c["requestor"] != user.email and not user.admin):
-        raise HTTPException(403, "Only a draft can be deleted, by its requestor. Cancel a submitted change instead.")
+    if c["state"] not in ("draft", "recalled") or (c["requestor"] != user.email and not user.admin):
+        raise HTTPException(403, "Only a draft or a recalled change can be deleted, by its requestor. Recall or cancel it first.")
     with _store.lock, _store.db() as d:
         d.execute("DELETE FROM changes WHERE id = ?", (cid,))
     return {"ok": True}
 
 
-ACTIONS = ("submit", "approve", "decline", "request_changes", "schedule", "start", "check", "complete", "fail", "cancel", "comment",
+ACTIONS = ("submit", "recall", "approve", "decline", "request_changes", "schedule", "start", "check", "complete", "fail", "cancel", "comment",
            "update")
 
 
@@ -632,19 +647,34 @@ def act(cid: str, body: ActIn, user: User = Depends(require_changes_user)):
         notify([c["requestor"], *(actors(c, step, s) if step else [])], "change", f"{user.name} cancelled {label}", user, text, url)
         return read_change(cid, user)
 
+    if a == "recall":
+        if c["requestor"] != user.email:
+            raise HTTPException(403, "Only the requestor can recall a change.")
+        if not can_recall(c):
+            raise HTTPException(409, "It can only be recalled while it's submitted and before implementation starts.")
+        _set(cid, state="recalled", step=0, started=0)
+        _add(cid, "recall", user, text, c["step"], {"snapshot": snapshot(c)})
+        involved = {*(actors(c, step, s) if step else []), *{x["author"] for x in _activity(cid) if x["author"]}}
+        notify(involved, "change", f"{user.name} recalled {label} to make changes", user,
+               text or "It will go through the flow again from the start when it's resubmitted.", url)
+        return read_change(cid, user)
+
     if a == "submit":
-        if c["requestor"] != user.email or c["state"] not in ("draft", "changes_requested"):
-            raise HTTPException(403, "Only the requestor submits a draft, or resubmits a change sent back to them.")
+        if c["requestor"] != user.email or c["state"] not in ("draft", "changes_requested", "recalled"):
+            raise HTTPException(403, "Only the requestor submits a draft, or resubmits a change sent back to them or recalled.")
         _ready(c)
         if c["state"] == "draft":
             _set(cid, submitted_at=now())
             _add(cid, "submit", user, text, 0)
             _enter_step(cid, user, s)
         else:
-            returned = next((x for x in reversed(_activity(cid)) if x["kind"] == "request_changes"), None)
+            returned = next((x for x in reversed(_activity(cid)) if x["kind"] in ("request_changes", "recall")), None)
+            recalled = c["state"] == "recalled"
             diff = differences(((returned or {}).get("data") or {}).get("snapshot") or snapshot(c), snapshot(c))
-            _add(cid, "resubmit", user, text, c["step"], {"changes": diff, "returnedBy": (returned or {}).get("authorName")})
-            _enter_step(cid, user, s)   # the same step again; approvals on it start over
+            _add(cid, "resubmit", user, text, c["step"], {"changes": diff, "recalled": recalled,
+                                                          "returnedBy": None if recalled else (returned or {}).get("authorName")})
+            # Returned: the same step again. Recalled: the start of the flow. Either way, approvals start over.
+            _enter_step(cid, user, s)
             if diff:
                 notify(actors(get_change(cid), current_step(get_change(cid)) or {"who": "reviewers", "type": "review", "people": []}, s),
                        "change", f"{user.name} resubmitted {label}: {len(diff)} change{'s' if len(diff) > 1 else ''}", user,

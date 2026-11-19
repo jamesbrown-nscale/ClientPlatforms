@@ -34,6 +34,17 @@
   @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
   label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 6px; }
   .hint { font-weight: 400; color: var(--text2); font-size: 12.5px; }
+  .lblrow { display: flex; align-items: center; gap: 6px; position: relative; margin: 0 0 6px; }
+  .lblrow label { margin: 0; }
+  .info { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--primary); background: #fff; color: var(--primary); cursor: pointer;
+    font: italic 700 11px/1 Georgia, "Times New Roman", serif; display: inline-grid; place-items: center; padding: 0; flex-shrink: 0; }
+  .info:hover, .info[aria-expanded="true"] { background: var(--primary); color: #fff; }
+  .info:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(15,65,243,.3); }
+  .tip { position: absolute; top: 26px; left: 0; z-index: 20; width: min(360px, calc(100vw - 48px)); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: 0 16px 40px rgba(4,14,39,.18); padding: 12px 14px; font-weight: 400; font-size: 13px; color: var(--text); line-height: 1.5; }
+  .tip b { display: block; margin-bottom: 4px; font-size: 14px; }
+  .tip ul { margin: 6px 0 0; padding-left: 18px; }
+  .tip li { margin: 3px 0; }
   .field { margin-bottom: 18px; }
   input[type=text], input[type=url], input[type=number], textarea, select {
     width: 100%; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; outline: none; }
@@ -205,7 +216,18 @@
             <input type="text" id="from" maxlength="60" value="Nscale IT">
           </div>
           <div class="field">
-            <label for="expires">Expires <span class="hint">(optional)</span></label>
+            <div class="lblrow"><label for="expires">Expires <span class="hint">(optional)</span></label>
+              <button type="button" class="info" data-tip="tipExpires" aria-expanded="false" aria-controls="tipExpires" title="What does expires do?">i</button>
+              <div class="tip" id="tipExpires" role="tooltip" hidden>
+                <b>What expiry does</b>
+                After this time the message is only for those who already have it.
+                <ul>
+                  <li><strong>Not delivered after it expires.</strong> Devices that haven't checked in by then (switched off, asleep, away) never get it. Good for time-bound news like “VPN down until 6pm”.</li>
+                  <li><strong>Windows</strong> also clears it from the notification centre at that time. On a <strong>Mac</strong> it stays once shown.</li>
+                  <li><strong>Nothing is deleted:</strong> the message, and who received, opened and acknowledged it, stays under Messages.</li>
+                  <li><strong>Never</strong> means every targeted device gets it whenever it next checks in, for up to 14 days.</li>
+                </ul>
+              </div></div>
             <select id="expires">
               <option value="">Never</option><option value="1">In 1 hour</option><option value="4">In 4 hours</option>
               <option value="8">In 8 hours</option><option value="24">In 1 day</option><option value="72">In 3 days</option>
@@ -325,6 +347,15 @@ const PRIORITY = {
 };
 let pollSeconds = 60, onlineSeconds = 180;
 let allowedHosts = ['nscale.com'];
+
+document.querySelectorAll('.info[data-tip]').forEach(b => {
+  const tip = document.getElementById(b.dataset.tip);
+  const show = open => { tip.hidden = !open; b.setAttribute('aria-expanded', String(open)); };
+  b.addEventListener('click', e => { e.stopPropagation(); show(tip.hidden); });
+  b.addEventListener('keydown', e => { if (e.key === 'Escape') show(false); });
+  document.addEventListener('click', e => { if (!tip.hidden && !tip.contains(e.target)) show(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !tip.hidden) { show(false); b.focus(); } });
+});
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });

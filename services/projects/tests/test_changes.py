@@ -241,3 +241,36 @@ def test_section_comments_return_and_what_changed(c):
     assert c.get(f"{API}/changes/{cid}", headers=BOB).json()["revision"]["changes"] == rev["changes"]
     # A change that was never returned has no revision.
     assert raise_change(c)["revision"] is None
+
+
+def test_recall_edit_resubmit_from_the_start_or_delete(c):
+    ch = raise_change(c)
+    cid = ch["id"]
+    assert act(c, cid, AMY, "recall").status_code == 409   # a draft isn't submitted yet
+    act(c, cid, AMY, "submit")
+    act(c, cid, BOB, "approve", "fine")
+    assert c.get(f"{API}/changes/{cid}", headers=AMY).json()["canRecall"] is True
+    assert c.get(f"{API}/changes/{cid}", headers=BOB).json()["canRecall"] is False
+    assert act(c, cid, BOB, "recall").status_code == 403   # only the requestor
+    r = act(c, cid, AMY, "recall", "Want to add a pilot first").json()
+    assert r["status"] == "Recalled" and r["canEdit"] and r["myTurn"]
+    assert inbox_titles(c, "bob.smith@nscale.com")[0] == "Amy Chen recalled CHG-001 BitLocker policy to make changes"
+    # Still visible to others while recalled, but nobody can approve it.
+    assert c.get(f"{API}/changes/{cid}", headers=BOB).json()["status"] == "Recalled"
+    assert act(c, cid, CAT, "approve").status_code == 409
+    # Edit (even the change type), then resubmit: back to the start, approvals start over.
+    c.patch(f"{API}/changes/{cid}", headers=AMY, json={"flowId": "emergency", "risk": "High"})
+    r = act(c, cid, AMY, "submit", "Now an emergency with a pilot").json()
+    assert r["status"] == "In review" and r["step"] == 0 and r["stepName"] == "Emergency approval" and r["stepApprovals"] == []
+    assert r["revision"]["recalled"] is True and {d["field"] for d in r["revision"]["changes"]} == {"risk"}
+    # Can't recall once implementation has started.
+    act(c, cid, CAT, "approve")
+    act(c, cid, AMY, "start")
+    assert act(c, cid, AMY, "recall").status_code == 409
+    assert c.get(f"{API}/changes/{cid}", headers=AMY).json()["canRecall"] is False
+    # A recalled change can be deleted by its requestor.
+    d = raise_change(c)
+    act(c, d["id"], AMY, "submit"); act(c, d["id"], AMY, "recall")
+    assert c.delete(f"{API}/changes/{d['id']}", headers=BOB).status_code == 403
+    assert c.delete(f"{API}/changes/{d['id']}", headers=AMY).status_code == 200
+    assert c.get(f"{API}/changes/{d['id']}", headers=AMY).status_code == 404

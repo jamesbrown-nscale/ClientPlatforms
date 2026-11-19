@@ -153,6 +153,7 @@
   .check .by { display: block; font-size: 12px; color: var(--muted); }
   .bar2 { height: 8px; border-radius: 4px; background: var(--grey-fill); overflow: hidden; flex: 1; min-width: 120px; }
   .bar2 i { display: block; height: 100%; background: var(--ok); }
+  .recallrow { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin: -10px 0 18px; }
   .glance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; }
   .glance .k { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text2); }
   .glance .v { font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
@@ -244,7 +245,7 @@ const name = e => (PEOPLE.find(p => p.email === e) || {}).name || (e || '').spli
 const fmtWhen = s => s ? new Date(s).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 const fmtWindow = f => f.start ? `${fmtWhen(f.start)}${f.end ? ' – ' + new Date(f.end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''}` : 'No window yet';
 const STATUS = { 'Draft': '', 'In review': 'blue', 'Changes requested': 'amber', 'Awaiting schedule': 'violet', 'Scheduled': 'violet',
-                 'In progress': 'blue', 'Awaiting verification': 'blue', 'Completed': 'green', 'Declined': 'red', 'Failed': 'red', 'Cancelled': '' };
+                 'In progress': 'blue', 'Awaiting verification': 'blue', 'Completed': 'green', 'Declined': 'red', 'Failed': 'red', 'Cancelled': '', 'Recalled': 'amber' };
 const chip = st => `<span class="chip ${STATUS[st] ?? ''}">${esc(st)}</span>`;
 const riskChip = r => r ? `<span class="chip ${r === 'High' ? 'red' : r === 'Medium' ? 'amber' : 'green'}">Risk ${esc(r)}</span>` : '';
 const withMentions = t => esc(t).replace(/@([\w.+-]+@[\w-]+\.[\w.-]+|[\w.-]+)/g, m => `<span class="mention">${m}</span>`);
@@ -283,8 +284,8 @@ function flowStrip(c) {
   const at = c.state === 'completed' ? steps.length : c.step;
   let html = `<div class="fstep ${c.state === 'draft' ? 'now' : 'done'}"><span class="c">${c.state === 'draft' ? '1' : svg('check')}</span><span class="l">Raised</span></div>`;
   steps.forEach((s, i) => {
-    const cls = i < at ? 'done' : i === at && c.state !== 'draft' && c.state !== 'cancelled' ? (bad ? 'bad' : 'now') : '';
-    html += `<div class="fline ${i < at || (i === 0 && c.state !== 'draft') ? 'done' : ''}"></div>
+    const cls = c.state === 'recalled' ? '' : i < at ? 'done' : i === at && c.state !== 'draft' && c.state !== 'cancelled' ? (bad ? 'bad' : 'now') : '';
+    html += `<div class="fline ${c.state !== 'recalled' && (i < at || (i === 0 && c.state !== 'draft')) ? 'done' : ''}"></div>
       <div class="fstep ${cls}"><span class="c">${cls === 'done' ? svg('check') : cls === 'bad' ? svg('x') : i + 2}</span><span class="l">${esc(s.name)}</span></div>`;
   });
   html += `<div class="fline ${c.state === 'completed' ? 'done' : ''}"></div><div class="fstep ${c.state === 'completed' ? 'done' : ''}"><span class="c">${c.state === 'completed' ? svg('check') : steps.length + 2}</span><span class="l">Done</span></div>`;
@@ -296,6 +297,14 @@ function actionPanel(c) {
   const mine = c.requestor === ME.email;
   if (c.state === 'draft') return mine ? `<div class="panel"><h3>Draft</h3><div class="muted">Only you can see it until you submit it. It then goes through the ${esc(c.flow.name)} flow.</div>
     <div class="acts" style="margin-top:10px"><button class="btn primary" data-do="submit">Submit</button><button class="btn" data-edit>Edit</button><span style="flex:1"></span><button class="btn danger" data-delete>Delete draft</button></div></div>` : '';
+  if (c.state === 'recalled') {
+    const why = [...c.activity].reverse().find(a => a.kind === 'recall');
+    return mine ? `<div class="panel amber"><h3>Recalled</h3><div class="muted">Only you can act on it now. Edit it, then resubmit: it goes through the ${esc(c.flow.name)} flow again from the start, and reviewers see what you changed. Or delete it.</div>
+        ${why?.body ? `<div style="margin-top:6px;white-space:pre-wrap">${esc(why.body)}</div>` : ''}
+        <textarea id="pBody" placeholder="What you changed (optional)"></textarea>
+        <div class="acts"><button class="btn" data-edit>Edit the change</button><button class="btn primary" data-do="submit">Resubmit</button><span style="flex:1"></span><button class="btn danger" data-delete>Delete change</button></div></div>`
+      : `<div class="panel amber"><h3>Recalled by ${esc(c.requestorName)}</h3><div class="muted">They're making changes. It starts the flow again when they resubmit.</div>${why?.body ? `<div style="margin-top:6px;white-space:pre-wrap">${esc(why.body)}</div>` : ''}</div>`;
+  }
   if (c.state === 'changes_requested') {
     const ask = [...c.activity].reverse().find(a => a.kind === 'request_changes');
     return `<div class="panel amber"><h3>Returned to ${mine ? 'you' : esc(c.requestorName)}${ask ? ' by ' + esc(ask.authorName) : ''}</h3>${ask ? `<div class="body" style="white-space:pre-wrap">${esc(ask.body)}</div>` : ''}
@@ -341,7 +350,7 @@ function actionPanel(c) {
 function evRow(a) {
   const when = `<span class="when">${esc(fmtWhen(a.createdAt))}</span>`;
   const sysText = { submit: 'submitted the change', resubmit: 'resubmitted it', schedule: `scheduled it for ${a.data ? fmtWindow(a.data) : ''}`,
-                    start: 'started implementing', complete: 'marked it complete', cancel: 'cancelled the change' };
+                    start: 'started implementing', complete: 'marked it complete', cancel: 'cancelled the change', recall: 'recalled it to make changes' };
   if (a.kind === 'resubmit') {
     const ch = a.data?.changes || [];
     return `<div class="ev sys"><span class="who2">${esc(a.authorName)}</span> resubmitted it${ch.length ? ` · changed ${ch.map(d => `<button type="button" class="onsec" data-go="${esc(d.section)}">${esc(d.label)}</button>`).join(' ')}` : ' with no changes'} ${when}${a.body ? `<div class="body" style="color:var(--text)">${withMentions(a.body)}</div>` : ''}</div>`;
@@ -413,8 +422,9 @@ function drawDetail() {
     <h2>${esc(c.title)}</h2>
     ${c.state === 'draft' ? '' : flowStrip(c)}
     ${actionPanel(c)}
+    ${c.canRecall ? `<div class="recallrow"><span class="muted">Need to change something before it goes ahead?</span><button class="btn small warn" data-do="recall">Recall</button></div>` : ''}
     ${rev ? `<div class="revision" role="status"><h3>Resubmitted with ${rev.changes.length} change${rev.changes.length > 1 ? 's' : ''}</h3>
-      <div class="muted">${esc(rev.by)} · ${esc(fmtWhen(rev.at))}${rev.returnedBy ? ` · after ${esc(rev.returnedBy)} returned it` : ''}</div>
+      <div class="muted">${esc(rev.by)} · ${esc(fmtWhen(rev.at))}${rev.recalled ? ' · after recalling it, so the flow started again' : rev.returnedBy ? ` · after ${esc(rev.returnedBy)} returned it` : ''}</div>
       ${rev.note ? `<div style="margin-top:6px;white-space:pre-wrap">${withMentions(rev.note)}</div>` : ''}
       <div class="chg">${rev.changes.map(d => `<button type="button" data-go="${esc(d.section)}">${esc(d.label)}${d.field === 'plan' ? ` (+${d.added.length} −${d.removed.length})` : ''}</button>`).join('')}</div></div>` : ''}
     <div class="secs">
@@ -436,7 +446,9 @@ function drawDetail() {
   $('detail').querySelectorAll('[data-check]').forEach(cb => cb.onchange = () => tick(cb.dataset.check, cb.checked));
   $('detail').querySelector('[data-edit]')?.addEventListener('click', () => form(CUR));
   $('detail').querySelector('[data-delete]')?.addEventListener('click', async () => {
-    if (!(await cp.confirm({ title: `Delete ${c.ref}?`, message: 'The draft is deleted. Nobody else has seen it.', confirm: 'Delete draft', danger: true }))) return;
+    const recalled = c.state === 'recalled';
+    if (!(await cp.confirm({ title: `Delete ${c.ref}?`, message: recalled ? 'The change and its thread are deleted for everyone. This can\'t be undone.' : 'The draft is deleted. Nobody else has seen it.',
+      confirm: recalled ? 'Delete change' : 'Delete draft', danger: true }))) return;
     try { await api('changes/' + c.id, { method: 'DELETE' }); CUR = null; $('detail').innerHTML = '<div class="empty">Deleted.</div>'; load(); } catch (e) { cp.alert(e.message); }
   });
   $('detail').querySelectorAll('[data-go]').forEach(b => b.onclick = () => {   // jump to a section
@@ -490,6 +502,12 @@ async function doAction(a) {
                         cancel: ['Cancel this change?', 'It closes and everyone involved is told.', 'Cancel change'],
                         fail: ['Mark it as failed?', 'It closes as failed and the reviewers are told.', 'Mark failed'] }[a];
   if (confirmText && !(await cp.confirm({ title: confirmText[0], message: confirmText[1], confirm: confirmText[2], cancel: 'Go back', danger: true }))) return;
+  if (a === 'recall') {
+    const why = await cp.prompt({ title: `Recall ${c.ref}?`, icon: 'warn', message: 'It comes back to you to edit. Reviewers are told, any approvals so far are cleared, and it goes through the flow again from the start when you resubmit.',
+      label: 'Why (optional)', placeholder: 'Adding a pilot group first', confirm: 'Recall' });
+    if (why === null) return;
+    body = why;
+  }
   const payload = { action: a, body };
   if (a === 'schedule') { payload.start = $('pStart').value; payload.end = $('pEnd').value; }
   try { CUR = await send(`changes/${c.id}/act`, payload); drawDetail(); load(); window.cpNavRefreshInbox?.(); }
@@ -504,7 +522,7 @@ function form(c) {
     <p class="muted" style="margin:4px 0 16px">Save it as a draft and come back, or submit it straight away. Fields marked * are needed to submit.</p>
     <div class="form">
       <div class="fld full"><label for="f_title">Title <span class="req">*</span></label><input id="f_title" maxlength="200" value="${esc(c?.title || '')}" placeholder="Turn on BitLocker silent encryption for all Windows laptops"></div>
-      <div class="fld full"><label>Change type <span class="req">*</span></label><div class="flowpick">${ME.flows.map((fl, i) => `<label><input type="radio" name="flow" value="${esc(fl.id)}" ${(c ? c.flow.id === fl.id : i === (ME.flows.length > 1 ? 1 : 0)) ? 'checked' : ''} ${c && c.state !== 'draft' ? 'disabled' : ''}>
+      <div class="fld full"><label>Change type <span class="req">*</span></label><div class="flowpick">${ME.flows.map((fl, i) => `<label><input type="radio" name="flow" value="${esc(fl.id)}" ${(c ? c.flow.id === fl.id : i === (ME.flows.length > 1 ? 1 : 0)) ? 'checked' : ''} ${c && !['draft', 'recalled'].includes(c.state) ? 'disabled' : ''}>
         <b>${esc(fl.name)}</b><span class="muted">${esc(fl.description)}</span><div class="st">${fl.steps.map(s => esc(s.name)).join(' → ')}</div></label>`).join('')}</div></div>
       <div class="fld third"><label for="f_category">Category</label><select id="f_category"><option value="">Choose…</option>${ME.categories.map(x => `<option ${x === f.category ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
       <div class="fld third"><label for="f_risk">Risk <span class="req">*</span></label><select id="f_risk"><option value="">Choose…</option>${ME.risks.map(x => `<option ${x === f.risk ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
@@ -517,7 +535,7 @@ function form(c) {
         <div class="steps-ed" id="f_steps"></div><div class="hint">One step per line. Enter adds the next. The implementer ticks them off as they go.</div></div>
       ${ta('test', 2, false, 'How you will know it worked')}${ta('rollback', 3, true, 'How to undo it if it goes wrong')}
     </div>
-    <div style="display:flex;gap:8px;margin-top:14px"><span style="flex:1"></span><button class="btn" id="fSave">${c ? 'Save' : 'Save draft'}</button>${!c || c.state === 'draft' ? '<button class="btn primary" id="fSubmit">Save and submit</button>' : ''}</div>`;
+    <div style="display:flex;gap:8px;margin-top:14px"><span style="flex:1"></span><button class="btn" id="fSave">${c ? 'Save' : 'Save draft'}</button>${!c || c.state === 'draft' ? '<button class="btn primary" id="fSubmit">Save and submit</button>' : c.state === 'recalled' ? '<button class="btn primary" id="fSubmit">Save and resubmit</button>' : ''}</div>`;
   $('fClose').onclick = () => c ? openChange(c.id) : ($('detail').innerHTML = '<div class="empty">Pick a change, or raise a new one.</div>');
   // The plan: a numbered list of steps.
   let steps = (f.planSteps || []).map(x => ({ id: x.id, text: x.text }));
