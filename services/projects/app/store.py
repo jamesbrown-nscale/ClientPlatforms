@@ -64,10 +64,15 @@ class Store:
                 id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, position INTEGER DEFAULT 0,
                 title TEXT NOT NULL, description TEXT DEFAULT '', note TEXT DEFAULT '', start TEXT DEFAULT '',
                 duration INTEGER DEFAULT 1, assignee TEXT DEFAULT '', assignee_name TEXT DEFAULT '', status TEXT NOT NULL,
-                created_by TEXT, created_at TEXT, updated_at TEXT);
+                created_by TEXT, created_at TEXT, updated_at TEXT, progress INTEGER DEFAULT 0);
             CREATE INDEX IF NOT EXISTS jobs_task ON pipeline_jobs(task_id, position);
             CREATE INDEX IF NOT EXISTS jobs_start ON pipeline_jobs(start);
             """)
+            self._add_columns(db, "pipeline_jobs", {"progress": "INTEGER DEFAULT 0",   # % complete, while In progress
+                                                    "people": "TEXT DEFAULT '[]'"})    # everyone on the job: [{email, name}]
+            # Jobs from before a job could have several people: their one assignee becomes the list.
+            db.execute("UPDATE pipeline_jobs SET people = json_array(json_object('email', assignee, 'name', assignee_name)) "
+                       "WHERE assignee != '' AND (people IS NULL OR people = '[]')")
             # Team (see team.py).
             db.executescript("""
             CREATE TABLE IF NOT EXISTS team_members (
@@ -98,6 +103,14 @@ class Store:
                 author TEXT, author_name TEXT, body TEXT DEFAULT '', step INTEGER, mentions TEXT DEFAULT '[]', data TEXT, created_at TEXT);
             CREATE INDEX IF NOT EXISTS change_activity_change ON change_activity(change_id, created_at);
             """)
+
+    @staticmethod
+    def _add_columns(db, table: str, cols: dict) -> None:
+        """Columns added since a table was first made (CREATE TABLE IF NOT EXISTS leaves older tables as they were)."""
+        have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+        for name, kind in cols.items():
+            if name not in have:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
     def db(self):
         db = sqlite3.connect(self.path, timeout=10)

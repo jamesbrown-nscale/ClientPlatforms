@@ -229,3 +229,66 @@ def test_tag_people_in_job_notes(c):
                                               "mentions": ["val.jones@nscale.com", "bob.smith@nscale.com"]})
     assert len(inbox_titles(c, "val.jones@nscale.com")) == 1
     assert inbox_titles(c, "bob.smith@nscale.com") == ["Amy Chen mentioned you on PL-001 Rollout: Inventory"]
+
+
+def test_job_progress(c, tmp_path):
+    t = new(c, title="Office move")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    j = c.post(J, headers=AMY, json={"title": "Survey site", "status": "In progress", "progress": 40}).json()["jobs"][0]
+    assert (j["status"], j["progress"]) == ("In progress", 40)
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"progress": 101}).status_code == 422
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"progress": 75}).json()["jobs"][0]["progress"] == 75
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"status": "Done"}).json()["jobs"][0]["progress"] == 100
+    # A database from before progress was kept gets the column when the app starts.
+    import sqlite3
+    from app import store as store_mod
+    old = tmp_path / "old.db"
+    with sqlite3.connect(old) as db:
+        db.execute("CREATE TABLE pipeline_jobs (id TEXT PRIMARY KEY, task_id TEXT, position INTEGER, title TEXT, description TEXT, note TEXT, "
+                   "start TEXT, duration INTEGER, assignee TEXT, assignee_name TEXT, status TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)")
+    store_mod.Store(str(old))
+    with sqlite3.connect(old) as db:
+        assert "progress" in {r[1] for r in db.execute("PRAGMA table_info(pipeline_jobs)")}
+
+
+def test_several_people_on_a_job(c, tmp_path):
+    t = new(c, title="Office move")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    r = c.post(J, headers=AMY, json={"title": "Move desks", "start": "2026-11-30", "duration": 2,
+                                     "people": [{"email": "Bob.Smith@nscale.com", "name": "Bob Smith"}, {"email": "cat@nscale.com"},
+                                                {"email": "bob.smith@nscale.com"}]}).json()
+    j = r["jobs"][0]
+    assert [p["email"] for p in j["people"]] == ["bob.smith@nscale.com", "cat@nscale.com"]   # duplicates dropped
+    assert (j["assignee"], j["assigneeName"]) == ("bob.smith@nscale.com", "Bob Smith")         # the first, for older pages
+    assert inbox_titles(c, "bob.smith@nscale.com")[0] == inbox_titles(c, "cat@nscale.com")[0] == \
+        "Amy Chen gave you a job on PL-001 Office move: Move desks"
+    # Each of them sees the plan, can change it, and has the job under Mine and on the timeline.
+    for h in (BOB, CAT):
+        assert c.get(f"/tasks/api/tasks/{t['id']}", headers=h).status_code == 200
+        mine = c.get("/tasks/api/timeline?mine=true", headers=h).json()["plans"]
+        assert [jj["title"] for p in mine for jj in p["jobs"]] == ["Move desks"]
+    # Adding someone tells only them; taking someone off is fine; a bad email is refused.
+    c.patch(f"{J}/{j['id']}", headers=AMY, json={"people": [{"email": "cat@nscale.com"}, {"email": "dan@nscale.com"}]})
+    assert inbox_titles(c, "dan@nscale.com") == ["Amy Chen gave you a job on PL-001 Office move: Move desks"]
+    assert len(inbox_titles(c, "cat@nscale.com")) == 1
+    assert c.get("/tasks/api/timeline?mine=true", headers=BOB).json()["plans"] == []
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"people": [{"email": "not an email"}]}).status_code == 422
+    # Older pages still send one assignee.
+    j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"assignee": "bob.smith@nscale.com"}).json()["jobs"][0]
+    assert [p["email"] for p in j["people"]] == ["bob.smith@nscale.com"]
+    j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"people": []}).json()["jobs"][0]
+    assert (j["people"], j["assignee"]) == ([], "")
+
+    # A database from before: each job's one assignee becomes its list of people.
+    import sqlite3
+    from app import store as store_mod
+    old = tmp_path / "old.db"
+    with sqlite3.connect(old) as db:
+        db.execute("CREATE TABLE pipeline_jobs (id TEXT PRIMARY KEY, task_id TEXT, position INTEGER, title TEXT, description TEXT, note TEXT, "
+                   "start TEXT, duration INTEGER, assignee TEXT, assignee_name TEXT, status TEXT, created_by TEXT, created_at TEXT, updated_at TEXT)")
+        db.execute("INSERT INTO pipeline_jobs (id, task_id, title, assignee, assignee_name, status) VALUES ('j1', 't1', 'x', 'val@nscale.com', 'Val', 'To do')")
+        db.execute("INSERT INTO pipeline_jobs (id, task_id, title, assignee, assignee_name, status) VALUES ('j2', 't1', 'y', '', '', 'To do')")
+    store_mod.Store(str(old))
+    with sqlite3.connect(old) as db:
+        assert dict(db.execute("SELECT id, people FROM pipeline_jobs").fetchall()) == \
+            {"j1": '[{"email":"val@nscale.com","name":"Val"}]', "j2": "[]"}

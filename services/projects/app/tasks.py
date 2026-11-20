@@ -89,9 +89,21 @@ def project_role(pid: str | None, user: User) -> str | None:
     return store().role(pid, user.email) or ("Owner" if user.admin else None)
 
 
+def _people_of(r) -> list[dict]:
+    """Everyone on a job ([{email, name}], the first is also its `assignee`)."""
+    try:
+        people = json.loads(r["people"] or "[]")
+    except (ValueError, TypeError, IndexError, KeyError):
+        people = []
+    if not people and r["assignee"]:
+        people = [{"email": r["assignee"], "name": r["assignee_name"]}]
+    return [p for p in people if isinstance(p, dict) and p.get("email")]
+
+
 def _job_people(tid: str) -> set[str]:
     with store().db() as db:
-        return {r["assignee"] for r in db.execute("SELECT assignee FROM pipeline_jobs WHERE task_id = ? AND assignee != ''", (tid,))}
+        rows = db.execute("SELECT assignee, assignee_name, people FROM pipeline_jobs WHERE task_id = ?", (tid,)).fetchall()
+    return {p["email"] for r in rows for p in _people_of(r)}
 
 
 def can_see(t: dict, user: User) -> bool:
@@ -115,7 +127,8 @@ def visible_tasks(user: User) -> list[dict]:
     with store().db() as db:
         rows = db.execute("SELECT t.*, p.doc AS project_doc FROM tasks t LEFT JOIN projects p ON p.id = t.project_id").fetchall()
         mine = {r["project_id"] for r in db.execute("SELECT project_id FROM members WHERE email = ?", (user.email,))}
-        my_jobs = {r["task_id"] for r in db.execute("SELECT task_id FROM pipeline_jobs WHERE assignee = ?", (user.email,))}
+        my_jobs = {r["task_id"] for r in db.execute("SELECT task_id, assignee, assignee_name, people FROM pipeline_jobs")
+                   if any(p["email"] == user.email for p in _people_of(r))}
     out = []
     for r in rows:
         t = _view(r)
@@ -196,7 +209,8 @@ def _people_known() -> list[dict]:
     """Everyone the Team Planning data knows by email (assignees, creators, authors, project members)."""
     with store().db() as db:
         rows = db.execute("SELECT assignee AS email, assignee_name AS name FROM tasks WHERE assignee != '' "
-                          "UNION SELECT assignee, assignee_name FROM pipeline_jobs WHERE assignee != '' "
+                          "UNION SELECT json_extract(p.value, '$.email'), json_extract(p.value, '$.name') "
+                          "FROM pipeline_jobs, json_each(pipeline_jobs.people) p "
                           "UNION SELECT created_by, created_by_name FROM tasks "
                           "UNION SELECT author, author_name FROM task_activity "
                           "UNION SELECT email, name FROM members").fetchall()
@@ -552,7 +566,8 @@ def _job(r) -> dict:
     return {"id": r["id"], "pipelineId": r["task_id"], "position": r["position"], "title": r["title"],
             "description": r["description"], "note": r["note"], "start": r["start"], "duration": r["duration"],
             "end": end_of(r["start"], r["duration"]) if r["start"] else "", "assignee": r["assignee"],
-            "assigneeName": r["assignee_name"], "status": r["status"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
+            "assigneeName": r["assignee_name"], "people": _people_of(r), "status": r["status"],
+            "progress": 100 if r["status"] == "Done" else (r["progress"] or 0), "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
 
 
 def jobs_of(tid: str) -> list[dict]:
@@ -565,17 +580,22 @@ def _job_summary(user: User) -> dict:
     """Per plan: how many jobs, how many done, the first start and last end, and how many open are mine."""
     out = {}
     with store().db() as db:
-        rows = db.execute("SELECT task_id, start, duration, status, assignee FROM pipeline_jobs").fetchall()
+        rows = db.execute("SELECT task_id, start, duration, status, assignee, assignee_name, people FROM pipeline_jobs").fetchall()
     for r in rows:
         s = out.setdefault(r["task_id"], {"total": 0, "done": 0, "start": "", "end": "", "mine": 0})
         s["total"] += 1
         s["done"] += r["status"] == "Done"
-        s["mine"] += r["assignee"] == user.email and r["status"] != "Done"
+        s["mine"] += any(p["email"] == user.email for p in _people_of(r)) and r["status"] != "Done"
         if r["start"]:
             e = end_of(r["start"], r["duration"])
             s["start"] = min(s["start"] or r["start"], r["start"])
             s["end"] = max(s["end"], e)
     return out
+
+
+class PersonIn(BaseModel):
+    email: str = Field(max_length=254)
+    name: str = Field(default="", max_length=100)
 
 
 class JobIn(BaseModel):
@@ -584,9 +604,11 @@ class JobIn(BaseModel):
     note: str | None = Field(default=None, max_length=10000)
     start: str | None = None
     duration: int | None = Field(default=None, ge=1, le=365)
-    assignee: str | None = Field(default=None, max_length=254)
+    assignee: str | None = Field(default=None, max_length=254)        # one person (older pages); `people` for several
     assigneeName: str | None = Field(default=None, max_length=100)
+    people: list[PersonIn] | None = Field(default=None, max_length=30)
     status: str | None = None
+    progress: int | None = Field(default=None, ge=0, le=100)          # % complete, shown while In progress
     mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list in the note or description
 
 
@@ -617,12 +639,25 @@ def _clean_job(body: JobIn) -> dict:
         if body.status not in STATUSES:
             raise HTTPException(422, f"Status must be one of {', '.join(STATUSES)}.")
         out["status"] = body.status
-    if body.assignee is not None:
-        a = body.assignee.strip().lower()
-        if a and not EMAIL.match(a):
-            raise HTTPException(422, "Assign the job to someone's email address.")
-        out["assignee"] = a
-        out["assignee_name"] = (body.assigneeName or "").strip() or (access.display_name(a) if a else "")
+        if body.status == "Done":
+            out["progress"] = 100
+    if body.progress is not None and "progress" not in out:
+        out["progress"] = body.progress
+    people = body.people
+    if people is None and body.assignee is not None:
+        people = [PersonIn(email=body.assignee, name=body.assigneeName or "")] if body.assignee.strip() else []
+    if people is not None:
+        seen, clean = set(), []
+        for p in people:
+            a = p.email.strip().lower()
+            if not EMAIL.match(a):
+                raise HTTPException(422, f"“{p.email}” isn't an email address: assign the job to people's emails.")
+            if a not in seen:
+                seen.add(a)
+                clean.append({"email": a, "name": p.name.strip() or access.display_name(a)})
+        out["people"] = json.dumps(clean)
+        out["assignee"] = clean[0]["email"] if clean else ""
+        out["assignee_name"] = clean[0]["name"] if clean else ""
     return out
 
 
@@ -661,8 +696,12 @@ def _tell_job_mentions(t: dict, j: dict, body: "JobIn", before: dict | None, use
                (j.get("note") or j.get("description") or "")[:300], link(t["id"]) + f"&job={j['id']}")
 
 
-def _tell_job_assignee(t: dict, j: dict, user: User) -> None:
-    notify(j["assignee"], "job_assigned", f"{user.name} gave you a job on {t['ref']} {t['title']}: {j['title']}", user,
+def _tell_job_assignee(t: dict, j: dict, user: User, before: dict | None = None) -> None:
+    """Tell the people newly on a job (not whoever made the change)."""
+    new = {p["email"] for p in j["people"]} - {p["email"] for p in (before or {}).get("people", [])} - {user.email}
+    if not new:
+        return
+    notify(sorted(new), "job_assigned", f"{user.name} gave you a job on {t['ref']} {t['title']}: {j['title']}", user,
            _when(j), link(t["id"]) + f"&job={j['id']}")
 
 
@@ -676,14 +715,13 @@ def add_job(tid: str, body: JobIn, user: User = Depends(require_task_user)):
     with store().lock, store().db() as db:
         pos = db.execute("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM pipeline_jobs WHERE task_id = ?", (tid,)).fetchone()["n"]
         db.execute("INSERT INTO pipeline_jobs (id, task_id, position, title, description, note, start, duration, assignee, "
-                   "assignee_name, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   "assignee_name, people, status, progress, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (jid, tid, pos, f["title"], f.get("description", ""), f.get("note", ""), f.get("start", ""),
-                    f.get("duration", 1), f.get("assignee", ""), f.get("assignee_name", ""), f.get("status", "To do"),
-                    user.email, stamp, stamp))
+                    f.get("duration", 1), f.get("assignee", ""), f.get("assignee_name", ""), f.get("people", "[]"), f.get("status", "To do"),
+                    f.get("progress", 0), user.email, stamp, stamp))
     _add_activity(tid, "change", user, data={"field": "job", "action": "added", "to": f["title"]})
     j = _job_row(tid, jid)
-    if j["assignee"]:
-        _tell_job_assignee(t, j, user)
+    _tell_job_assignee(t, j, user)
     _tell_job_mentions(t, j, body, None, user)
     return read_task(tid, user)
 
@@ -702,8 +740,7 @@ def update_job(tid: str, jid: str, body: JobIn, user: User = Depends(require_tas
         _add_activity(tid, "change", user, data={"field": "job", "action": "done", "to": j["title"]})
     elif before["start"] != j["start"] or before["duration"] != j["duration"]:
         _add_activity(tid, "change", user, data={"field": "job", "action": "scheduled", "to": j["title"], "when": _when(j)})
-    if j["assignee"] and j["assignee"] != before["assignee"]:
-        _tell_job_assignee(t, j, user)
+    _tell_job_assignee(t, j, user, before)
     _tell_job_mentions(t, j, body, before, user)
     return read_task(tid, user)
 
@@ -746,7 +783,7 @@ def calendar(start: str, end: str, project: str = "", mine: bool = False, user: 
     for r in rows:
         j = _job(r)
         t = seen.get(j["pipelineId"])
-        if not t or j["end"] < a.isoformat() or (mine and j["assignee"] != user.email):
+        if not t or j["end"] < a.isoformat() or (mine and user.email not in {p["email"] for p in j["people"]}):
             continue
         j["pipeline"] = {"id": t["id"], "ref": t["ref"], "title": t["title"], "status": t["status"],
                          "project": (t["project"] or {}).get("name", "")}
@@ -773,7 +810,7 @@ def timeline(project: str = "", mine: bool = False, user: User = Depends(require
     for t in plans:
         jobs = by_plan.get(t["id"], [])
         if mine:
-            jobs = [j for j in jobs if j["assignee"] == user.email]
+            jobs = [j for j in jobs if user.email in {p["email"] for p in j["people"]}]
             if not jobs and t["assignee"] != user.email:
                 continue
         starts = [j["start"] for j in jobs if j["start"]]

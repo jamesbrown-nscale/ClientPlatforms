@@ -164,7 +164,8 @@
   .jh:hover { background: var(--soft); border-radius: 10px; }
   .grip { cursor: grab; color: var(--muted); font-size: 14px; line-height: 1; user-select: none; padding: 2px 0; }
   .jdot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-  .jt { font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .jt { font-weight: 600; flex: 1 1 120px; min-width: 90px; overflow-wrap: break-word; }
+  .jh { flex-wrap: wrap; row-gap: 4px; }
   .job.isdone .jt { text-decoration: line-through; color: var(--text2); font-weight: 400; }
   .jw { font-size: 12.5px; color: var(--text2); white-space: nowrap; }
   .jw.unsched { color: var(--muted); font-style: italic; }
@@ -175,6 +176,27 @@
   .jb { padding: 4px 12px 12px; border-top: 1px solid var(--surface); }
   .jb .fields { margin: 10px 0; }
   .jb .ends { height: 36px; display: flex; align-items: center; color: var(--text2); }
+  .pplpick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; padding: 4px 6px; background: #fff; border: 1px solid var(--border); border-radius: 8px; cursor: text; }
+  .pplpick:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .pplpick #jChips { display: contents; }
+  .pplpick input { flex: 1 1 140px; min-width: 120px; border: 0 !important; height: 26px !important; padding: 0 4px !important; outline: none; box-shadow: none !important; background: transparent; }
+  .pchip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: var(--violet-fill, #ECE8FD); color: var(--violet, #4A3AB0); font-size: 13px; font-weight: 600; }
+  .pchip.me { background: var(--ok-fill); color: var(--ok-text); }
+  .pchip button { border: 0; background: transparent; color: inherit; cursor: pointer; width: 20px; height: 20px; border-radius: 50%; font-size: 15px; line-height: 1; padding: 0; }
+  .pchip button:hover { background: rgba(4,14,39,.1); }
+  .avs { display: inline-flex; flex-shrink: 0; }
+  .avs .av { box-shadow: 0 0 0 2px var(--bg); }
+  .avs .av + .av { margin-left: -6px; }
+  .av.more { background: var(--grey-fill); color: var(--text2); font-size: 10.5px; }
+  .stp { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .stp select { flex: 0 0 auto; width: auto; min-width: 160px; }
+  .pctin { display: inline-flex; align-items: center; gap: 8px; color: var(--text2); font-size: 13px; }
+  .pctin[hidden] { display: none; }
+  .pctin input { width: 76px; text-align: right; }
+  .pbar { display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; vertical-align: middle; }
+  .pbar i { display: block; height: 100%; background: var(--primary); border-radius: 3px; transition: width .15s; }
+  .jpct { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .jpct .pbar { width: 48px; height: 5px; }
   .jtext h3 { font-size: 12px; color: var(--text2); margin: 10px 0 2px; }
   .jtext .body { white-space: pre-wrap; overflow-wrap: anywhere; }
   .jnote { background: var(--warn-fill); color: #5C3A00; border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -311,7 +333,7 @@
     <div class="tlbar">
       <button class="ib" id="calPrev" title="Earlier" aria-label="Earlier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
       <button class="ib" id="calNext" title="Later" aria-label="Later"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
-      <button class="btn small" id="calToday" style="height:32px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>Today</button>
+      <button class="btn small" id="calToday" style="height:32px" title="This week and the next two"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>Today</button>
       <span class="tlrange" id="calTitle"></span><span style="flex:1"></span>
       <button class="ib" id="zoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6"/></svg></button>
       <button class="ib" id="zoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/></svg></button>
@@ -344,7 +366,7 @@ let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine
 let JM = {};   // @mention pickers on the job form's description and note
 let MODE = 'list', CAL = null, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
 let GROUP = (() => { try { return localStorage.getItem('cp.tl.group') === 'plan' ? 'plan' : 'person'; } catch { return 'person'; } })();   // timeline rows: by person or by plan
-let RS = null, RE = null, DW = 34, FIT = true;   // timeline: first and last day shown, day width in px, fitted to the plan
+let RS = null, RE = null, DW = 34, FIT = false, WEEKS = true;   // timeline: first and last day shown, day width in px; fitted to the plans, or this week and the next two (the default)
 const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
 
 /** Who to suggest after @: the people on this plan first, then everyone with Team Planning. */
@@ -353,7 +375,7 @@ function mentionPeople() {
   if (!t) return {};
   add(t.assignee, 'Assigned');
   add(t.createdBy, 'Created it');
-  (t.jobs || []).forEach(j => add(j.assignee, 'Has a job: ' + j.title));
+  (t.jobs || []).forEach(j => jobPeople(j).forEach(p => add(p.email, 'Has a job: ' + j.title)));
   t.activity.forEach(a => { add(a.waitingOn, 'Asked a question'); add(a.author, 'In the thread'); });
   return { involved: out, everyone: PEOPLE.filter(p => p.email !== ME.email) };
 }
@@ -399,6 +421,12 @@ const shortDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined
 const span = (a, b) => !a ? '' : a === b ? fmtDay(a) : `${fmtDay(a)} → ${fmtDay(b)}`;
 const days = n => `${n} day${n === 1 ? '' : 's'}`;
 const statusChip = st => `<span class="chip s-${esc(String(st).toLowerCase().replace(/\s+/g, ''))}">${esc(st)}</span>`;
+/** Everyone on a job (older jobs: their one assignee). */
+const jobPeople = j => j.people?.length ? j.people : j.assignee ? [{ email: j.assignee, name: j.assigneeName || personName(j.assignee) }] : [];
+const jobNames = j => jobPeople(j).map(p => p.name || personName(p.email)).join(', ');
+const avatars = j => { const ps = jobPeople(j); if (!ps.length) return '<span class="av none" title="Unassigned">–</span>';
+  return `<span class="avs" title="${esc(jobNames(j))}">${ps.slice(0, 3).map(p => `<span class="av ${p.email === ME.email ? 'me' : ''}">${esc(initials(p.name || p.email))}</span>`).join('')}${ps.length > 3 ? `<span class="av more">+${ps.length - 3}</span>` : ''}</span>`; };
+let JPEOPLE = [];   // the people on the job being edited
 const findPerson = v => { v = String(v || '').trim(); const p = PEOPLE.find(x => x.email === v.toLowerCase() || x.name.toLowerCase() === v.toLowerCase()); return { assignee: p ? p.email : v, assigneeName: p ? p.name : '' }; };
 
 /** Everyone with Team Planning (you first), each with their jobs from CAL's open plans; then anyone else with jobs, then unassigned. */
@@ -407,7 +435,11 @@ function peopleGroups(mine) {
   const person = (email, name) => { if (!byWho.has(email)) byWho.set(email, { email, name: name || personName(email), jobs: [] }); return byWho.get(email); };
   (mine ? PEOPLE.filter(p => p.email === ME.email) : PEOPLE).forEach(p => person(p.email, p.name));
   if (mine && !byWho.size) person(ME.email, ME.name);
-  (CAL?.plans || []).forEach(p => p.jobs.forEach(j => person(j.assignee || '', j.assignee ? j.assigneeName : 'Unassigned').jobs.push({ p, j })));
+  // A job with several people is under each of them.
+  (CAL?.plans || []).forEach(p => p.jobs.forEach(j => {
+    const ps = jobPeople(j);
+    (ps.length ? ps : [{ email: '', name: 'Unassigned' }]).forEach(x => person(x.email, x.email ? x.name : 'Unassigned').jobs.push({ p, j }));
+  }));
   const groups = [...byWho.values()].sort((a, b) => (a.email === '') - (b.email === '') || (b.email === ME.email) - (a.email === ME.email) || a.name.localeCompare(b.name));
   groups.forEach(g => g.jobs.sort((a, b) => (a.j.status === 'Done') - (b.j.status === 'Done') || (a.j.start || '9999').localeCompare(b.j.start || '9999') || a.p.ref.localeCompare(b.p.ref)));
   return groups;
@@ -457,7 +489,7 @@ function drawPeople() {
       const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
       const meta = [
         j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
-        j.status !== 'To do' && !done ? `<span>${esc(j.status)}</span>` : '',
+        j.status !== 'To do' && !done ? `<span>${esc(saidJob(j))}</span>` : '',
         j.note ? '<span title="Has a note">📝 Note</span>' : '',
       ].filter(Boolean).join('');
       return `<div class="trow ind ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
@@ -637,7 +669,7 @@ function jobsSection(t) {
       ${t.canChange ? '<button class="btn small" id="addJob">+ Add job</button>' : ''}</div>
     <div class="jobs" id="jobs">
       ${jobs.map(j => jobRow(t, j)).join('')}
-      ${JOBOPEN === 'new' ? `<div class="job open" data-job="new">${jobForm(t, { title: '', start: NEWSTART, duration: 1, status: 'To do', assignee: NEWASSIGNEE, description: '', note: '' })}</div>` : ''}
+      ${JOBOPEN === 'new' ? `<div class="job open" data-job="new">${jobForm(t, { title: '', start: NEWSTART, duration: 1, status: 'To do', people: NEWASSIGNEE ? [{ email: NEWASSIGNEE, name: personName(NEWASSIGNEE) }] : [], description: '', note: '' })}</div>` : ''}
       ${!jobs.length && JOBOPEN !== 'new' ? `<div class="jempty">No jobs yet. ${t.canChange ? 'Add the jobs that make up this plan, with when each is expected to start and how long it takes; they show on the timeline.' : ''}</div>` : ''}
     </div>`;
 }
@@ -647,12 +679,12 @@ function jobRow(t, j) {
   const late = !isDone && j.end && j.end < today();
   const when = j.start ? `<span class="jw ${late ? 'late' : ''}" title="${esc(span(j.start, j.end))}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>`
     : '<span class="jw unsched">Not scheduled</span>';
-  const who = j.assignee ? `<span class="av ${j.assignee === ME.email ? 'me' : ''}" title="${esc(j.assigneeName || j.assignee)}">${esc(initials(j.assigneeName || j.assignee))}</span>` : '<span class="av none" title="Unassigned">–</span>';
+  const who = avatars(j);
   return `<div class="job ${open ? 'open' : ''} ${isDone ? 'isdone' : ''}" data-job="${esc(j.id)}" ${t.canChange ? 'draggable="true"' : ''}>
     <div class="jh" data-toggle="${esc(j.id)}">
       ${t.canChange ? '<span class="grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>' : ''}
       <button type="button" class="check ${isDone ? 'done' : ''}" data-jdone="${esc(j.id)}" ${t.canChange ? '' : 'disabled'} title="${isDone ? 'Reopen' : 'Mark done'}" aria-label="${isDone ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
-      <span class="jt">${esc(j.title)}</span>${j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
+      <span class="jt">${esc(j.title)}</span>${pctOf(j) != null ? `<span class="jpct" title="In progress · ${pctOf(j)}% complete"><span class="pbar"><i style="width:${pctOf(j)}%"></i></span>${pctOf(j)}%</span>` : j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
     </div>
     ${open ? (t.canChange ? jobForm(t, j) : jobText(j)) : ''}
   </div>`;
@@ -660,7 +692,7 @@ function jobRow(t, j) {
 
 function jobText(j) {
   return `<div class="jb jtext">
-    <div class="muted" style="margin-top:8px">${j.start ? esc(span(j.start, j.end)) + ' · ' + days(j.duration) : 'Not scheduled'} · ${esc(j.status)}${j.assignee ? ' · ' + esc(j.assigneeName || j.assignee) : ''}</div>
+    <div class="muted" style="margin-top:8px">${j.start ? esc(span(j.start, j.end)) + ' · ' + days(j.duration) : 'Not scheduled'} · ${esc(saidJob(j))}${jobPeople(j).length ? ' · ' + esc(jobNames(j)) : ''}</div>
     ${j.description ? `<h3>Description</h3><div class="body">${withMentions(j.description)}</div>` : ''}
     ${j.note ? `<h3>Note</h3><div class="jnote">${withMentions(j.note)}</div>` : ''}
   </div>`;
@@ -673,8 +705,10 @@ function jobForm(t, j) {
       <div><label for="jStart">Expected start</label><input type="date" id="jStart" value="${esc(j.start)}"></div>
       <div><label for="jDur">Duration (days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
       <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
-      <div class="two"><label for="jAssignee">Assigned to</label><input id="jAssignee" list="people" value="${esc(j.assignee)}" placeholder="Pick someone or type their email"></div>
-      <div><label for="jStatus">Status</label><select id="jStatus">${opt(ME.statuses, j.status)}</select></div>
+      <div class="two"><label for="jWho">Assigned to</label><div class="pplpick" id="jPeople"><span id="jChips"></span><input id="jWho" list="people" placeholder="Add someone: name or email" autocomplete="off"></div></div>
+      <div class="two"><label for="jStatus">Status</label><div class="stp"><select id="jStatus">${opt(ME.statuses, j.status)}</select>
+        <span class="pctin" id="jPctBox" ${j.status === 'In progress' ? '' : 'hidden'}><input type="number" id="jPct" min="0" max="100" step="5" value="${esc(j.progress || 0)}" aria-label="Per cent complete"><span>% complete</span>
+          <span class="pbar" aria-hidden="true"><i id="jPctBar" style="width:${Math.max(0, Math.min(100, j.progress || 0))}%"></i></span></span></div></div>
       <div class="wide"><label for="jDesc">Description</label><textarea class="desc" id="jDesc" placeholder="What the job involves. @name to tag someone.">${esc(j.description)}</textarea></div>
       <div class="wide"><label for="jNote">Note</label><textarea class="desc" id="jNote" style="min-height:56px" placeholder="Anything to remember: access, contacts, dependencies, kit. @name to tag someone.">${esc(j.note)}</textarea></div>
     </div>
@@ -706,13 +740,42 @@ function wireJobs() {
       $('jEnds').textContent = st ? `${fmtDay(addDays(st, n - 1))}` : '–';
     };
     $('jStart').oninput = ends; $('jDur').oninput = ends; ends();
+    // Assigned to: a chip per person; pick from the list or type a name or email, then Enter (or a comma).
+    const editing = JOBOPEN === 'new' ? null : t.jobs.find(x => x.id === JOBOPEN);
+    JPEOPLE = editing ? jobPeople(editing).map(p => ({ ...p })) : (NEWASSIGNEE ? [{ email: NEWASSIGNEE, name: personName(NEWASSIGNEE) }] : []);
+    const chips = () => {
+      $('jChips').innerHTML = JPEOPLE.map((p, i) => `<span class="pchip ${p.email === ME.email ? 'me' : ''}" title="${esc(p.email)}">${esc(p.name || p.email)}<button type="button" data-unp="${i}" aria-label="Take ${esc(p.name || p.email)} off this job">×</button></span>`).join('');
+      $('jChips').querySelectorAll('[data-unp]').forEach(b => b.onclick = () => { JPEOPLE.splice(+b.dataset.unp, 1); chips(); $('jWho').focus(); });
+      $('jWho').placeholder = JPEOPLE.length ? 'Add someone else' : 'Add someone: name or email';
+    };
+    const addWho = () => {
+      const v = $('jWho').value.replace(/,$/, '').trim(); if (!v) return false;
+      const p = findPerson(v);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.assignee)) { $('jNotice').hidden = false; $('jNotice').textContent = `Pick “${v}” from the list, or type their email.`; return true; }
+      $('jNotice').hidden = true;
+      if (!JPEOPLE.some(x => x.email === p.assignee)) JPEOPLE.push({ email: p.assignee, name: p.assigneeName || personName(p.assignee) });
+      $('jWho').value = ''; chips(); return true;
+    };
+    $('jWho').onkeydown = e => {
+      if ((e.key === 'Enter' || e.key === ',' || (e.key === 'Tab' && $('jWho').value.trim())) && addWho()) e.preventDefault();
+      else if (e.key === 'Enter') e.preventDefault();
+      else if (e.key === 'Backspace' && !$('jWho').value && JPEOPLE.length) { JPEOPLE.pop(); chips(); }
+    };
+    // Picking from the suggestions fills the box with a whole email or name: take it straight away.
+    $('jWho').oninput = e => { const v = $('jWho').value.trim().toLowerCase(); if (e.inputType === 'insertReplacementText' || !e.inputType || PEOPLE.some(p => p.email === v)) addWho(); };
+    $('jPeople').onclick = e => { if (e.target === $('jPeople')) $('jWho').focus(); };
+    chips();
+    const pct = () => { const v = Math.max(0, Math.min(100, Math.round(Number($('jPct').value) || 0))); $('jPctBar').style.width = v + '%'; return v; };
+    $('jStatus').onchange = () => { $('jPctBox').hidden = $('jStatus').value !== 'In progress'; if (!$('jPctBox').hidden) $('jPct').focus(); };
+    $('jPct').oninput = pct;
     JM.desc?.destroy(); JM.note?.destroy();
     JM = { desc: cpMention.attach($('jDesc'), mentionPeople), note: cpMention.attach($('jNote'), mentionPeople) };
     $('jCancel').onclick = () => { JOBOPEN = null; NEWSTART = ''; drawDetail(); save(); };
     $('jTitle').onkeydown = e => { if (e.key === 'Enter') $('jSave').click(); };
     $('jSave').onclick = async () => {
+      if ($('jWho').value.trim()) { addWho(); if ($('jWho').value.trim()) return $('jWho').focus(); }   // someone typed but not added
       const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(1, Number($('jDur').value) || 1),
-                     status: $('jStatus').value, description: $('jDesc').value, note: $('jNote').value, ...findPerson($('jAssignee').value),
+                     status: $('jStatus').value, ...($('jStatus').value === 'In progress' ? { progress: pct() } : {}), description: $('jDesc').value, note: $('jNote').value, people: JPEOPLE,
                      mentions: [...new Set([...(JM.desc?.picked() || []), ...(JM.note?.picked() || [])])] };
       $('jSave').disabled = true;
       try {
@@ -893,7 +956,7 @@ function save() {
   if ($('proj').value) p.set('project', $('proj').value);
   if (OPEN) p.set('task', OPEN.id);
   if (OPEN && JOBOPEN && JOBOPEN !== 'new') p.set('job', JOBOPEN);
-  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
+  if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && !WEEKS && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
   p.set('by', GROUP);
   history.replaceState(null, '', '#' + p.toString());
 }
@@ -916,12 +979,15 @@ const ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60];
 const between = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
 const dmy = s => s ? new Date(s + 'T00:00:00').toLocaleDateString() : '';
 const said = st => st === 'To do' ? 'Not started' : st;
+/** A job's status in words, with how far along it is while In progress. */
+const pctOf = j => j.status === 'In progress' ? Math.max(0, Math.min(100, j.progress || 0)) : null;
+const saidJob = j => said(j.status) + (pctOf(j) != null ? ` · ${pctOf(j)}%` : '');
 const avail = () => Math.max(200, ($('calGrid').clientWidth || 900) - LEFT);
 
 async function loadCal() {
   try {
     CAL = await api('timeline?' + new URLSearchParams({ project: $('calProj').value, mine: $('calWho').value === 'mine' }));
-    if (!RS) fitRange();
+    if (!RS) threeWeeks();
     drawCal();
   } catch (e) { $('calGrid').innerHTML = `<div class="notice" style="margin:16px">${esc(e.message)}</div>`; }
 }
@@ -941,15 +1007,23 @@ function fitRange() {
   FIT = true;
 }
 
+/** The default view: this week (from Monday) and the next two, as wide as the space allows. */
+function threeWeeks() {
+  const d = new Date(today() + 'T00:00:00');
+  RS = addDays(today(), -((d.getDay() + 6) % 7)); RE = addDays(RS, 20);
+  DW = Math.max(ZOOMS[0], Math.min(60, Math.floor(avail() / 21)));
+  WEEKS = true; FIT = false;
+}
+
 function zoom(dir) {
   const n = between(RS, RE) + 1, mid = addDays(RS, Math.floor(n / 2));
   const i = ZOOMS.findIndex(z => z >= DW), next = dir > 0 ? ZOOMS.find(z => z > DW) : [...ZOOMS].reverse().find(z => z < DW);
   if (!next) return;
   DW = next; const m = Math.ceil(avail() / DW);
-  RS = addDays(mid, -Math.floor(m / 2)); RE = addDays(RS, m - 1); FIT = false; drawCal(); save();
+  RS = addDays(mid, -Math.floor(m / 2)); RE = addDays(RS, m - 1); FIT = WEEKS = false; drawCal(); save();
 }
-function shift(dir) { const n = between(RS, RE) + 1, by = Math.max(1, Math.round(n / 3)); RS = addDays(RS, dir * by); RE = addDays(RE, dir * by); FIT = false; drawCal(); save(); }
-function goToday() { const n = Math.max(between(RS, RE) + 1, Math.ceil(avail() / DW)); RS = addDays(today(), -Math.round(n / 4)); RE = addDays(RS, n - 1); FIT = false; drawCal(); save(); }
+function shift(dir) { const n = between(RS, RE) + 1, by = Math.max(1, Math.round(n / 3)); RS = addDays(RS, dir * by); RE = addDays(RE, dir * by); FIT = WEEKS = false; drawCal(); save(); }
+function goToday() { threeWeeks(); drawCal(); save(); }   // back to this week and the next two
 
 function rangeLabel(a, b) {
   const A = new Date(a + 'T00:00:00'), B = new Date(b + 'T00:00:00');
@@ -960,9 +1034,10 @@ function rangeLabel(a, b) {
 function drawCal() {
   if (!CAL || MODE !== 'timeline') return;
   if (FIT) fitRange();   // also when the space changes, e.g. a plan opens beside the timeline
+  else if (WEEKS) threeWeeks();
   const n = Math.max(between(RS, RE) + 1, Math.ceil(avail() / DW)), end = addDays(RS, n - 1), W = n * DW, t0 = today();
   const scale = DW >= 18 ? 'days' : DW >= 9 ? 'weeks' : 'months';
-  $('calTitle').innerHTML = `${esc(rangeLabel(RS, end))} <span>· ${scale}${FIT ? ' (fit to plan)' : ''}</span>`;
+  $('calTitle').innerHTML = `${esc(rangeLabel(RS, end))} <span>· ${scale}${FIT ? ' (fit to plan)' : WEEKS ? ' (3 weeks)' : ''}</span>`;
   $('zoomIn').disabled = DW >= ZOOMS[ZOOMS.length - 1]; $('zoomOut').disabled = DW <= ZOOMS[0];
   const x = d => between(RS, d) * DW;   // left edge of a day
 
@@ -981,12 +1056,15 @@ function drawCal() {
   const jobRow = (p, j, byPerson) => {
     const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
     const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
-    const who = j.assigneeName ? j.assigneeName.split(' ')[0] : '';
-    const sub = byPerson ? `${dates} · ${said(j.status)}` : `${dates} · ${said(j.status)}${who ? ' · ' + j.assigneeName : ''}`;
-    const label = byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '');
+    const who = jobPeople(j).map(x => (x.name || personName(x.email)).split(' ')[0]).join(', ');
+    const others = byPerson && jobPeople(j).length > 1 ? ' · with ' + jobPeople(j).length + ' people' : '';
+    const sub = byPerson ? `${dates} · ${saidJob(j)}${others}` : `${dates} · ${saidJob(j)}${who ? ' · ' + jobNames(j) : ''}`;
+    const pc = pctOf(j);
+    const label = (byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '')) + (pc != null ? ` · ${pc}%` : '');
+    const fill = pc != null ? `background:linear-gradient(to right, var(--c) ${pc}%, color-mix(in srgb, var(--c) 50%, #fff) ${pc}%);` : '';
     const bar = j.start && j.end >= RS && j.start <= end
-      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv}"
-           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(j.assigneeName) : ''}\n${esc(said(j.status))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
+      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv};${fill}"
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
@@ -1067,7 +1145,7 @@ function wirePanning() {
     if (!pan.moved && Math.abs(dx) < 5) return;
     if (!pan.moved) { pan.moved = true; g.classList.add('panning'); }
     const dd = Math.round(-dx / DW);
-    if (addDays(pan.rs, dd) !== RS) { RS = addDays(pan.rs, dd); RE = addDays(pan.re, dd); FIT = false; drawCal(); }
+    if (addDays(pan.rs, dd) !== RS) { RS = addDays(pan.rs, dd); RE = addDays(pan.re, dd); FIT = WEEKS = false; drawCal(); }
   });
   window.addEventListener('pointerup', () => {
     if (!pan) return;
@@ -1080,7 +1158,7 @@ function wirePanning() {
     e.preventDefault();
     acc += e.deltaX;
     const dd = Math.trunc(acc / DW);
-    if (dd) { acc -= dd * DW; RS = addDays(RS, dd); RE = addDays(RE, dd); FIT = false; drawCal(); clearTimeout(g._save); g._save = setTimeout(save, 300); }
+    if (dd) { acc -= dd * DW; RS = addDays(RS, dd); RE = addDays(RE, dd); FIT = WEEKS = false; drawCal(); clearTimeout(g._save); g._save = setTimeout(save, 300); }
   }, { passive: false });
 }
 
@@ -1198,7 +1276,7 @@ async function addJobOn(pid, day, assignee = '') {
   $('proj').onchange = () => { $('calProj').value = $('proj').value; save(); load(); };
   $('calProj').onchange = () => { $('proj').value = $('calProj').value; save(); load(); };
   $('calWho').value = fromHash.get('who') === 'mine' ? 'mine' : '';
-  $('calWho').onchange = () => { FIT = true; save(); loadCal(); };
+  $('calWho').onchange = () => { save(); loadCal(); };
   if (['person', 'plan'].includes(fromHash.get('by'))) GROUP = fromHash.get('by');
   $('calGroup').value = GROUP;
   $('calGroup').value = $('listGroup').value = GROUP;
@@ -1210,13 +1288,13 @@ async function addJobOn(pid, day, assignee = '') {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACT_OPEN && !document.querySelector('.cp-mention:not([hidden]), dialog[open]')) closeActivity(); });
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
-    RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = false; RE = RS;
+    RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = WEEKS = false; RE = RS;
   }
   wirePanning();
   $('calPrev').onclick = () => shift(-1); $('calNext').onclick = () => shift(1);
   $('calToday').onclick = goToday;
   $('zoomIn').onclick = () => zoom(1); $('zoomOut').onclick = () => zoom(-1);
-  $('zoomFit').onclick = () => { FIT = true; drawCal(); save(); };
+  $('zoomFit').onclick = () => { FIT = true; WEEKS = false; drawCal(); save(); };
   let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(drawCal, 150); });
   document.querySelectorAll('.modes button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
   setMode(['timeline', 'calendar'].includes(fromHash.get('mode')) ? 'timeline' : 'list');
