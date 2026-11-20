@@ -13,7 +13,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
 | `/users/` | Users: the people we look after, imported by CSV, tagged with department and division, line manager, VIP or Standard and primary device. Also `/users/org` (Org chart) and `/users/departments` (Departments) | [`services/inventory`](services/inventory) |
-| `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
+| `/team/` | Client Platform Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
 ```
@@ -215,7 +215,7 @@ A plan's activity is one thread:
 
 **Who sees what.** A plan with no project: everyone with the **Team Planning** tool. In a project: that project's members, plus whoever created it, owns it or has a job in it. In a project, viewers can comment but not change it or its jobs. Only its creator, a project owner or an admin can delete it. Team Planning runs inside the projects service (same database).
 
-## Team
+## Client Platform Team
 
 Everyone on the team, grouped by **department** and then **sub team** (their Division), with their role, manager, start date, location and a short "about". The departments and sub teams to pick from are the ones on the Users page (plus any the team already uses), and adding someone who's in Users fills in their name, role, department and sub team. Each person's page has:
 

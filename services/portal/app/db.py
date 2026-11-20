@@ -37,13 +37,13 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
     {"id": "tasks", "group": "Project Management", "name": "Team Planning", "icon": "tasks", "url": "/tasks/",
      "about": "Team plans of scheduled jobs: assign work, plan start dates and durations on a timeline, ask questions and post updates."},
     {"id": "users", "group": "People", "name": "Users", "icon": "users", "url": "/users/",
-     "about": "The people we look after, imported from a CSV: team, line manager, VIP or standard, and their primary device."},
+     "about": "The people we look after, imported from a CSV: department and division, line manager, user type and their primary devices."},
     {"id": "org", "group": "People", "name": "Org chart", "icon": "org", "url": "/users/org", "uses": "users",
      "about": "Who reports to whom, from the line managers on Users."},
-    {"id": "team", "group": "People", "name": "Team", "icon": "team", "url": "/team/",
-     "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
     {"id": "departments", "group": "People", "name": "Departments", "icon": "building", "url": "/users/departments", "uses": "users",
      "about": "Every department, its divisions and the people in each, from Users."},
+    {"id": "team", "group": "People", "name": "Client Platform Team", "icon": "team", "url": "/team/",
+     "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
 ]
 TOOL_IDS = [t["id"] for t in TOOLS if not t.get("uses")]   # the ones with an access entry
 USES = {t["id"]: t["uses"] for t in TOOLS if t.get("uses")}   # page → the tool whose access it follows
