@@ -146,6 +146,7 @@ document.body.insertAdjacentHTML('beforeend', `
 
 async function openFile(mod, item) {
   const f = item.data.file;
+  GRIDSTATE = null;
   ED = { mod, item, kind: f.kind, ro: !canEdit() || !EDITS.has(f.kind), dirty: false, save: null, version: f.version };
   $('edBadge').innerHTML = badge(f.name); $('edName').textContent = f.name;
   $('edDl').href = 'api/' + fileUrl(mod, item);
@@ -187,7 +188,7 @@ $('edClose').onclick = closeEditor;
 $('edSave').onclick = saveEditor;
 window.addEventListener('keydown', e => {
   if (!ED || document.querySelector('dialog[open]')) return;
-  if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeEditor(); }
+  if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); if (!gridEscape()) closeEditor(); }
   else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveEditor(); }
 }, true);
 window.addEventListener('beforeunload', e => { if (ED?.dirty) { e.preventDefault(); e.returnValue = ''; } });
@@ -223,15 +224,17 @@ async function openText() {
       $('edTools').innerHTML = (ED.ro ? '' : `<button type="button" class="btn small" data-g="row">+ Row</button><button type="button" class="btn small" data-g="col">+ Column</button>
         <button type="button" class="btn small" data-g="delrow">Delete row</button><button type="button" class="btn small" data-g="delcol">Delete column</button>`)
         + (isCsv ? '<button type="button" class="btn small" data-g="astext">Edit as text</button>' : '');
-      grid($('edBody'), rows, { ro: ED.ro, header: true, onEdit: (r, c, v) => { while (rows.length <= r) rows.push([]); while (rows[r].length <= c) rows[r].push(''); rows[r][c] = v; changed(); } });
+      grid($('edBody'), rows, { ro: ED.ro, key: 'csv', onEdit: (r, c, v) => { while (rows.length <= r) rows.push([]); while (rows[r].length <= c) rows[r].push(''); rows[r][c] = v; changed(); } });
       $('edTools').querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
-        const at = GRIDAT || { r: rows.length - 1, c: 0 };
+        const at = GRIDAT || { r: rows.length - 1, c: 0 }, S = GRIDSEL;
         const width = Math.max(1, ...rows.map(r => r.length));
         if (b.dataset.g === 'astext') { text = toCsv(rows, delim, crlf ? '\r\n' : '\n'); mode = 'text'; return draw(); }
         if (b.dataset.g === 'row') rows.splice(at.r + 1, 0, Array(width).fill(''));
         if (b.dataset.g === 'col') rows.forEach(r => { while (r.length < width) r.push(''); r.splice(at.c + 1, 0, ''); });
-        if (b.dataset.g === 'delrow' && rows.length > 1) rows.splice(at.r, 1);
-        if (b.dataset.g === 'delcol' && width > 1) rows.forEach(r => r.splice(at.c, 1));
+        // Delete row / Delete column take the selected rows or columns, or else the one with the cursor.
+        const gone = b.dataset.g === 'delrow' ? (S?.kind === 'row' ? S.rows : [at.r]) : b.dataset.g === 'delcol' ? (S?.kind === 'col' ? S.cols : [at.c]) : [];
+        if (b.dataset.g === 'delrow') { gone.filter(r => r < rows.length).sort((x, y) => y - x).forEach(r => rows.splice(r, 1)); if (!rows.length) rows.push(['']); }
+        if (b.dataset.g === 'delcol') { rows.forEach(r => [...gone].sort((x, y) => y - x).forEach(c => r.splice(c, 1))); if (!rows.some(r => r.length)) rows[0] = ['']; }
         changed(); draw();
       });
     } else {
@@ -270,36 +273,144 @@ function toCsv(rows, d, nl) {
   return out.join(nl) + nl;
 }
 
-/* ---------- The grid (CSV and Excel) ---------- */
-let GRIDAT = null;   // the cell last focused: { r, c }
+/* ---------- The grid (CSV and Excel) ----------
+ * Search (any cell) and a filter under each column hide the rows that don't match; the first row is the
+ * header, kept in view. Click a row number or column letter to select the whole row or column (shift-click
+ * or drag for several): Delete clears them, ⌘C copies them, and Delete row / Delete column remove them.
+ */
+let GRIDAT = null;     // the cell last focused: { r, c }
+let GRIDSEL = null;    // whole rows or columns selected: { kind: 'row' | 'col', a, b, rows: [...], cols: [...] }
+let GRIDSTATE = null;  // search and filters, kept while the same file (and sheet) is redrawn: { key, q, f: { col: text } }
+let GRIDCTX = null;    // the grid on screen: { t, rows, onEdit, ro, header }
 const colName = c => { let s = ''; c++; while (c) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; };
-function grid(el, rows, { ro, onEdit, spare = 0 }) {
+
+function grid(el, rows, { ro, onEdit, spare = 0, key = '', header = true }) {
   const width = Math.max(1, ...rows.map(r => r.length)) + spare, height = rows.length + spare;
-  GRIDAT = null;
-  let html = `<div class="gridwrap"><table class="sheet"><thead><tr><th class="rn"></th>${Array.from({ length: width }, (_, c) => `<th>${colName(c)}</th>`).join('')}</tr></thead><tbody>`;
+  GRIDAT = null; GRIDSEL = null;
+  if (GRIDSTATE?.key !== key) GRIDSTATE = { key, q: '', f: {} };
+  const st = GRIDSTATE;
+  let html = `<div class="gtop"><input type="search" class="gq" placeholder="Search" aria-label="Search the cells" value="${esc(st.q)}">
+      <span class="gcount muted"></span><button type="button" class="btn small" data-gclear hidden>Clear filters</button><span class="sp"></span><span class="gsel muted"></span></div>
+    <div class="gridwrap" tabindex="-1"><table class="sheet"><thead>
+      <tr class="gl"><th class="rn corner" title="Select everything"></th>${Array.from({ length: width }, (_, c) => `<th data-col="${c}" title="Select column ${colName(c)}">${colName(c)}</th>`).join('')}</tr>
+      <tr class="gf"><th class="rn"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></th>${Array.from({ length: width }, (_, c) =>
+        `<th><input data-f="${c}" placeholder="Filter" aria-label="Filter column ${colName(c)}${header && rows[0]?.[c] ? ' (' + esc(rows[0][c]) + ')' : ''}" value="${esc(st.f[c] || '')}"></th>`).join('')}</tr>
+    </thead><tbody>`;
   for (let r = 0; r < height; r++) {
-    html += `<tr><th class="rn">${r + 1}</th>`;
+    html += `<tr data-row="${r}" class="${header && r === 0 ? 'hdr' : ''}"><th class="rn" data-rown="${r}" title="Select row ${r + 1}">${r + 1}</th>`;
     for (let c = 0; c < width; c++) html += `<td ${ro ? '' : 'contenteditable="plaintext-only"'} data-r="${r}" data-c="${c}" class="${/^=/.test(rows[r]?.[c] || '') ? 'fx' : ''}">${esc(rows[r]?.[c] ?? '')}</td>`;
     html += '</tr>';
   }
   el.innerHTML = html + '</tbody></table></div>';
-  const t = el.querySelector('table');
+  const t = el.querySelector('table'), wrap = el.querySelector('.gridwrap');
+  t.style.setProperty('--hdr-top', t.tHead.offsetHeight + 'px');
+  GRIDCTX = { t, rows, onEdit, ro, header };
   const cellAt = (r, c) => t.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
   const go = (r, c) => { const n = cellAt(r, c); if (n) n.focus(); };
-  t.addEventListener('focusin', e => { const td = e.target.closest('td'); if (td) GRIDAT = { r: +td.dataset.r, c: +td.dataset.c }; });
+
+  // ----- Search and filters -----
+  const apply = () => {
+    const q = st.q.trim().toLowerCase(), fs = Object.entries(st.f).filter(([, v]) => v.trim()).map(([c, v]) => [+c, v.trim().toLowerCase()]);
+    let shown = 0, total = 0;
+    for (const tr of t.tBodies[0].rows) {
+      const r = +tr.dataset.row;
+      if (header && r === 0) continue;
+      const row = rows[r] || [];
+      const empty = !row.some(v => String(v ?? '').trim());
+      if (!empty) total++;
+      const ok = (!q || row.some(v => String(v ?? '').toLowerCase().includes(q))) && fs.every(([c, v]) => String(row[c] ?? '').toLowerCase().includes(v))
+        && (!(q || fs.length) || !empty);
+      tr.hidden = !ok;
+      if (ok && !empty) shown++;
+      if (q) for (const td of tr.cells) if (td.dataset.c) td.classList.toggle('hit', ok && String(row[+td.dataset.c] ?? '').toLowerCase().includes(q));
+    }
+    if (!q) t.querySelectorAll('td.hit').forEach(td => td.classList.remove('hit'));
+    const filtering = q || fs.length;
+    el.querySelector('.gcount').textContent = filtering ? `${shown} of ${total} rows` : `${total} row${total === 1 ? '' : 's'}`;
+    el.querySelector('[data-gclear]').hidden = !filtering;
+    t.querySelectorAll('[data-f]').forEach(i => i.classList.toggle('on', !!(st.f[i.dataset.f] || '').trim()));
+    if (GRIDSEL) select(GRIDSEL.kind, GRIDSEL.a, GRIDSEL.b);
+  };
+  let timer = 0;
+  const later = () => { clearTimeout(timer); timer = setTimeout(apply, 120); };
+  el.querySelector('.gq').oninput = e => { st.q = e.target.value; later(); };
+  t.querySelectorAll('[data-f]').forEach(i => i.oninput = () => { st.f[i.dataset.f] = i.value; later(); });
+  el.querySelector('[data-gclear]').onclick = () => { st.q = ''; st.f = {}; el.querySelector('.gq').value = ''; t.querySelectorAll('[data-f]').forEach(i => i.value = ''); apply(); };
+  apply();
+
+  // ----- Whole rows and columns -----
+  const visibleRows = (a, b) => [...t.tBodies[0].rows].filter(tr => !tr.hidden && +tr.dataset.row >= Math.min(a, b) && +tr.dataset.row <= Math.max(a, b)).map(tr => +tr.dataset.row);
+  function select(kind, a, b) {
+    t.querySelectorAll('.rsel, .csel').forEach(n => n.classList.remove('rsel', 'csel'));
+    if (!kind) { GRIDSEL = null; el.querySelector('.gsel').textContent = ''; return; }
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    const rowsSel = kind === 'row' ? visibleRows(a, b) : [], cols = kind === 'col' ? Array.from({ length: hi - lo + 1 }, (_, i) => lo + i) : [];
+    GRIDSEL = { kind, a, b, rows: rowsSel, cols };
+    if (kind === 'row') rowsSel.forEach(r => t.querySelector(`tr[data-row="${r}"]`).classList.add('rsel'));
+    else {
+      cols.forEach(c => { t.querySelector(`th[data-col="${c}"]`)?.classList.add('csel'); t.querySelectorAll(`td[data-c="${c}"]`).forEach(td => td.classList.add('csel')); });
+    }
+    const n = kind === 'row' ? rowsSel.length : cols.length;
+    el.querySelector('.gsel').textContent = `${n} ${kind === 'row' ? 'row' : 'column'}${n === 1 ? '' : 's'} selected · ${ro ? '⌘C copies' : 'Delete clears · ⌘C copies'}`;
+  }
+  let drag = null;
+  t.addEventListener('mousedown', e => {
+    const rn = e.target.closest('th[data-rown]'), cn = e.target.closest('th[data-col]'), corner = e.target.closest('th.corner');
+    if (!rn && !cn && !corner) return;
+    e.preventDefault();
+    if (document.activeElement?.closest?.('td')) document.activeElement.blur();
+    wrap.focus({ preventScroll: true });
+    if (corner) return select('row', 0, height - 1);
+    const kind = rn ? 'row' : 'col', i = +(rn ? rn.dataset.rown : cn.dataset.col);
+    const a = e.shiftKey && GRIDSEL?.kind === kind ? GRIDSEL.a : i;
+    select(kind, a, i);
+    drag = { kind, a };
+    window.addEventListener('mouseup', () => { drag = null; }, { once: true });
+  });
+  t.addEventListener('mouseover', e => {
+    if (!drag) return;
+    const n = e.target.closest(drag.kind === 'row' ? 'th[data-rown], td' : 'th[data-col], td');
+    if (n) select(drag.kind, drag.a, +(drag.kind === 'row' ? (n.dataset.rown ?? n.dataset.r) : (n.dataset.col ?? n.dataset.c)));
+  });
+  const selectedText = () => {
+    const S = GRIDSEL, out = [];
+    const rs = S.kind === 'row' ? S.rows : [...t.tBodies[0].rows].filter(tr => !tr.hidden).map(tr => +tr.dataset.row).filter(r => r < rows.length);
+    const cs = S.kind === 'col' ? S.cols : Array.from({ length: Math.max(1, ...rows.map(r => r.length)) }, (_, i) => i);
+    for (const r of rs) out.push(cs.map(c => String(rows[r]?.[c] ?? '')).join('\t'));
+    return out.join('\n');
+  };
+  wrap.addEventListener('keydown', e => {
+    if (!GRIDSEL || e.target !== wrap) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') { e.preventDefault(); navigator.clipboard?.writeText(selectedText()); el.querySelector('.gsel').textContent = 'Copied.'; }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && !ro) {
+      e.preventDefault();
+      const S = GRIDSEL;
+      const rs = S.kind === 'row' ? S.rows : [...t.tBodies[0].rows].filter(tr => !tr.hidden).map(tr => +tr.dataset.row);
+      for (const r of rs) for (const td of t.querySelector(`tr[data-row="${r}"]`).cells) {
+        if (!td.dataset.c || (S.kind === 'col' && !S.cols.includes(+td.dataset.c)) || !td.textContent) continue;
+        td.textContent = ''; td.classList.remove('fx'); onEdit(r, +td.dataset.c, '');
+      }
+    }
+  });
+  t.addEventListener('focusin', e => { const td = e.target.closest('td'); if (td) { GRIDAT = { r: +td.dataset.r, c: +td.dataset.c }; if (GRIDSEL) select(null); } });
   if (ro) return;
+
+  // ----- Typing in cells -----
   // Like a spreadsheet: going into a cell selects what's in it, so typing replaces it; click again to place the cursor.
-  const selectCell = td => getSelection().selectAllChildren(td);
-  t.addEventListener('focusin', e => { const td = e.target.closest('td'); if (td) selectCell(td); });
+  t.addEventListener('focusin', e => { const td = e.target.closest('td'); if (td) getSelection().selectAllChildren(td); });
   t.addEventListener('mousedown', e => { const td = e.target.closest('td'); if (td && document.activeElement !== td && e.button === 0) { e.preventDefault(); td.focus(); } });
-  t.addEventListener('input', e => { const td = e.target.closest('td'); if (td) { onEdit(+td.dataset.r, +td.dataset.c, td.innerText.replace(/\n$/, '')); td.classList.toggle('fx', td.innerText.startsWith('=')); } });
+  t.addEventListener('input', e => {
+    const td = e.target.closest('td'); if (!td) return;
+    onEdit(+td.dataset.r, +td.dataset.c, td.innerText.replace(/\n$/, '')); td.classList.toggle('fx', td.innerText.startsWith('='));
+  });
   t.addEventListener('keydown', e => {
     const td = e.target.closest('td'); if (!td) return;
     const r = +td.dataset.r, c = +td.dataset.c;
+    const step = d => { let tr = td.parentElement; do tr = d > 0 ? tr.nextElementSibling : tr.previousElementSibling; while (tr && tr.hidden); if (tr) go(+tr.dataset.row, c); };
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); getSelection().selectAllChildren(td); }
-    else if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); go(r + (e.shiftKey ? -1 : 1), c); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); go(r + 1, c); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); go(r - 1, c); }
+    else if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
   });
   // Pasting several cells (from Excel or Sheets: tabs and new lines) fills the grid from here.
   t.addEventListener('paste', e => {
@@ -311,8 +422,15 @@ function grid(el, rows, { ro, onEdit, spare = 0 }) {
     text.replace(/\r/g, '').replace(/\n$/, '').split('\n').forEach((line, i) => line.split('\t').forEach((v, j) => {
       onEdit(r0 + i, c0 + j, v); const n = cellAt(r0 + i, c0 + j); if (n) n.textContent = v;
     }));
-    if (!cellAt(r0 + text.split('\n').length - 1, c0)) grid(el, rows, { ro, onEdit, spare });   // grew: draw again
+    if (!cellAt(r0 + text.split('\n').length - 1, c0)) grid(el, rows, { ro, onEdit, spare, key, header });   // grew: draw again
   });
+}
+/** Escape in the editor: first lets go of a row or column selection. */
+function gridEscape() {
+  if (!GRIDSEL || !GRIDCTX) return false;
+  GRIDCTX.t.querySelectorAll('.rsel, .csel').forEach(n => n.classList.remove('rsel', 'csel'));
+  GRIDSEL = null; GRIDCTX.t.closest('.gridwrap').parentElement.querySelector('.gsel').textContent = '';
+  return true;
 }
 
 /* ---------- Excel ---------- */
@@ -334,7 +452,7 @@ async function openExcel() {
     $('edTools').innerHTML = ED.ro ? '' : '<button type="button" class="btn small" data-x="row">+ Row</button><button type="button" class="btn small" data-x="col">+ Column</button>';
     $('edBody').innerHTML = `<div id="xgrid" class="xgrid"></div><div class="tabs">${book.sheets.map((x, i) => `<button type="button" data-sheet="${i}" aria-pressed="${i === at}">${esc(x.name)}</button>`).join('')}
       ${s.truncated ? `<span class="muted">Showing the first ${s.rows.length} rows and ${Math.max(0, ...s.rows.map(r => r.length))} columns.</span>` : ''}</div>`;
-    grid($('xgrid'), s.rows.length ? s.rows : [['']], { ro: ED.ro, spare: ED.ro ? 0 : 3, onEdit: (r, c, v) => {
+    grid($('xgrid'), s.rows.length ? s.rows : [['']], { ro: ED.ro, spare: ED.ro ? 0 : 3, key: 'sheet:' + s.name, onEdit: (r, c, v) => {
       while (s.rows.length <= r) s.rows.push([]); while (s.rows[r].length <= c) s.rows[r].push('');
       s.rows[r][c] = v; edits.set(`${s.name}|${r}|${c}`, v); changed();
     } });

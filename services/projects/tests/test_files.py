@@ -63,6 +63,13 @@ def test_upload_download_versions(c):
     got = c.get(url(pid, f"/items/documents/{iid}/file?view=1"), headers=AMY)
     assert got.headers["content-disposition"].startswith("inline") and got.headers["content-type"] == "image/png"
     assert "sandbox" in got.headers["content-security-policy"]
+    assert got.headers["x-frame-options"] == "SAMEORIGIN"
+    # PDFs show in the page's viewer: framed by this site only (the proxy's DENY gives way to this).
+    upload(c, pid, iid, "report.pdf", b"%PDF-1.4 ...")
+    got = c.get(url(pid, f"/items/documents/{iid}/file?view=1"), headers=AMY)
+    assert got.headers["content-type"] == "application/pdf" and got.headers["x-frame-options"] == "SAMEORIGIN"
+    assert got.headers["content-security-policy"] == "frame-ancestors 'self'"
+    assert "x-frame-options" not in c.get(url(pid, f"/items/documents/{iid}/file"), headers=AMY).headers   # downloads aren't framed
 
     # Checks: empty, not really a Word file, names cleaned.
     assert upload(c, pid, iid, "a.txt", b"").status_code == 422

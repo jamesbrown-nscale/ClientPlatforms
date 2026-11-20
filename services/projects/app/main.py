@@ -405,8 +405,10 @@ def download_file(pid: str, key: str, iid: str, v: int | None = None, view: bool
     inline = view and e in files.INLINE
     headers = {"Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(info['name'])}",
                "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
-    if inline and e != "pdf":
-        headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+    if inline:   # shown inside the page's own viewer, and in no other site's frames
+        headers["X-Frame-Options"] = "SAMEORIGIN"
+        headers["Content-Security-Policy"] = "frame-ancestors 'self'" if e == "pdf" else \
+            "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'"
     return Response(data, media_type=files.INLINE[e] if inline else files.type_of(info["name"]), headers=headers)
 
 
