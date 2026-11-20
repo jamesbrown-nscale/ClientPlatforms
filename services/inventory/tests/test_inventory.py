@@ -362,3 +362,22 @@ def test_old_team_tags_become_divisions(tmp_path):
     assert s.user("a@nscale.com")["division"] == "Platform"
     store_mod.Store(path, "s" * 40)   # a second start doesn't run it again
     assert s.user("a@nscale.com")["division"] == "Platform"
+
+
+def test_two_column_csv_updates_just_that(c):
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy Chen", "department": "Tech", "type": "Standard"})
+    c.post("/users/api/users", headers=UE, json={"email": "sam@nscale.com", "name": "Sam Lee", "type": "VIP"})
+    csv_text = "Email,Usertype\namy@nscale.com,VIP\nsam@nscale.com,VIP\nnew@nscale.com,Standard\n"
+    dry = c.post("/users/api/import", headers=UE, json={"csv": csv_text, "dryRun": True}).json()
+    assert dry["columns"] == [{"heading": "Email", "field": "Email"}, {"heading": "Usertype", "field": "User type"}]
+    assert (dry["added"], dry["updated"], dry["unchanged"], dry["newInFile"]) == (1, 1, 1, 1)
+    assert dry["changes"][0] == {"email": "amy@nscale.com", "name": "Amy Chen", "new": False,
+                                 "fields": [{"field": "User type", "from": "Standard", "to": "VIP"}]}
+    assert dry["changes"][1]["new"] and dry["changes"][1]["email"] == "new@nscale.com"
+
+    # Only people already here: the new email is left out.
+    r = c.post("/users/api/import", headers=UE, json={"csv": csv_text, "addNew": False}).json()
+    assert (r["added"], r["updated"], r["unchanged"], r["skipped"]) == (0, 1, 1, 1)
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert set(users) == {"amy@nscale.com", "sam@nscale.com"}
+    assert users["amy@nscale.com"]["type"] == "VIP" and users["amy@nscale.com"]["department"] == "Tech" and users["amy@nscale.com"]["name"] == "Amy Chen"

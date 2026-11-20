@@ -148,7 +148,7 @@ label.l { display: block; font-weight: 600; margin: 14px 0 6px; }
 .syncbar .sp { flex: 1; }
 .syncbar a { color: var(--primary); }
 
-dialog.imp { border: 0; border-radius: 14px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--bg); color: var(--text);
+dialog.imp { border: 0; border-radius: 14px; padding: 0; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); background: var(--bg); color: var(--text);
   box-shadow: 0 24px 64px rgba(4,14,39,.28); }
 dialog.imp::backdrop { background: rgba(4,14,39,.45); }
 .imp .in { padding: 24px; }
@@ -158,6 +158,14 @@ dialog.imp::backdrop { background: rgba(4,14,39,.45); }
 .drop b { color: var(--primary); }
 .cols { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .cols span { font-size: 12px; background: var(--page); border: 1px solid var(--surface); border-radius: 6px; padding: 1px 8px; }
+.cmap { font-size: 12px; background: var(--ok-fill); color: var(--ok-text); border-radius: 6px; padding: 2px 8px; }
+.cmap b { font-weight: 600; }
+.cmap.off { background: var(--grey-fill); color: var(--text2); }
+.addnew { display: flex; gap: 8px; align-items: center; margin-top: 12px; cursor: pointer; }
+.chg { max-height: 260px; overflow: auto; border: 1px solid var(--surface); border-radius: 10px; }
+.chg table td { padding: 7px 12px; font-size: 13px; vertical-align: top; cursor: default; }
+.chg table tr:hover { background: none; }
+.chg s { text-decoration: line-through; }
 .sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 0; }
 .sum div { background: var(--page); border-radius: 10px; padding: 10px 12px; }
 .sum b { display: block; font-size: 20px; }

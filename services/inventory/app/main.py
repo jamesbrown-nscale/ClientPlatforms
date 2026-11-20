@@ -588,11 +588,19 @@ COLUMNS = {   # a CSV heading (lower case, letters and digits only) → the fiel
 class ImportIn(BaseModel):
     csv: str = Field(max_length=MAX_CSV)
     dryRun: bool = False
+    addNew: bool = True   # False: only update people already on Users; new emails are left out
 
 
-def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str]]:
-    """(rows to save, problems, headings it didn't use). Each problem: {row, email, message}; a row
-    with a bad email is skipped, and a bad tag on an otherwise good row leaves that tag as it was."""
+LABELS = {"email": "Email", "name": "Name", "first": "First name", "last": "Last name", "division": "Division",
+          "department": "Department", "title": "Job title", "manager": "Line manager", "type": "User type", "device": "Primary device"}
+FIELD_LABELS = {"name": "Name", "title": "Job title", "department": "Department", "division": "Division", "manager": "Line manager",
+                "user_type": "User type", "primary_device": "Primary device"}
+
+
+def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
+    """(rows to save, problems, headings it didn't use, how each heading was read: [{heading, field}]).
+    Each problem: {row, email, message}; a row with a bad email is skipped, and a bad tag on an
+    otherwise good row leaves that tag as it was."""
     text = text.lstrip("﻿")
     if not text.strip():
         raise ValueError("The CSV is empty.")
@@ -609,6 +617,8 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str]]:
     if "email" not in keys:
         raise ValueError("The CSV needs an Email column (the first row must be the column headings).")
     unused = [h for h, k in zip(head, keys) if not k and h.strip()]
+    columns = [{"heading": h.strip(), "field": LABELS.get(k, "") if k and keys.index(k) == i else ""}
+               for i, (h, k) in enumerate(zip(head, keys)) if h.strip()]
     raw = []
     for n, cells in enumerate(reader, start=2):
         if not any(c.strip() for c in cells):
@@ -652,21 +662,64 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str]]:
                 except ValueError as e:
                     problems.append({"row": n, "email": email, "message": str(e) + " Left as it was."})
         out[email] = u
-    return list(out.values()), problems, unused
+    return list(out.values()), problems, unused, columns
+
+
+def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
+    """What each row changes: [{email, name, new, fields: [{field, from, to}]}], only rows that change something."""
+    devices = {d["id"]: d for d in store.devices()}
+    names = {e: (u["name"] or access.display_name(e)) for e, u in existing.items()}
+    names |= {r["email"]: r["name"] for r in rows if r.get("name")}
+
+    def show(f, v):
+        if not v:
+            return ""
+        if f == "primary_device":
+            d = devices.get(v)
+            return f"{d['name'] or d['serial']} ({d['platform']})" if d else v
+        if f == "manager" and "@" in v:
+            return f"{names[v]} ({v})" if v in names else v
+        return v
+
+    out = []
+    for r in rows:
+        old = existing.get(r["email"])
+        fields = []
+        for f, label in FIELD_LABELS.items():
+            if f not in r:
+                continue
+            before = (old or {}).get(f) or ("Standard" if f == "user_type" and old else "")
+            if (before or "") != (r[f] or ""):
+                fields.append({"field": label, "from": show(f, before), "to": show(f, r[f])})
+        if fields or not old:
+            out.append({"email": r["email"], "name": r.get("name") or (old or {}).get("name") or access.display_name(r["email"]),
+                        "new": not old, "fields": fields})
+    return out
 
 
 @users_app.post("/api/import")
 def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
-    rows, problems, unused = parse_csv(body.csv)
-    existing = {u["email"] for u in store.users()}
+    """Reads the CSV's columns by their headings and changes only those fields. With dryRun, says what
+    it would do without doing it; either way the answer lists, per person, what changes (old → new)."""
+    rows, problems, unused, columns = parse_csv(body.csv)
+    existing = {u["email"]: u for u in store.users()}
+    new = [r for r in rows if r["email"] not in existing]
+    skipped = 0
+    if not body.addNew:
+        skipped = len(new)
+        rows = [r for r in rows if r["email"] in existing]
+    changes = _changes(rows, existing)
+    report = {"rows": len(rows), "newInFile": len(new), "skipped": skipped, "columns": columns, "unusedColumns": unused,
+              "problems": problems[:200], "moreProblems": max(0, len(problems) - 200),
+              "changes": changes[:500], "moreChanges": max(0, len(changes) - 500)}
     if body.dryRun:
-        added = sum(r["email"] not in existing for r in rows)
-        return {"dryRun": True, "rows": len(rows), "added": added, "updated": len(rows) - added, "problems": problems[:200],
-                "moreProblems": max(0, len(problems) - 200), "unusedColumns": unused}
+        added = sum(c["new"] for c in changes)
+        updated = len(changes) - added
+        return {**report, "dryRun": True, "added": added, "updated": updated, "unchanged": len(rows) - added - updated}
     added, updated = store.save_users(rows, user.email)
-    log.info(json.dumps({"severity": "NOTICE", "message": "users imported", "by": user.email, "added": added, "updated": updated}))
-    return {"rows": len(rows), "added": added, "updated": updated, "unchanged": len(rows) - added - updated,
-            "problems": problems[:200], "moreProblems": max(0, len(problems) - 200), "unusedColumns": unused}
+    log.info(json.dumps({"severity": "NOTICE", "message": "users imported", "by": user.email, "added": added, "updated": updated,
+                         "columns": [c["field"] for c in columns if c["field"]]}))
+    return {**report, "added": added, "updated": updated, "unchanged": len(rows) - added - updated}
 
 
 @users_app.post("/api/match-devices")

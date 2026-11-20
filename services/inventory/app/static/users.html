@@ -112,7 +112,7 @@
 <dialog class="imp" id="imp" aria-labelledby="impTitle">
   <div class="in">
     <h2 id="impTitle">Import users from a CSV</h2>
-    <p class="sub" style="margin:0">New emails are added; users already here are updated. Empty cells leave what's there alone.</p>
+    <p class="sub" style="margin:0">Each column is matched to Users by its heading, and only those fields change: a file with just Email and User type only changes user types. Empty cells leave what's there alone. You'll see every change before anything is saved.</p>
     <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
     <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP or Standard. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
@@ -378,18 +378,50 @@ async function removeUser() {
 
 /* ---------- Import ---------- */
 
-function resetImport() { CSVTEXT = ''; $('file').value = ''; $('impOut').innerHTML = ''; $('impGo').disabled = true; $('impGo').textContent = 'Import'; $('dropText').innerHTML = '<b>Choose a CSV</b> or drop it here'; }
+let ADDNEW = null;   // null: decide from the file (yes if it has a Name column)
+function resetImport() { CSVTEXT = ''; ADDNEW = null; $('file').value = ''; $('impOut').innerHTML = ''; $('impGo').disabled = true; $('impGo').textContent = 'Import'; $('dropText').innerHTML = '<b>Choose a CSV</b> or drop it here'; }
 
 function summary(r, done) {
+  const n = x => (x || 0).toLocaleString();
+  const cols = (r.columns || []).map(c => c.field
+    ? `<span class="cmap"><b>${esc(c.heading)}</b> → ${esc(c.field)}</span>`
+    : `<span class="cmap off" title="Not a column Users has">${esc(c.heading)} → not used</span>`).join('');
   const probs = r.problems.map(p => `<li>Row ${p.row}${p.email ? ` (${esc(p.email)})` : ''}: ${esc(p.message)}</li>`).join('')
     + (r.moreProblems ? `<li>…and ${r.moreProblems} more.</li>` : '');
-  return `<div class="sum">
-      <div><b>${r.added.toLocaleString()}</b><span class="muted">${done ? 'added' : 'new'}</span></div>
-      <div><b>${r.updated.toLocaleString()}</b><span class="muted">${done ? 'updated' : 'already here, to update'}</span></div>
-      <div><b>${r.problems.length + (r.moreProblems || 0)}</b><span class="muted">to look at</span></div></div>
-    ${done && r.unchanged ? `<p class="muted">${r.unchanged.toLocaleString()} already matched and didn't change.</p>` : ''}
-    ${r.unusedColumns?.length ? `<p class="muted">Columns not used: ${r.unusedColumns.map(esc).join(', ')}.</p>` : ''}
-    ${probs ? `<ul class="probs">${probs}</ul>` : ''}`;
+  const changes = (r.changes || []).map(c => `<tr><td><b>${esc(c.name)}</b>${c.new ? ' <span class="badge b-intune">New</span>' : ''}<div class="muted">${esc(c.email)}</div></td>
+      <td>${c.fields.length ? c.fields.map(f => `<div><span class="muted">${esc(f.field)}:</span> ${f.from ? `<s class="muted">${esc(f.from)}</s> → ` : ''}<b>${esc(f.to) || '<span class="muted">(empty)</span>'}</b></div>`).join('')
+        : '<span class="muted">Added with just their email</span>'}</td></tr>`).join('')
+    + (r.moreChanges ? `<tr><td colspan="2" class="muted">…and ${n(r.moreChanges)} more.</td></tr>` : '');
+  const addNew = !done && r.newInFile ? `<label class="addnew"><input type="checkbox" id="impAddNew" ${r.skipped ? '' : 'checked'}>
+      Also add the ${n(r.newInFile)} ${r.newInFile === 1 ? 'person who isn\'t' : 'people who aren\'t'} on Users yet</label>` : '';
+  return `<div class="cols" style="margin-top:14px" aria-label="How the columns were read">${cols}</div>
+    <div class="sum">
+      <div><b>${n(r.updated)}</b><span class="muted">${done ? 'updated' : 'to update'}</span></div>
+      <div><b>${n(r.added)}</b><span class="muted">${done ? 'added' : 'to add'}${r.skipped ? ` · ${n(r.skipped)} left out` : ''}</span></div>
+      <div><b>${n(r.unchanged)}</b><span class="muted">already the same</span></div></div>
+    ${addNew}
+    ${changes ? `<h3 style="margin:16px 0 6px">${done ? 'What changed' : 'What will change'}</h3><div class="chg"><table>${changes}</table></div>`
+      : `<p class="muted" style="margin-top:14px">${done ? 'Nothing changed.' : 'Nothing to change: everyone already matches the file.'}</p>`}
+    ${probs ? `<h3 style="margin:16px 0 6px">To look at</h3><ul class="probs" style="margin-top:0">${probs}</ul>` : ''}`;
+}
+
+async function check() {
+  $('impOut').innerHTML = '<p class="muted">Checking…</p>';
+  try {
+    const body = { csv: CSVTEXT, dryRun: true };
+    if (ADDNEW !== null) body.addNew = ADDNEW;
+    let r = await api('api/import', { method: 'POST', body: JSON.stringify(body) });
+    if (ADDNEW === null) {   // without names, new people would be added with just an email: leave them out unless asked
+      ADDNEW = (r.columns || []).some(c => c.field === 'Name' || c.field === 'First name');
+      if (!ADDNEW && r.newInFile) r = await api('api/import', { method: 'POST', body: JSON.stringify({ ...body, addNew: false }) });
+    }
+    $('impOut').innerHTML = summary(r, false);
+    $('impAddNew')?.addEventListener('change', e => { ADDNEW = e.target.checked; check(); });
+    const todo = r.added + r.updated;
+    $('impGo').disabled = !todo;
+    $('impGo').textContent = !todo ? 'Nothing to import' : [r.updated && `Update ${r.updated.toLocaleString()}`, r.added && `add ${r.added.toLocaleString()}`]
+      .filter(Boolean).join(' and ').replace(/^a/, 'A') + ` user${todo === 1 ? '' : 's'}`;
+  } catch (e) { $('impOut').innerHTML = `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`; $('impGo').disabled = true; }
 }
 
 async function readFile(f) {
@@ -400,20 +432,15 @@ async function readFile(f) {
   const bytes = await f.arrayBuffer();
   try { CSVTEXT = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
   catch { CSVTEXT = new TextDecoder('windows-1252').decode(bytes); }
+  ADDNEW = null;
   $('dropText').innerHTML = `<b>${esc(f.name)}</b> · choose another`;
-  $('impOut').innerHTML = '<p class="muted">Checking…</p>';
-  try {
-    const r = await api('api/import', { method: 'POST', body: JSON.stringify({ csv: CSVTEXT, dryRun: true }) });
-    $('impOut').innerHTML = summary(r, false);
-    $('impGo').disabled = !r.rows;
-    $('impGo').textContent = r.rows ? `Import ${r.rows.toLocaleString()} user${r.rows === 1 ? '' : 's'}` : 'Import';
-  } catch (e) { $('impOut').innerHTML = `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`; $('impGo').disabled = true; }
+  await check();
 }
 
 $('impGo').onclick = async () => {
   $('impGo').disabled = true;
   try {
-    const r = await api('api/import', { method: 'POST', body: JSON.stringify({ csv: CSVTEXT }) });
+    const r = await api('api/import', { method: 'POST', body: JSON.stringify({ csv: CSVTEXT, addNew: ADDNEW !== false }) });
     $('impOut').innerHTML = `<div class="notice ok" style="margin:14px 0 0">Imported.</div>` + summary(r, true);
     $('impGo').textContent = 'Done'; CSVTEXT = '';
     $('impClose').textContent = 'Close';
