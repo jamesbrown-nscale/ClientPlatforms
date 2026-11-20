@@ -292,3 +292,15 @@ def test_several_people_on_a_job(c, tmp_path):
     with sqlite3.connect(old) as db:
         assert dict(db.execute("SELECT id, people FROM pipeline_jobs").fetchall()) == \
             {"j1": '[{"email":"val@nscale.com","name":"Val"}]', "j2": "[]"}
+
+
+def test_weekends_dont_count(c):
+    from app.tasks import end_of
+    assert end_of("2026-11-26", 5) == "2026-12-02"      # Thu + 5 working days ends the Wed after
+    assert end_of("2026-11-23", 5) == "2026-11-27"      # Mon–Fri
+    assert end_of("2026-11-27", 1) == "2026-11-27"
+    assert end_of("2026-11-23", 10) == "2026-12-04"
+    assert end_of("2026-11-28", 2) == "2026-12-01"      # a Saturday start counts from Monday
+    t = new(c, title="Rollout")
+    j = c.post(f"/tasks/api/tasks/{t['id']}/jobs", headers=AMY, json={"title": "Inventory", "start": "2026-11-29", "duration": 3}).json()["jobs"][0]
+    assert (j["start"], j["end"]) == ("2026-11-30", "2026-12-02")   # Sunday moves to Monday

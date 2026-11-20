@@ -51,9 +51,6 @@
   .cp-viewonly { background: #FFF1D6; color: #8A5300; font: 600 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; padding: 8px 16px;
     display: flex; gap: 8px; align-items: center; border-bottom: 1px solid #F5DDA8; }
   .cp-viewonly svg { width: 16px; height: 16px; flex-shrink: 0; }
-  .cp-side .cp-dot { width: 8px; height: 8px; border-radius: 50%; background: #0F41F3; flex-shrink: 0; }
-  .cp-side .cp-dot.late { background: #D92D20; }
-  .cp-side button.cp-label[aria-expanded="true"] .cp-dot { display: none; }
   .cp-side a.cp-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: #3B404E; text-decoration: none; }
   .cp-side a.cp-item svg { width: 18px; height: 18px; flex-shrink: 0; }
   .cp-side a.cp-item:hover { background: #F3F5FB; color: #040E27; }
@@ -157,37 +154,7 @@
       inboxBadge(side);
       window.cpNavRefreshInbox = () => inboxBadge(side);   // the inbox page calls this after changes
     }
-    if ((me.tools || []).some(t => t.id === 'tasks')) {
-      taskBadge(side);
-      window.cpNavRefreshTasks = () => taskBadge(side);   // the Team Planning page calls this after changes
-    }   // first in the page, so each tool's own panels and overlays sit above it
     document.body.classList.add('cp-has-side');
-  }
-
-  /** How many plans and jobs are assigned to you and questions are waiting on you, beside Team Planning (and its heading). */
-  async function taskBadge(side) {
-    try {
-      const r = await fetch('/tasks/api/counts', { headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' });
-      if (!r.ok) return;
-      const c = await r.json();
-      side.querySelectorAll('a[data-tool="tasks"] .cp-badge, button.cp-label .cp-dot').forEach(b => b.remove());
-      if (!c.badge) return;
-      const title = `${c.mine} assigned to you${c.overdue ? `, ${c.overdue} overdue` : ''}${c.waiting ? `, ${c.waiting} question${c.waiting > 1 ? 's' : ''} waiting on you` : ''}`;
-      const badge = () => { const b = document.createElement('span'); b.className = 'cp-badge' + (c.overdue || c.waiting ? ' late' : '');
-        b.textContent = c.badge > 99 ? '99+' : String(c.badge); b.title = title; return b; };
-      const link = side.querySelector('a[data-tool="tasks"]');
-      if (!link) return;
-      link.append(badge());
-      link.setAttribute('aria-label', `Team Planning: ${title}`);
-      // A folded heading gets a dot, so the count isn't hidden away.
-      const heading = side.querySelector(`button.cp-label[aria-controls="${link.parentElement.id}"]`);
-      if (heading) {
-        const dot = document.createElement('span');
-        dot.className = 'cp-dot' + (c.overdue || c.waiting ? ' late' : '');
-        dot.title = title;
-        heading.querySelector('span').after(dot);
-      }
-    } catch { /* no badge */ }
   }
 
   /** A red count of unread notifications beside Notifications. */

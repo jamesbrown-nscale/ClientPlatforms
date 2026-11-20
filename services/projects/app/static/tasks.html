@@ -197,6 +197,11 @@
   .pbar i { display: block; height: 100%; background: var(--primary); border-radius: 3px; transition: width .15s; }
   .jpct { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
   .jpct .pbar { width: 48px; height: 5px; }
+  .ppct { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text2); white-space: nowrap; flex-shrink: 0; }
+  .ppct .pbar { width: 56px; height: 5px; }
+  .ppct.full .pbar i { background: #12B76A; }
+  .tllab .ppct { gap: 4px; font-size: 11.5px; }
+  .tllab .ppct .pbar { width: 32px; }
   .jtext h3 { font-size: 12px; color: var(--text2); margin: 10px 0 2px; }
   .jtext .body { white-space: pre-wrap; overflow-wrap: anywhere; }
   .jnote { background: var(--warn-fill); color: #5C3A00; border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -417,6 +422,11 @@ const colourOf = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + c
 const colourVars = id => { const [c, f, t] = colourOf(id); return `--c:${c};--f:${f};--t:${t}`; };
 const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+/* Jobs are in working days: weekends don't count, and a job starts on a weekday. */
+const isWeekend = s => { const w = new Date(s + 'T00:00:00').getDay(); return w === 0 || w === 6; };
+const workday = s => { while (isWeekend(s)) s = addDays(s, 1); return s; };
+const workEnd = (s, n) => { s = workday(s); for (let i = 1; i < Math.max(1, n); i++) s = workday(addDays(s, 1)); return s; };
+const workDays = (a, b) => { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) n += !isWeekend(d); return n; };
 const shortDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
 const span = (a, b) => !a ? '' : a === b ? fmtDay(a) : `${fmtDay(a)} → ${fmtDay(b)}`;
 const days = n => `${n} day${n === 1 ? '' : 's'}`;
@@ -484,7 +494,7 @@ function drawPeople() {
     const jobs = byPlan(g.jobs).map(({ p, jobs: js }) => {
       const open = js.filter(j => j.status !== 'Done').length;
       const ex = isOpenSub(g.email, p, js);
-      return `<div class="psub" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button><span class="muted" style="font-weight:400;font-size:12px">${open} open</span></div>` +
+      return `<div class="psub" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}<span class="muted" style="font-weight:400;font-size:12px">${open} open</span></div>` +
       (ex ? js : []).map(j => {
       const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
       const meta = [
@@ -703,7 +713,7 @@ function jobForm(t, j) {
   return `<div class="jb"><div class="fields">
       <div class="wide"><label for="jTitle">Job</label><input id="jTitle" value="${esc(j.title)}" maxlength="200" placeholder="What needs doing"></div>
       <div><label for="jStart">Expected start</label><input type="date" id="jStart" value="${esc(j.start)}"></div>
-      <div><label for="jDur">Duration (days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
+      <div><label for="jDur">Duration (working days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
       <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
       <div class="two"><label for="jWho">Assigned to</label><div class="pplpick" id="jPeople"><span id="jChips"></span><input id="jWho" list="people" placeholder="Add someone: name or email" autocomplete="off"></div></div>
       <div class="two"><label for="jStatus">Status</label><div class="stp"><select id="jStatus">${opt(ME.statuses, j.status)}</select>
@@ -737,7 +747,7 @@ function wireJobs() {
   if ($('jSave')) {
     const ends = () => {
       const st = $('jStart').value, n = Math.max(1, Number($('jDur').value) || 1);
-      $('jEnds').textContent = st ? `${fmtDay(addDays(st, n - 1))}` : '–';
+      $('jEnds').textContent = st ? `${fmtDay(workEnd(st, n))}` : '–';
     };
     $('jStart').oninput = ends; $('jDur').oninput = ends; ends();
     // Assigned to: a chip per person; pick from the list or type a name or email, then Enter (or a comma).
@@ -981,6 +991,11 @@ const dmy = s => s ? new Date(s + 'T00:00:00').toLocaleDateString() : '';
 const said = st => st === 'To do' ? 'Not started' : st;
 /** A job's status in words, with how far along it is while In progress. */
 const pctOf = j => j.status === 'In progress' ? Math.max(0, Math.min(100, j.progress || 0)) : null;
+/** How far a whole plan is: every job counts equally, Done 100%, In progress its %, anything else 0%. */
+const planPct = p => { const js = p.jobs || []; return js.length ? Math.round(js.reduce((t, j) => t + (j.status === 'Done' ? 100 : pctOf(j) || 0), 0) / js.length) : null; };
+const planBar = p => { const v = planPct(p); if (v == null) return '';
+  const done = (p.jobs || []).filter(j => j.status === 'Done').length;
+  return `<span class="ppct ${v === 100 ? 'full' : ''}" title="${v}% complete across all ${p.jobs.length} job${p.jobs.length > 1 ? 's' : ''} in the plan (${done} done)"><span class="pbar"><i style="width:${v}%"></i></span>${v}%</span>`; };
 const saidJob = j => said(j.status) + (pctOf(j) != null ? ` · ${pctOf(j)}%` : '');
 const avail = () => Math.max(200, ($('calGrid').clientWidth || 900) - LEFT);
 
@@ -1063,8 +1078,8 @@ function drawCal() {
     const label = (byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '')) + (pc != null ? ` · ${pc}%` : '');
     const fill = pc != null ? `background:linear-gradient(to right, var(--c) ${pc}%, color-mix(in srgb, var(--c) 50%, #fff) ${pc}%);` : '';
     const bar = j.start && j.end >= RS && j.start <= end
-      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv};${fill}"
-           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
+      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv};${fill}"
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (between(j.start, j.end) + 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
@@ -1077,7 +1092,7 @@ function drawCal() {
     const late = p.due && p.due < t0;
     const due = p.due ? `<div class="diamond ${late ? 'late' : ''}" style="left:${x(p.due) + DW / 2}px;${cv}" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)} is due ${esc(fmtDay(p.due))}${late ? ' (overdue)' : ''}"></div>` : '';
     rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="min-height:36px">
-      <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey('plan', p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs · ${left} open${p.project ? ' · ' + esc(p.project) : ''}"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>
+      <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey('plan', p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs · ${left} open${p.project ? ' · ' + esc(p.project) : ''}"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}
         ${canAdd ? `<button type="button" class="tladd" data-add="${esc(p.id)}" title="Add a job to ${esc(p.title)}" aria-label="Add a job to ${esc(p.title)}">+</button>` : ''}</div>
       <div class="tltrack ${canAdd ? 'pick' : ''}" style="width:${W}px" data-plan="${esc(p.id)}" ${canAdd ? 'title="Click a day to add a job starting then"' : ''}>${spanBar}${due}</div></div>`;
     if (!ex) continue;
@@ -1090,7 +1105,7 @@ function drawCal() {
     for (const g of groups) {
       // A faint line where they're busy; red where two of their open jobs overlap.
       const load = {};
-      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (let d = j.start; d <= j.end; d = addDays(d, 1)) load[d] = (load[d] || 0) + 1; });
+      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (let d = j.start; d <= j.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + 1; });
       let busy = '';
       for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) busy += `<div class="tlbusy ${load[d] > 1 ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${load[d] > 1 ? `title="${load[d]} jobs at once on ${esc(fmtDay(d))}"` : ''}></div>`; }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
@@ -1106,7 +1121,7 @@ function drawCal() {
         const spanBar = a ? `<div class="tlspan" style="left:${x(a)}px;width:${(between(a, b) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
         const can = p.canChange, gsel = OPEN?.id === p.id && !JOBOPEN, ex = isOpenSub(g.email, p, js), left = js.filter(j => j.status !== 'Done').length;
         rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" style="min-height:34px">
-          <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`} · ${left} open"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button></div>
+          <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`} · ${left} open"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}</div>
           <div class="tltrack ${can ? 'pick' : ''}" style="width:${W}px" ${can ? `data-subplan="${esc(p.id)}" data-person="${esc(g.email)}" title="Click a day to add a job in ${esc(p.title)} for ${esc(g.name)} starting then"` : ''}>${spanBar}</div></div>`;
         if (ex) for (const j of js) rows += jobRow(p, j, true);
       }
@@ -1214,7 +1229,8 @@ function wireTimeline() {
       if (e.button !== 0) return;
       const plan = CAL.plans.find(p => p.id === bar.dataset.plan), job = plan.jobs.find(j => j.id === bar.dataset.job);
       const resize = !!e.target.closest('.rh'), x0 = e.clientX, left0 = bar.offsetLeft, w0 = bar.offsetWidth;
-      let dd = 0, moved = false;
+      const len0 = job.duration || 1;
+      let dd = 0, moved = false, s = job.start, len = len0;
       if (plan.canChange) bar.setPointerCapture(e.pointerId);
       bar.onpointermove = ev => {
         if (!plan.canChange) return;
@@ -1222,19 +1238,22 @@ function wireTimeline() {
         if (!moved && Math.abs(dx) < 4) return;
         moved = true; bar.classList.add('dragging');
         dd = Math.round(dx / DW);
-        if (resize) { const nd = Math.max(1, (job.duration || 1) + dd); dd = nd - (job.duration || 1); bar.style.width = nd * DW - 2 + 'px'; }
-        else bar.style.left = left0 + dd * DW + 'px';
-        const s = resize ? job.start : addDays(job.start, dd), len = resize ? (job.duration || 1) + dd : job.duration || 1;
-        bar.title = `${span(s, addDays(s, len - 1))} (${days(len)})`;
+        // Weekends don't count: a move lands on a weekday, and the end skips Saturdays and Sundays.
+        if (resize) len = Math.max(1, workDays(job.start, addDays(job.end, dd)));
+        else s = workday(addDays(job.start, dd));
+        const e = workEnd(s, len);
+        bar.style.left = left0 + between(job.start, s) * DW + 'px';
+        bar.style.width = (between(s, e) + 1) * DW - 2 + 'px';
+        bar.title = `${span(s, e)} (${days(len)})`;
         const lab = bar.closest('.tlrow').querySelector('.js');
-        if (lab) lab.textContent = `${dmy(s)} – ${dmy(addDays(s, len - 1))} · ${said(job.status)}`;
+        if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${said(job.status)}`;
       };
       bar.onpointerup = async () => {
         bar.onpointermove = bar.onpointerup = null;
         if (!moved) { openTask(plan.id, job.id); return; }
         bar.classList.remove('dragging');
-        if (!dd) return drawCal();
-        const body = resize ? { duration: (job.duration || 1) + dd } : { start: addDays(job.start, dd) };
+        if (resize ? len === len0 : s === job.start) return drawCal();
+        const body = resize ? { duration: len } : { start: s };
         try { await send(`tasks/${plan.id}/jobs/${job.id}`, body, 'PATCH'); afterJobChange(plan.id); }
         catch (err) { cp.alert(err.message); drawCal(); }
       };

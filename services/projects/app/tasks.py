@@ -554,12 +554,23 @@ def people(user: User = Depends(require_task_user)):
 
 # ---------- Jobs ----------
 
+def workday(d: date) -> date:
+    """The day itself on a weekday; the Monday after on a weekend."""
+    return d + timedelta(days=(7 - d.weekday()) if d.weekday() >= 5 else 0)
+
+
 def end_of(start: str, duration: int) -> str:
-    """The last day of a job that starts on `start` and lasts `duration` days (the start day counts)."""
+    """The last day of a job that starts on `start` and lasts `duration` working days (the start day counts).
+    Weekends don't count: five days from a Thursday ends the Wednesday after."""
     try:
-        return (date.fromisoformat(start) + timedelta(days=max(1, duration or 1) - 1)).isoformat()
+        d = workday(date.fromisoformat(start))
     except (TypeError, ValueError):
         return ""
+    left = max(1, duration or 1) - 1
+    d += timedelta(days=7 * (left // 5))
+    for _ in range(left % 5):
+        d = workday(d + timedelta(days=1))
+    return d.isoformat()
 
 
 def _job(r) -> dict:
@@ -632,7 +643,7 @@ def _clean_job(body: JobIn) -> dict:
             body.start and date.fromisoformat(body.start)
         except ValueError:
             raise HTTPException(422, "Start must be a real date.")
-        out["start"] = body.start
+        out["start"] = workday(date.fromisoformat(body.start)).isoformat() if body.start else ""   # jobs start on a working day
     if body.duration is not None:
         out["duration"] = body.duration
     if body.status is not None:
@@ -680,7 +691,7 @@ def _when(j: dict) -> str:
     if not j.get("start"):
         return "Not scheduled yet"
     days = j["duration"] or 1
-    return f"Starts {nice_date(j['start'])} · {days} day{'s' if days != 1 else ''}"
+    return f"Starts {nice_date(j['start'])} · {days} working day{'s' if days != 1 else ''}"
 
 
 def _job_mentions(j: dict, picked: list[str]) -> set[str]:
