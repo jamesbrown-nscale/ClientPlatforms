@@ -117,7 +117,7 @@ The Windows Restart Reminder app reports what happens on each device, and the pa
 
 The answer is `{"results": [{"reportId", "status": "created" | "updated" | "duplicate" | "rejected", "error"?}]}`. Resending a report is safe. `GET /restart/api/policy` returns the policy (`maxUptimeDays`, `countdownHours`, `latestScheduleTime`), so the app can follow the site instead of its `appsettings.json`.
 
-**Before the page has data,** the WindowsRestart app needs to send these reports (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker).
+**The app sends these from version 1.2** (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker; see the WindowsRestart README). Earlier versions don't report.
 
 ## Devices
 

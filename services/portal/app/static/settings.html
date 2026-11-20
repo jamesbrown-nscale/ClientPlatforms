@@ -410,11 +410,11 @@ const HOWTO = {
       <li>If not: see <code>C:\\ProgramData\\Nscale\\Elevate\\Logs\\worker.log</code> (lines mentioning Client Platforms) and event 1006 in the Application log.</li>
     </ol>`,
   restart: (u, k) => `
-    <div class="warn">The Restart Reminder app needs a build that sends reports to this site (<code>ReportUrl</code> and <code>ReportKey</code>). The version in the <a href="${GH}WindowsRestart" target="_blank" rel="noopener">WindowsRestart</a> repo doesn't send them yet, so devices won't appear here until it does.</div>
+    <div class="warn">Reporting to this site needs <b>Restart Reminder 1.2</b> or later. Earlier versions remind and restart, but don't report, so their devices won't appear here.</div>
     <h4>Build (on Windows, with the .NET 8 SDK)</h4>
     <ol>
       <li>Create a key above for the devices you're installing on, and copy it (it's shown once).</li>
-      <li>Build it:${pre('cd RestartReminder\ndotnet publish -c Release -o publish')}</li>
+      <li>In the <a href="${GH}WindowsRestart" target="_blank" rel="noopener">WindowsRestart</a> repo folder, build it:${pre('dotnet publish -c Release -o publish')}</li>
       <li>In <code>publish\\appsettings.json</code>, add:${pre(`"ReportUrl": "${u}",\n"ReportKey": "${k}"`)}</li>
       <li>Try it without restarting anything: <code>.\\publish\\RestartReminder.exe --test --reset</code></li>
     </ol>
