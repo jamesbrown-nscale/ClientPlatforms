@@ -102,7 +102,17 @@
   .hits li.added { cursor: default; opacity: .6; }
   .hits li .muted { font-size: 12.5px; }
   .hits li.none { cursor: default; color: var(--text2); font-style: italic; }
-  .dkeys { margin-top: 8px; }
+  .dapp { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--surface); }
+  .dapp:first-of-type { border-top: 0; padding-top: 0; }
+  .dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .dhead h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .dapp .copy { margin-top: 10px; }
+  .dkeys { margin-top: 12px; }
+  .dkeys tr.gone td { color: var(--text2); }
+  .dkeys tr.gone td b { font-weight: 600; color: var(--text2); }
+  .dkeys td.keyacts { text-align: right; white-space: nowrap; }
+  .dkeys td.keyacts .btn + .btn { margin-left: 6px; }
+  .kdate { height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; margin-top: 10px; font: inherit; color: inherit; background: #fff; }
   .dkeys table.keys td, .dkeys table.keys th { padding: 8px 10px; }
   .dkeys code { font-size: 12.5px; }
   .newkey { background: var(--ok-fill); color: var(--ok-text); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
@@ -172,16 +182,25 @@
 
   <section class="card">
     <h2>Device settings</h2>
-    <p class="sub">What to put in each app's installer, from the device server address, and the keys devices use. Add a key for each group of devices (it's shown once, so copy it into the installer then), give it an expiry date if it should stop working, and delete it to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
-    <label>IT Notifications: Windows MSI and Mac profile</label>
-    <span class="copy" id="dvNotify"></span>
-    <div class="dkeys" data-keys="notifications"></div>
-    <label>Admin Elevation: ClientPlatforms.json beside Install.ps1</label>
-    <span class="copy" id="dvElevation"></span>
-    <div class="dkeys" data-keys="elevation"></div>
-    <label>Restart Reminder: appsettings.json</label>
-    <span class="copy" id="dvRestart"></span>
-    <div class="dkeys" data-keys="restart"></div>
+    <p class="sub">What to put in each app's installer, and the keys devices use. Create a key for each group of devices: it's shown once, so copy it into the installer then. A key never expires unless you give it a date, and you can expire it at any time to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
+    <div class="dapp">
+      <div class="dhead"><h3>IT Notifications: Windows MSI and Mac profile</h3>
+        <button class="btn primary small" type="button" data-create="notifications" hidden>Create key</button></div>
+      <span class="copy" id="dvNotify"></span>
+      <div class="dkeys" data-keys="notifications"></div>
+    </div>
+    <div class="dapp">
+      <div class="dhead"><h3>Admin Elevation: ClientPlatforms.json beside Install.ps1</h3>
+        <button class="btn primary small" type="button" data-create="elevation" hidden>Create key</button></div>
+      <span class="copy" id="dvElevation"></span>
+      <div class="dkeys" data-keys="elevation"></div>
+    </div>
+    <div class="dapp">
+      <div class="dhead"><h3>Restart Reminder: appsettings.json</h3>
+        <button class="btn primary small" type="button" data-create="restart" hidden>Create key</button></div>
+      <span class="copy" id="dvRestart"></span>
+      <div class="dkeys" data-keys="restart"></div>
+    </div>
   </section>
   </div>
 
@@ -231,6 +250,27 @@
     <div class="hint" id="udSummary"></div>
     <div id="udNotice" class="notice err" hidden></div>
     <div class="row"><button class="btn primary" type="submit" id="udSave">Save</button><button class="btn" type="button" id="udCancel">Cancel</button></div>
+  </form>
+</dialog>
+
+<dialog id="keyDlg">
+  <form id="keyForm" method="dialog">
+    <h2 id="kdTitle">Create key</h2>
+    <p class="sub" id="kdSub" style="margin-bottom:0"></p>
+    <div id="kdNameWrap">
+      <label for="kdName">Name</label>
+      <input id="kdName" type="text" maxlength="60" placeholder="e.g. London laptops" autocomplete="off">
+      <div class="hint">Which devices it's for, so you know which key to expire later.</div>
+    </div>
+    <label>Expires</label>
+    <div class="checks">
+      <label><input type="radio" name="kdExp" value="never" checked> Never</label>
+      <label><input type="radio" name="kdExp" value="date"> On a date</label>
+    </div>
+    <input id="kdDate" class="kdate" type="date" aria-label="Expiry date" hidden>
+    <div class="hint" id="kdHint">It works until you expire it.</div>
+    <div id="kdNotice" class="notice err" hidden></div>
+    <div class="row"><button class="btn primary" type="submit" id="kdSave">Create key</button><button class="btn" type="button" id="kdCancel">Cancel</button></div>
   </form>
 </dialog>
 
@@ -304,57 +344,117 @@ function drawSnippets() {
 }
 const day = s => s ? new Date(s + (s.length === 10 ? 'T00:00:00' : '')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
+const isKeyAdmin = id => (me.tools || []).some(t => t.id === id && t.level === 'admin');
+const KEYLISTS = {};   // the keys last loaded, per app
+
 async function loadKeys(id) {
   const box = document.querySelector(`[data-keys="${id}"]`);
   const a = KEYAPPS[id];
-  const isAdmin = (me.tools || []).some(t => t.id === id && t.level === 'admin');
-  if (!isAdmin) { box.innerHTML = `<p class="muted" style="margin:6px 0 0">Admins of ${esc(a.name)} can see and change its ${a.word}s.</p>`; return; }
+  const admin = isKeyAdmin(id);
+  document.querySelector(`[data-create="${id}"]`).hidden = !admin;
+  if (!admin) { box.innerHTML = `<p class="muted" style="margin:6px 0 0">Admins of ${esc(a.name)} can see and change its ${a.word}s.</p>`; return; }
   try { drawKeys(id, (await api(`/${id}/api/device-keys`)).items); }
   catch (err) { box.innerHTML = `<p class="muted" style="margin:6px 0 0">Couldn't load the ${a.word}s: ${esc(err.message)}</p>`; }
 }
 
+function expiresCell(k) {
+  if (k.expiredAt) return `<span class="badge off" title="${k.expiredBy ? 'Expired by ' + esc(k.expiredBy) : ''}">Expired</span><div class="muted">${esc(day(k.expiredAt.slice(0, 10)))}</div>`;
+  if (k.expired) return `<span class="badge off">Expired</span><div class="muted">End of ${esc(day(k.expires))}</div>`;
+  if (k.expires) return `${esc(day(k.expires))}`;
+  return '<span class="badge grey">Never</span>';
+}
+
 function drawKeys(id, items) {
+  KEYLISTS[id] = items;
   const box = document.querySelector(`[data-keys="${id}"]`);
   const a = KEYAPPS[id];
-  const today = new Date().toISOString().slice(0, 10);
-  const rows = items.map(k => `<tr>
-      <td><b>${esc(k.label)}</b>${k.source === 'env' ? '<div class="muted">Set on the server (.env)</div>' : k.createdBy ? `<div class="muted">Added ${esc(day(k.createdAt.slice(0, 10)))} by ${esc(k.createdBy)}</div>` : ''}</td>
+  // Working keys first, then expired ones.
+  const sorted = [...items.filter(k => !k.expired), ...items.filter(k => k.expired)];
+  const rows = sorted.map(k => `<tr class="${k.expired ? 'gone' : ''}">
+      <td><b>${esc(k.label)}</b>${k.source === 'env' ? '<div class="muted">Set on the server (.env)</div>' : k.createdBy ? `<div class="muted">Created ${esc(day(k.createdAt.slice(0, 10)))} by ${esc(k.createdBy)}</div>` : ''}</td>
       <td><code>${esc(k.start)}…</code></td>
-      <td>${k.expired ? `<span class="badge off">Expired ${esc(day(k.expires))}</span>` : k.expires ? esc(day(k.expires)) : '<span class="muted">Never</span>'}</td>
+      <td>${expiresCell(k)}</td>
       <td>${k.lastUsed ? esc(fmt(k.lastUsed)) : '<span class="muted">' + (k.source === 'env' ? 'Not tracked' : 'Not yet') + '</span>'}</td>
-      <td class="acts">${k.source === 'site' ? `<button class="btn small danger" type="button" data-del="${esc(k.id)}" data-label="${esc(k.label)}">Delete</button>` : ''}</td></tr>`).join('');
+      <td class="keyacts">${k.source !== 'site' ? '' : k.expired
+        ? `<button class="btn small" type="button" data-del="${esc(k.id)}">Delete</button>`
+        : `<button class="btn small" type="button" data-exp="${esc(k.id)}">Change expiry</button><button class="btn small danger" type="button" data-now="${esc(k.id)}">Expire now</button>`}</td></tr>`).join('');
   box.innerHTML = `
     ${NEWKEY[id] ? `<div class="newkey" role="status"><b>Your new ${a.word}.</b> Copy it now: it won't be shown again. It's in the installer line above too.
       <div class="row" style="margin-top:8px"><code class="copy" style="margin:0;flex:1">${esc(NEWKEY[id])}</code><button class="btn small" type="button" data-copy>Copy</button><button class="btn small" type="button" data-done>Done</button></div></div>` : ''}
     <div class="tablewrap"><table class="keys">
       <thead><tr><th>Name</th><th>Key</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5" class="muted">No ${a.word}s yet.</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="5" class="muted">No ${a.word}s yet. Create one to put in the installer.</td></tr>`}</tbody>
     </table></div>
-    <form class="row addkey" style="margin-top:10px">
-      <input type="text" name="label" placeholder="Name, e.g. London laptops" maxlength="60" required aria-label="Name of the new ${a.word}" style="max-width:260px">
-      <label class="muted" style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center">Expires <input type="date" name="expires" min="${today}" aria-label="Expiry date (optional)" style="height:38px;border:1px solid var(--border);border-radius:8px;padding:0 8px"></label>
-      <button class="btn" type="submit">Add ${a.word}</button>
-    </form>
     <div class="notice" hidden></div>`;
   const note = box.querySelector('.notice');
-  box.querySelector('form').onsubmit = async e => {
-    e.preventDefault();
-    const f = e.target;
-    try {
-      const r = await api(`/${id}/api/device-keys`, { method: 'POST', body: JSON.stringify({ label: f.label.value, expires: f.expires.value }) });
-      NEWKEY[id] = r.key; drawSnippets(); drawKeys(id, r.items);
-    } catch (err) { notice(note, err.message); }
-  };
+  const find = kid => items.find(k => k.id === kid);
   box.querySelector('[data-copy]')?.addEventListener('click', async ev => {
     try { await navigator.clipboard.writeText(NEWKEY[id]); ev.target.textContent = 'Copied'; } catch { ev.target.textContent = 'Select and copy it'; }
   });
   box.querySelector('[data-done]')?.addEventListener('click', () => { delete NEWKEY[id]; drawSnippets(); drawKeys(id, items); });
+  box.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => openKeyDialog(id, find(b.dataset.exp)));
+  box.querySelectorAll('[data-now]').forEach(b => b.onclick = async () => {
+    const k = find(b.dataset.now);
+    if (!(await cp.confirm({ title: `Expire "${k.label}" now?`, message: `Devices using this ${a.word} stop being accepted straight away. It stays in the list as expired, and can't be turned back on: those devices would need a new key.`, confirm: 'Expire now', danger: true }))) return;
+    try { drawKeys(id, (await api(`/${id}/api/device-keys/${encodeURIComponent(k.id)}`, { method: 'PATCH', body: JSON.stringify({ expireNow: true }) })).items); }
+    catch (err) { notice(note, err.message); }
+  });
   box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!(await cp.confirm({ title: `Delete "${b.dataset.label}"?`, message: `Devices using this ${a.word} stop being accepted straight away. This can't be undone: they'd need a new key.`, confirm: 'Delete', danger: true }))) return;
-    try { drawKeys(id, (await api(`/${id}/api/device-keys/${encodeURIComponent(b.dataset.del)}`, { method: 'DELETE' })).items); }
+    const k = find(b.dataset.del);
+    if (!(await cp.confirm({ title: `Delete "${k.label}"?`, message: 'It has already expired, so no device can use it. Deleting removes it from this list.', confirm: 'Delete', danger: true }))) return;
+    try { drawKeys(id, (await api(`/${id}/api/device-keys/${encodeURIComponent(k.id)}`, { method: 'DELETE' })).items); }
     catch (err) { notice(note, err.message); }
   });
 }
+
+/* One dialog for creating a key and for changing an existing key's expiry. */
+let KEYDLG = null;   // { id, key } — key is null when creating
+const todayIso = () => new Date().toISOString().slice(0, 10);
+function syncExpiry() {
+  const onDate = document.querySelector('input[name="kdExp"]:checked').value === 'date';
+  $('kdDate').hidden = !onDate;
+  $('kdHint').textContent = onDate ? 'It works to the end of that day (UTC). You can still expire it early.' : 'It works until you expire it.';
+  if (onDate && !$('kdDate').value) { const d = new Date(); d.setMonth(d.getMonth() + 12); $('kdDate').value = d.toISOString().slice(0, 10); }
+}
+document.querySelectorAll('input[name="kdExp"]').forEach(r => r.onchange = syncExpiry);
+
+function openKeyDialog(id, key) {
+  const a = KEYAPPS[id];
+  KEYDLG = { id, key };
+  $('kdTitle').textContent = key ? `Change expiry: ${key.label}` : `Create ${a.word}`;
+  $('kdSub').textContent = key ? `${a.name}. Devices using this key keep working until then.` : `For ${a.name}. It's shown once when it's made, so have the installer ready.`;
+  $('kdNameWrap').hidden = !!key;
+  $('kdName').value = ''; $('kdName').required = !key;
+  $('kdDate').min = todayIso(); $('kdDate').value = key?.expires || '';
+  document.querySelector(`input[name="kdExp"][value="${key?.expires ? 'date' : 'never'}"]`).checked = true;
+  $('kdSave').textContent = key ? 'Save' : 'Create key';
+  syncExpiry();
+  notice($('kdNotice'), '');
+  $('keyDlg').showModal();
+  (key ? $('kdSave') : $('kdName')).focus();
+}
+document.querySelectorAll('[data-create]').forEach(b => b.onclick = () => openKeyDialog(b.dataset.create, null));
+$('kdCancel').onclick = () => $('keyDlg').close();
+$('keyForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const { id, key } = KEYDLG;
+  const onDate = document.querySelector('input[name="kdExp"]:checked').value === 'date';
+  const expires = onDate ? $('kdDate').value : '';
+  if (onDate && !expires) return notice($('kdNotice'), 'Pick the date it should stop working, or choose Never.');
+  if (onDate && expires < todayIso()) return notice($('kdNotice'), 'The expiry date must be today or later.');
+  $('kdSave').disabled = true;
+  try {
+    if (key) {
+      const r = await api(`/${id}/api/device-keys/${encodeURIComponent(key.id)}`, { method: 'PATCH', body: JSON.stringify({ expires }) });
+      drawKeys(id, r.items);
+    } else {
+      const r = await api(`/${id}/api/device-keys`, { method: 'POST', body: JSON.stringify({ label: $('kdName').value, expires }) });
+      NEWKEY[id] = r.key; drawSnippets(); drawKeys(id, r.items);
+    }
+    $('keyDlg').close();
+  } catch (err) { notice($('kdNotice'), err.message); }
+  finally { $('kdSave').disabled = false; }
+});
 
 $('siteForm').addEventListener('submit', async e => {
   e.preventDefault();

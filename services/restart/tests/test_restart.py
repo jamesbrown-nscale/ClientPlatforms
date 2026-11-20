@@ -197,3 +197,47 @@ def test_device_keys_made_on_the_site(client, monkeypatch, tmp_path):
     assert client.get("/restart/api/device-keys", headers=edit).status_code == 403
     assert client.get("/restart/api/device-keys", headers=adm).status_code == 200
     assert client.get("/restart/api/device-keys").status_code == 401
+
+
+def test_device_keys_expire_and_never_expire(client, tmp_path):
+    from datetime import date, timedelta as td
+    H = {"X-Requested-With": "nscale-admin"}
+    url = "/restart/api/device-keys"
+    soon = (date.today() + td(days=30)).isoformat()
+    r = client.post(url, headers=H, json={"label": "Lab PCs", "expires": soon}).json()
+    key, kid = r["key"], r["item"]["id"]
+    assert r["item"]["expires"] == soon and not r["item"]["expired"]
+
+    # Change it to never expire, then back to a date.
+    assert client.patch(f"{url}/{kid}", headers=H, json={"expires": ""}).json()["item"]["expires"] == ""
+    assert client.patch(f"{url}/{kid}", headers=H, json={"expires": soon}).json()["item"]["expires"] == soon
+    assert client.patch(f"{url}/{kid}", headers=H, json={"expires": "2001-01-01"}).status_code == 422
+    assert client.patch(f"{url}/{kid}", headers=H, json={}).status_code == 422
+    assert client.patch(f"{url}/{kid}", json={"expires": ""}).status_code == 403          # needs the page's header
+    assert client.patch(f"{url}/env-0", headers=H, json={"expireNow": True}).status_code == 400
+    assert client.patch(f"{url}/nope", headers=H, json={"expireNow": True}).status_code == 404
+    assert send(client, rep(), headers={"Authorization": "Bearer " + key}).status_code == 200
+
+    # Expire now: stops at once, stays listed, can't be brought back, can still be deleted.
+    item = client.patch(f"{url}/{kid}", headers=H, json={"expireNow": True}).json()["item"]
+    assert item["expired"] and item["expiredAt"] and item["expiredBy"] == "viewer@nscale.com"
+    assert send(client, rep(), headers={"Authorization": "Bearer " + key}).status_code == 401
+    assert client.patch(f"{url}/{kid}", headers=H, json={"expires": ""}).status_code == 409
+    assert any(k["id"] == kid for k in client.get(url).json()["items"])
+    assert client.delete(f"{url}/{kid}", headers=H).status_code == 200
+
+
+def test_device_keys_table_from_before_expire_now(tmp_path):
+    """A database made before keys could be expired by hand gets the new columns and keeps its keys."""
+    import sqlite3
+    from app import devicekeys
+    path = str(tmp_path / "old.db")
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TABLE device_keys (id TEXT PRIMARY KEY, label TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, start TEXT NOT NULL,
+            expires TEXT DEFAULT '', created_at TEXT, created_by TEXT, last_used TEXT DEFAULT '')""")
+        db.execute("INSERT INTO device_keys (id, label, hash, start, created_at) VALUES ('a1', 'Old', ?, 'cpr_abcd', '2026-11-01T00:00:00Z')",
+                   (devicekeys._hash("cpr_oldkey"),))
+    keys = devicekeys.DeviceKeys(path, [], "cpr_")
+    assert keys.check("cpr_oldkey") == "Old"
+    keys.expire_now("a1", "me@nscale.com")
+    assert keys.check("cpr_oldkey") is None and keys.get("a1")["expired"]

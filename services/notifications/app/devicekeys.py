@@ -5,12 +5,16 @@ test checks the copies match. Each service keeps its own keys in its own databas
 device_keys table, and checks them itself, so a device never waits on another service.
 
     a key made here    shown once when it's made (to put in the installer), then only its first
-                       characters: just its SHA-256 is kept. It can have an expiry date (it works
-                       to the end of that day, UTC). Deleting it stops it at once.
+                       characters: just its SHA-256 is kept. It never expires, or works to the end
+                       of an expiry date (UTC), which can be changed while it still works.
+                       Expiring it stops it at once and keeps it listed; an expired key can't be
+                       brought back (make a new one). Deleting it removes it.
     a key from .env    ENROLLMENT_KEY / INGEST_KEYS on the server: still works, listed read only
                        (change it in .env)
 
-Admins of the tool manage its keys:  GET/POST /api/device-keys,  DELETE /api/device-keys/{id}
+Admins of the tool manage its keys:  GET/POST /api/device-keys,
+    PATCH /api/device-keys/{id}  {"expires": "YYYY-MM-DD" or "" for never} or {"expireNow": true},
+    DELETE /api/device-keys/{id}
 """
 import hashlib
 import hmac
@@ -49,6 +53,10 @@ class DeviceKeys:
             db.execute("""CREATE TABLE IF NOT EXISTS device_keys (
                 id TEXT PRIMARY KEY, label TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, start TEXT NOT NULL,
                 expires TEXT DEFAULT '', created_at TEXT, created_by TEXT, last_used TEXT DEFAULT '')""")
+            cols = {c["name"] for c in db.execute("PRAGMA table_info(device_keys)")}
+            if "expired_at" not in cols:   # added later: when it was expired by hand, and by whom
+                db.execute("ALTER TABLE device_keys ADD COLUMN expired_at TEXT DEFAULT ''")
+                db.execute("ALTER TABLE device_keys ADD COLUMN expired_by TEXT DEFAULT ''")
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -56,7 +64,9 @@ class DeviceKeys:
         return db
 
     @staticmethod
-    def _expired(expires: str) -> bool:
+    def _expired(expires: str, expired_at: str = "") -> bool:
+        if expired_at:   # expired by hand
+            return True
         return bool(expires) and expires < date.today().isoformat()   # works through its last day
 
     def check(self, token: str) -> str | None:
@@ -70,8 +80,8 @@ class DeviceKeys:
         if found:
             return found
         with self._db() as db:
-            r = db.execute("SELECT id, label, expires FROM device_keys WHERE hash = ?", (_hash(token),)).fetchone()
-        if not r or self._expired(r["expires"]):
+            r = db.execute("SELECT id, label, expires, expired_at FROM device_keys WHERE hash = ?", (_hash(token),)).fetchone()
+        if not r or self._expired(r["expires"], r["expired_at"]):
             return None
         if time.time() - self._used.get(r["id"], 0) > USED_EVERY:
             self._used[r["id"]] = time.time()
@@ -81,11 +91,13 @@ class DeviceKeys:
 
     def list(self) -> list[dict]:
         out = [{"id": f"env-{i}", "label": label, "start": key[:6], "source": "env", "expires": "", "expired": False,
-                "createdAt": "", "createdBy": "", "lastUsed": ""} for i, (label, key) in enumerate(self.env)]
+                "expiredAt": "", "expiredBy": "", "createdAt": "", "createdBy": "", "lastUsed": ""}
+               for i, (label, key) in enumerate(self.env)]
         with self._db() as db:
             for r in db.execute("SELECT * FROM device_keys ORDER BY created_at DESC"):
                 out.append({"id": r["id"], "label": r["label"], "start": r["start"], "source": "site", "expires": r["expires"] or "",
-                            "expired": self._expired(r["expires"]), "createdAt": r["created_at"], "createdBy": r["created_by"],
+                            "expired": self._expired(r["expires"], r["expired_at"]), "expiredAt": r["expired_at"] or "",
+                            "expiredBy": r["expired_by"] or "", "createdAt": r["created_at"], "createdBy": r["created_by"],
                             "lastUsed": r["last_used"] or ""})
         return out
 
@@ -97,6 +109,17 @@ class DeviceKeys:
                        (kid, label, _hash(key), key[:len(self.prefix) + 4], expires, _now(), by))
         return next(k for k in self.list() if k["id"] == kid), key
 
+    def get(self, kid: str) -> dict | None:
+        return next((k for k in self.list() if k["id"] == kid), None)
+
+    def set_expiry(self, kid: str, expires: str) -> None:
+        with self._lock, self._db() as db:
+            db.execute("UPDATE device_keys SET expires = ? WHERE id = ?", (expires, kid))
+
+    def expire_now(self, kid: str, by: str) -> None:
+        with self._lock, self._db() as db:
+            db.execute("UPDATE device_keys SET expired_at = ?, expired_by = ? WHERE id = ?", (_now(), by, kid))
+
     def delete(self, kid: str) -> bool:
         with self._lock, self._db() as db:
             return db.execute("DELETE FROM device_keys WHERE id = ?", (kid,)).rowcount > 0
@@ -105,6 +128,16 @@ class DeviceKeys:
 class KeyIn(BaseModel):
     label: str = Field(min_length=1, max_length=60)
     expires: str = Field("", max_length=10)   # YYYY-MM-DD, or "" for never
+
+
+class KeyChange(BaseModel):
+    expires: str | None = Field(None, max_length=10)   # a new expiry date, or "" for never
+    expireNow: bool = False                            # stop it now; it stays listed as expired
+
+
+def _check_date(expires: str) -> None:
+    if expires and (not DATE.match(expires) or expires < date.today().isoformat()):
+        raise HTTPException(422, "The expiry date must be today or later.")
 
 
 def router(keys: DeviceKeys, tool: str, log=None) -> APIRouter:
@@ -130,12 +163,33 @@ def router(keys: DeviceKeys, tool: str, log=None) -> APIRouter:
         label = re.sub(r"\s+", " ", body.label).strip()
         if not label:
             raise HTTPException(422, "Give the key a name, e.g. the group of devices it's for.")
-        if body.expires and (not DATE.match(body.expires) or body.expires < date.today().isoformat()):
-            raise HTTPException(422, "The expiry date must be today or later.")
+        _check_date(body.expires)
         item, key = keys.add(label, body.expires, who["email"])
         if log:
             log(f"device key added: {label}", who["email"])
         return {"item": item, "key": key, "items": keys.list()}
+
+    @r.patch("/api/device-keys/{kid}")
+    def change_key(kid: str, body: KeyChange, who: dict = Depends(admin)):
+        if kid.startswith("env-"):
+            raise HTTPException(400, "This key is set on the server (.env): change it there.")
+        item = keys.get(kid)
+        if not item:
+            raise HTTPException(404, "No such key.")
+        if item["expired"]:
+            raise HTTPException(409, "This key has already expired. Make a new one instead.")
+        if body.expireNow:
+            keys.expire_now(kid, who["email"])
+            what = "expired"
+        elif body.expires is not None:
+            _check_date(body.expires)
+            keys.set_expiry(kid, body.expires)
+            what = f"expiry set to {body.expires or 'never'}"
+        else:
+            raise HTTPException(422, "Give a new expiry date, \"\" for never, or expireNow.")
+        if log:
+            log(f"device key {what}: {item['label']}", who["email"])
+        return {"item": keys.get(kid), "items": keys.list()}
 
     @r.delete("/api/device-keys/{kid}")
     def delete_key(kid: str, who: dict = Depends(admin)):
