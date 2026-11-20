@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Departments · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  .dep { background: var(--bg); border: 1px solid var(--surface); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+  .dep > button, .div > button { all: unset; box-sizing: border-box; display: flex; gap: 12px; align-items: center; width: 100%; cursor: pointer; }
+  .dep > button { padding: 14px 18px; }
+  .dep > button:hover { background: #F7F9FE; }
+  .dep > button:focus-visible, .div > button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .dep h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .dep .facts { display: flex; gap: 6px 16px; flex-wrap: wrap; color: var(--text2); font-size: 12.5px; }
+  .dep .grow { flex: 1; min-width: 0; }
+  .dep .lead { color: var(--text2); font-size: 12.5px; text-align: right; }
+  .dep .lead b { color: var(--text); font-weight: 600; }
+  .div { border-top: 1px solid var(--surface); }
+  .div > button { padding: 9px 18px 9px 40px; background: #F8FAFE; font-weight: 600; font-size: 13.5px; }
+  .div > button .muted { font-weight: 400; }
+  .people { list-style: none; margin: 0; padding: 0; }
+  .people li { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) minmax(0, 1.6fr) 90px; gap: 14px; align-items: center;
+    padding: 9px 18px 9px 40px; border-top: 1px solid var(--surface); cursor: pointer; }
+  .people li:hover { background: #F7F9FE; }
+  .people li:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .people b { font-weight: 600; }
+  .dtools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .dtools input { height: 38px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; outline: none; flex: 1; min-width: 220px; max-width: 420px; }
+  .dtools input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .dtools .sp { flex: 1; }
+  @media (max-width: 800px) { .people li { grid-template-columns: minmax(0, 1fr) 80px; } .people li .hide-md { display: none; } .dep .lead { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Departments</h1>
+      <p class="sub">Every department, its divisions and the people in each, from Users. Click someone to see or tag them.</p>
+    </div>
+    <div class="acts"><a class="btn" href="org">Org chart</a><a class="btn" href="./">Users</a></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
+    <div class="tile" style="cursor:default"><b id="s-deps">–</b><span>Departments</span></div>
+    <div class="tile" style="cursor:default"><b id="s-divs">–</b><span>Divisions</span></div>
+    <div class="tile" style="cursor:default"><b id="s-users">–</b><span>People</span></div>
+    <div class="tile vip" style="cursor:default"><b id="s-vip">–</b><span>VIPs</span></div>
+  </div>
+  <div class="dtools">
+    <input type="search" id="q" placeholder="Search departments, divisions or people" aria-label="Search">
+    <span class="sp"></span>
+    <span class="count" id="count" style="color:var(--text2);font-size:12.5px"></span>
+    <button class="btn small" type="button" id="expandAll">Expand all</button>
+    <button class="btn small" type="button" id="collapseAll">Collapse all</button>
+  </div>
+  <div id="list"><div class="card empty">Loading…</div></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let ALL = [], OPEN = new Set();   // open departments (and "dep\u0001division" for divisions that are shut: see SHUT)
+const SHUT = new Set();
+const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+
+async function api(path) {
+  const res = await fetch(path, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (res.status === 401) { throw new Error('Your sign-in has expired. Reload the page to sign in again.'); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
+}
+
+/** Who leads a department: of the people whose manager isn't in it, the one with the most of it below them. */
+function lead(people, byEmail) {
+  const inDep = new Set(people.map(u => u.email));
+  const below = new Map();
+  const kids = new Map();
+  for (const u of people) if (inDep.has(u.manager)) (kids.get(u.manager) || kids.set(u.manager, []).get(u.manager)).push(u.email);
+  const count = e => { if (below.has(e)) return below.get(e); below.set(e, 0); const n = (kids.get(e) || []).reduce((s, k) => s + 1 + count(k), 0); below.set(e, n); return n; };
+  const tops = people.filter(u => !inDep.has(u.manager));
+  tops.sort((a, b) => count(b.email) - count(a.email));
+  return tops.length && count(tops[0].email) > 0 ? tops[0] : null;
+}
+
+function draw() {
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = u => !words.length || words.every(w => [u.name, u.email, u.title, u.department, u.division, u.managerName].join(' ').toLowerCase().includes(w));
+  const byEmail = new Map(ALL.map(u => [u.email, u]));
+  const deps = new Map();
+  for (const u of ALL) {
+    const d = u.department || '';
+    if (!deps.has(d)) deps.set(d, []);
+    deps.get(d).push(u);
+  }
+  const names = [...deps.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+  let shownDeps = 0, shownPeople = 0, html = '';
+  for (const d of names) {
+    const people = deps.get(d);
+    const depHit = words.length && words.every(w => d.toLowerCase().includes(w));
+    const match = depHit ? people : people.filter(hit);
+    if (!match.length) continue;
+    shownDeps++; shownPeople += match.length;
+    const divs = new Map();
+    for (const u of match) { const v = u.division || ''; if (!divs.has(v)) divs.set(v, []); divs.get(v).push(u); }
+    const divNames = [...divs.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    const open = OPEN.has(d) || (words.length > 0 && !depHit);
+    const head = lead(people, byEmail);
+    const vips = people.filter(u => u.type === 'VIP').length;
+    html += `<section class="dep"><button type="button" data-dep="${esc(d)}" aria-expanded="${open}">
+        <span class="chev">▾</span>
+        <span class="grow"><h2>${esc(d || 'No department')}</h2>
+          <span class="facts"><span>${plural(people.length, 'person').replace('persons', 'people')}</span><span>${plural(divNames.filter(Boolean).length || new Set(people.map(u => u.division).filter(Boolean)).size, 'division')}</span>${vips ? `<span>${vips} VIP${vips === 1 ? '' : 's'}</span>` : ''}</span></span>
+        ${head ? `<span class="lead">Led by<br><b>${esc(head.name)}</b>${head.title ? ` · ${esc(head.title)}` : ''}</span>` : ''}
+      </button>`;
+    if (open) {
+      for (const v of divNames) {
+        const list = divs.get(v).sort((a, b) => a.name.localeCompare(b.name));
+        const key = d + '\u0001' + v;
+        const vOpen = !SHUT.has(key);
+        html += `<div class="div"><button type="button" data-div="${esc(key)}" aria-expanded="${vOpen}"><span class="chev">▾</span> ${esc(v || 'No division')} <span class="muted">${list.length}</span></button>`;
+        if (vOpen) html += `<ul class="people">${list.map(u => `<li tabindex="0" data-email="${esc(u.email)}">
+            <span style="min-width:0"><b class="cut">${esc(u.name)}</b><span class="cut muted">${esc(u.title || u.email)}</span></span>
+            <span class="hide-md" style="min-width:0">${u.managerName ? `<span class="cut muted">Reports to</span><span class="cut">${esc(u.managerName)}</span>` : '<span class="muted">—</span>'}</span>
+            <span class="hide-md" style="min-width:0">${u.primaryDevice && !u.primaryDevice.missing ? `<span class="cut">${esc(u.primaryDevice.name || u.primaryDevice.serial)}</span><span class="cut muted">${esc([u.primaryDevice.platform, u.primaryDevice.model].filter(Boolean).join(' · '))}</span>` : '<span class="muted">No primary device</span>'}</span>
+            <span>${u.type === 'VIP' ? '<span class="badge b-vip">VIP</span>' : '<span class="badge b-std">Standard</span>'}</span></li>`).join('')}</ul>`;
+        html += '</div>';
+      }
+    }
+    html += '</section>';
+  }
+  $('list').innerHTML = html || `<div class="card empty">${ALL.length ? 'Nothing matches.' : '<b>No users yet</b>Import a CSV on the Users page, with Department and Division columns.'}</div>`;
+  $('count').textContent = words.length ? `${plural(shownPeople, 'person').replace('persons', 'people')} in ${plural(shownDeps, 'department')}` : '';
+}
+
+$('list').addEventListener('click', e => {
+  const dep = e.target.closest('[data-dep]');
+  if (dep) { const d = dep.dataset.dep; OPEN.has(d) ? OPEN.delete(d) : OPEN.add(d); draw(); return; }
+  const div = e.target.closest('[data-div]');
+  if (div) { const k = div.dataset.div; SHUT.has(k) ? SHUT.delete(k) : SHUT.add(k); draw(); return; }
+  const li = e.target.closest('li[data-email]');
+  if (li) location.href = './#' + encodeURIComponent(li.dataset.email);
+});
+$('list').addEventListener('keydown', e => { const li = e.target.closest('li[data-email]'); if (li && e.key === 'Enter') location.href = './#' + encodeURIComponent(li.dataset.email); });
+$('expandAll').onclick = () => { ALL.forEach(u => OPEN.add(u.department || '')); SHUT.clear(); draw(); };
+$('collapseAll').onclick = () => { OPEN.clear(); SHUT.clear(); draw(); };
+$('q').addEventListener('input', draw);
+
+(async () => {
+  try {
+    const me = await api('api/me'); $('who').textContent = me.email;
+    const data = await api('api/users');
+    ALL = data.items;
+    $('s-deps').textContent = data.departments.filter(d => d.name).length.toLocaleString();
+    $('s-divs').textContent = data.departments.reduce((s, d) => s + d.divisions.length, 0).toLocaleString();
+    $('s-users').textContent = ALL.length.toLocaleString();
+    $('s-vip').textContent = ALL.filter(u => u.type === 'VIP').length.toLocaleString();
+    draw();
+  } catch (e) { const n = $('notice'); n.textContent = e.message; n.hidden = false; $('list').innerHTML = ''; }
+})();
+</script>
+</body>
+</html>

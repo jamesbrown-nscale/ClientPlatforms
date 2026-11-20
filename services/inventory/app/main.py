@@ -350,6 +350,20 @@ def users_page(request: Request):
     return FileResponse(STATIC / "users.html", headers={"Cache-Control": "no-store"})
 
 
+@users_app.get("/org")
+def org_page(request: Request):
+    if not auth.current_user(request, USERS):
+        return _page(access.sign_in_message(), 403)
+    return FileResponse(STATIC / "org.html", headers={"Cache-Control": "no-store"})
+
+
+@users_app.get("/departments")
+def departments_page(request: Request):
+    if not auth.current_user(request, USERS):
+        return _page(access.sign_in_message(), 403)
+    return FileResponse(STATIC / "departments.html", headers={"Cache-Control": "no-store"})
+
+
 @users_app.get("/api/me")
 def users_me(user: User = Depends(auth.users_viewer)):
     return {"email": user.email, "name": user.name, "level": user.level, "canEdit": user.can_edit, "portalUrl": PORTAL_URL}

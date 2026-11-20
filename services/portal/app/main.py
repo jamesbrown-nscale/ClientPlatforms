@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from . import access, directory, oidc
-from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS
+from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, USES
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "cp_session"
@@ -110,7 +110,7 @@ def level(user: dict, tool: str) -> str:
     """none, view, edit or admin: the highest any of their roles gives them on this tool."""
     if tool in EVERYONE:
         return "edit"
-    return user.get("levels", {}).get(tool, "none")
+    return user.get("levels", {}).get(USES.get(tool, tool), "none")
 
 
 def can_use(user: dict, tool: str) -> bool:
@@ -497,7 +497,7 @@ class NewPassword(BaseModel):
 
 
 def _catalog() -> dict:
-    return {"tools": [{"id": t["id"], "name": t["name"], "group": t["group"]} for t in TOOLS], "levels": LEVELS,
+    return {"tools": [{"id": t["id"], "name": t["name"], "group": t["group"]} for t in TOOLS if not t.get("uses")], "levels": LEVELS,
             "sitePerms": [{"id": k, "name": v} for k, v in SITE_PERMS.items()]}
 
 
@@ -672,6 +672,8 @@ def _value_error(request: Request, exc: ValueError):
 # ---------- HTML ----------
 
 ICONS = {
+    "org": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-2.5h14V17"/></svg>',
+    "building": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20M8 7h4M8 11h4M8 15h4"/></svg>',
     "laptop": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20M9 19l.5-1.5h5L15 19"/></svg>',
     "users": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17a3.5 3.5 0 0 1 7 0M15 9h3M15 13h3"/></svg>',
     "bell": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',

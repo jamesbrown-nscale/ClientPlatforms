@@ -120,6 +120,8 @@ def test_who_can_do_what(c):
     assert c.get("/devices/api/devices").status_code == 401
     assert c.get("/devices/").status_code == 403
     assert "Devices" in c.get("/devices/", headers=DV).text and "Users" in c.get("/users/", headers=UV).text
+    assert "Org chart" in c.get("/users/org", headers=UV).text and "Departments" in c.get("/users/departments", headers=UV).text
+    assert c.get("/users/org").status_code == 403 and c.get("/users/departments", headers=DV).status_code == 403
     assert c.get("/devices/api/devices", headers=UV).status_code == 401    # a Users token isn't a Devices one
     assert c.get("/devices/api/devices", headers=DV).status_code == 200
     assert c.get("/devices/api/connections", headers=DE).status_code == 403   # admins only

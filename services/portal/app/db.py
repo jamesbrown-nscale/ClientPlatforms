@@ -20,7 +20,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) and its access entry.
-    # group is the heading it's listed under in the sidebar.
+    # group is the heading it's listed under in the sidebar. An entry with "uses" is another page of
+    # that tool: its own sidebar link and tile, but no access entry of its own (that tool's decides).
     {"id": "devices", "group": "Device Management", "name": "Devices", "icon": "laptop", "url": "/devices/",
      "about": "Every Mac, PC and phone in Jamf and Intune: make, model, OS, who uses it and whose primary device it is."},
     {"id": "notifications", "group": "Device Management", "name": "IT Notifications", "icon": "bell", "url": "/notifications/",
@@ -37,10 +38,15 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Team plans of scheduled jobs: assign work, plan start dates and durations on a timeline, ask questions and post updates."},
     {"id": "users", "group": "People", "name": "Users", "icon": "users", "url": "/users/",
      "about": "The people we look after, imported from a CSV: team, line manager, VIP or standard, and their primary device."},
+    {"id": "org", "group": "People", "name": "Org chart", "icon": "org", "url": "/users/org", "uses": "users",
+     "about": "Who reports to whom, from the line managers on Users."},
     {"id": "team", "group": "People", "name": "Team", "icon": "team", "url": "/team/",
      "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
+    {"id": "departments", "group": "People", "name": "Departments", "icon": "building", "url": "/users/departments", "uses": "users",
+     "about": "Every department, its divisions and the people in each, from Users."},
 ]
-TOOL_IDS = [t["id"] for t in TOOLS]
+TOOL_IDS = [t["id"] for t in TOOLS if not t.get("uses")]   # the ones with an access entry
+USES = {t["id"]: t["uses"] for t in TOOLS if t.get("uses")}   # page → the tool whose access it follows
 LEVELS = ["none", "view", "edit", "admin"]
 SITE_PERMS = {"people": "Manage people and roles", "settings": "Manage site settings"}
 ADMIN_ROLE = "administrator"

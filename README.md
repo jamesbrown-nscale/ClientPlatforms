@@ -12,7 +12,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
-| `/users/` | Users: the people we look after, imported by CSV, tagged with team, line manager, VIP or Standard and primary device | [`services/inventory`](services/inventory) |
+| `/users/` | Users: the people we look after, imported by CSV, tagged with department and division, line manager, VIP or Standard and primary device. Also `/users/org` (Org chart) and `/users/departments` (Departments) | [`services/inventory`](services/inventory) |
 | `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
@@ -142,7 +142,13 @@ The people we look after (not who can sign in: that's Settings → People), each
 
 **Import CSV** takes a file with an **Email** column, plus any of *Name* (or First name and Last name), *Job title*, *Department*, *Division* (a *Team* column fills it too), *Line manager*, *User type* (VIP or Standard; yes/no also work) and *Primary device* (a serial or device name). Commas, semicolons or tabs all work, and common heading names (e.g. *E-mail Address*, *Display Name*, *Serial Number*) are recognised. It checks the file first and shows what it'll add, update and couldn't read, then imports. New emails are added; users already here are updated; empty cells leave what's there alone. *Download a template* gives the columns.
 
-**Departments.** Filter by department, then by division within it, or tick **Group by department** (or the *Departments* tile) to see everyone under Department, then Division headings, each of which folds.
+**Departments.** Filter by department, then by division within it, or tick **Group by department** (or the *Departments* tile) to see everyone under Department, then Division headings, each of which folds; **Expand all** and **Collapse all** open or shut them together.
+
+**Org chart** (People → Org chart) is built from the line managers: it starts at the top of the organisation (whoever has the most people under them and no line manager on Users), shows that person, the chain of managers above and their direct reports, each with how many report to them. Click anyone to move to them, or find someone by name, title or department. People with no line manager on Users are listed under the top. A line manager given as a name that isn't on Users can't be placed.
+
+**Departments** (People → Departments) lists every department with how many people, divisions and VIPs it has and who leads it (of the people whose manager isn't in it, the one with the most of it below them). Open one to see its divisions and the people in each, with who they report to and their primary device; **Expand all** and **Collapse all**, and a search. Click someone to open them on Users.
+
+Org chart and Departments are pages of Users: in the sidebar and on the home page they have their own links, but whoever can use Users can use them (they have no permission of their own).
 
 **Match devices** gives everyone without a primary device the one computer Jamf or Intune says is theirs (or their one device, if they have no computer); anyone with several is left to pick by hand. *Download CSV* gives every user with their tags and primary device.
 

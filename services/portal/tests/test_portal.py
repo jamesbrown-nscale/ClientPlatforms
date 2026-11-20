@@ -117,6 +117,21 @@ def test_each_person_only_gets_their_tools(c):
     assert c.get("/settings").status_code == 200   # their own account
 
 
+def test_pages_follow_their_tools_access(c):
+    """Org chart and Departments are pages of Users: no access entry of their own."""
+    sign_in(c)
+    assert "org" not in [t["id"] for t in c.get("/api/roles").json()["tools"]]
+    add(c, "orgview@nscale.com", tools=["users"], level="view")
+    add(c, "noorg@nscale.com", tools=["elevation"])
+    sign_in(c, "orgview@nscale.com", "a-good-password")
+    me = {t["id"]: t for t in c.get("/api/me").json()["tools"]}
+    assert me["org"]["url"] == "/users/org" and me["org"]["level"] == "view" and "departments" in me and me["users"]["level"] == "view"
+    assert check(c, "/users/org").status_code == 200
+    sign_in(c, "noorg@nscale.com", "a-good-password")
+    assert not {"org", "departments", "users"} & {t["id"] for t in c.get("/api/me").json()["tools"]}
+    assert check(c, "/users/org").status_code == 403
+
+
 def test_people_admin(c):
     sign_in(c)
     assert add(c, "not-an-email").status_code == 422
@@ -165,7 +180,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"]] == TOOLS
+    assert [t["id"] for t in s["tools"] if t["id"] not in ("org", "departments")] == TOOLS
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},

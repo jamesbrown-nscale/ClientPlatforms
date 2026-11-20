@@ -9,13 +9,13 @@
 body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; }
 button, input, select { font: inherit; color: inherit; }
 header { background: var(--bg); border-bottom: 1px solid var(--surface); }
-.bar { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
+.bar { max-width: 1680px; margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 64px; }
 .bar img { height: 16px; display: block; }
 .bar .app { color: var(--text2); border-left: 1px solid var(--border); padding-left: 16px; font-weight: 600; }
 .bar .home { color: var(--text2); text-decoration: none; padding: 8px 12px; border-radius: 8px; margin-left: 8px; }
 .bar .home:hover { background: var(--surface); }
 .who { margin-left: auto; color: var(--text2); font-size: 12.5px; }
-main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 60px; }
+main { max-width: 1680px; margin: 0 auto; padding: 28px 24px 60px; }
 .head { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 20px; }
 .head > div:first-child { flex: 1; min-width: 260px; }
 h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
@@ -64,6 +64,9 @@ td b { font-weight: 600; }
 table.fit { table-layout: fixed; }
 table.fit th { white-space: normal; }
 table.fit td { overflow: hidden; }
+.cutrow { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.cutrow > .cut { flex: 0 1 auto; }
+.cutrow > .badge { flex-shrink: 0; }
 .cut { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 @media (max-width: 700px) { table.fit col.hide-sm { display: none; } table.fit { table-layout: auto; } }
 .muted { color: var(--text2); font-size: 12.5px; }
@@ -77,6 +80,7 @@ table.fit td { overflow: hidden; }
 .b-std { background: var(--grey-fill); color: var(--text2); }
 .b-gone { background: var(--err-fill); color: var(--err); }
 .b-team { background: var(--surface); color: var(--text); font-weight: 500; }
+.folds { display: inline-flex; gap: 6px; }
 .grpby { display: inline-flex; gap: 6px; align-items: center; color: var(--text2); font-size: 13px; cursor: pointer; white-space: nowrap; }
 tr.gh td, tr.gh2 td { padding: 0; background: var(--page); cursor: default; }
 tr.gh2 td { background: #F8FAFE; }

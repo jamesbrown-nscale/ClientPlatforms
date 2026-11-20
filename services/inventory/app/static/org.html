@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Org chart · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  .otools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .find { position: relative; flex: 1; min-width: 240px; max-width: 460px; }
+  .find input { width: 100%; height: 40px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; outline: none; }
+  .find input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .hits { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: #fff;
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(4,14,39,.12); max-height: 320px; overflow: auto; }
+  .hits li { padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+  .hits li[aria-selected="true"], .hits li:hover { background: var(--surface); }
+  .chart { background: var(--bg); border: 1px solid var(--surface); border-radius: 14px; padding: 24px 20px 32px; display: flex; flex-direction: column; align-items: center; }
+  .chain { display: flex; flex-direction: column; align-items: center; }
+  .link { width: 2px; height: 18px; background: var(--border); }
+  .pc { border: 1px solid var(--surface); background: #fff; border-radius: 12px; padding: 10px 14px; width: 240px; text-align: left; cursor: pointer;
+    font: inherit; color: inherit; display: flex; gap: 10px; align-items: center; position: relative; }
+  .pc:hover { border-color: var(--border); box-shadow: 0 2px 10px rgba(4,14,39,.06); }
+  .pc:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .pc .av { width: 36px; height: 36px; border-radius: 50%; background: var(--surface); color: var(--primary); display: grid; place-items: center;
+    font-size: 12.5px; font-weight: 700; flex-shrink: 0; }
+  .pc .t { min-width: 0; flex: 1; }
+  .pc b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc .muted { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc .n { position: absolute; right: 8px; top: 8px; font-size: 11px; font-weight: 700; color: var(--text2); background: var(--grey-fill); border-radius: 9px; padding: 0 7px; }
+  .pc.small { width: 220px; padding: 7px 12px; opacity: .9; }
+  .pc.small .av { width: 28px; height: 28px; font-size: 11px; }
+  .pc.focus { width: 340px; padding: 16px 18px; border: 2px solid var(--primary); box-shadow: 0 6px 24px rgba(15,65,243,.12); cursor: default; }
+  .pc.focus .av { width: 52px; height: 52px; font-size: 17px; background: var(--primary); color: #fff; }
+  .pc.focus b { font-size: 17px; white-space: normal; }
+  .pc.focus .muted { white-space: normal; }
+  .pc.vip .av { background: var(--vip-fill); color: var(--vip); }
+  .pc.focus.vip .av { background: #B26B00; color: #fff; }
+  .focusacts { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+  .reports { margin-top: 0; padding: 18px 0 0; border-top: 2px solid var(--border); display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 14px; width: fit-content; max-width: min(100%, 1300px); position: relative; }
+  .reports .pc { width: 240px; }
+  .reports .pc::before { content: ""; position: absolute; left: 50%; top: -19px; width: 2px; height: 18px; background: var(--border); }
+  .rhead { color: var(--text2); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 14px 0 0; }
+  .none { color: var(--text2); margin-top: 18px; }
+  .tops { margin-top: 22px; width: 100%; max-width: 1300px; }
+  .tops summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+  .tops .reports { border-top: 0; padding-top: 12px; width: 100%; justify-content: flex-start; }
+  .tops .reports .pc::before { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Org chart</h1>
+      <p class="sub">Who reports to whom, from the line managers on Users. Click anyone to see their team; the people above them lead back to the top.</p>
+    </div>
+    <div class="acts"><a class="btn" href="departments">Departments</a><a class="btn" href="./">Users</a></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="otools">
+    <div class="find">
+      <input type="search" id="q" placeholder="Find someone by name, title or department" aria-label="Find someone" role="combobox" aria-expanded="false" aria-controls="hits" autocomplete="off">
+      <ul class="hits" id="hits" role="listbox" hidden></ul>
+    </div>
+    <button class="btn" type="button" id="top">Top of the organisation</button>
+  </div>
+  <div class="chart" id="chart"><div class="empty">Loading…</div></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const initials = n => String(n || '?').split(/[\s.@]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+let BY = new Map(), KIDS = new Map(), SIZE = new Map(), TOPS = [], FOCUS = null, HITS = [], HIT = -1;
+
+async function api(path) {
+  const res = await fetch(path, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (res.status === 401) throw new Error('Your sign-in has expired. Reload the page to sign in again.');
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
+}
+
+/** Everyone under someone (not counting them). Loops in the data (A manages B manages A) are cut. */
+function size(e, seen = new Set()) {
+  if (SIZE.has(e)) return SIZE.get(e);
+  if (seen.has(e)) return 0;
+  seen.add(e);
+  const n = (KIDS.get(e) || []).reduce((s, k) => s + 1 + size(k, seen), 0);
+  SIZE.set(e, n);
+  return n;
+}
+const bossOf = u => BY.has(u.manager) && u.manager !== u.email ? BY.get(u.manager) : null;
+
+function build(users) {
+  BY = new Map(users.map(u => [u.email, u]));
+  KIDS = new Map(); SIZE = new Map();
+  for (const u of users) { const b = bossOf(u); if (b) (KIDS.get(b.email) || KIDS.set(b.email, []).get(b.email)).push(u.email); }
+  for (const list of KIDS.values()) list.sort((a, b) => size(b) - size(a) || BY.get(a).name.localeCompare(BY.get(b).name));
+  // The top: people with no manager on Users. The biggest tree first; on its own, nobody is "the top".
+  TOPS = users.filter(u => !bossOf(u) || chainLoops(u)).map(u => u.email).sort((a, b) => size(b) - size(a));
+}
+function chainLoops(u) { const seen = new Set(); let x = u; while (x) { if (seen.has(x.email)) return true; seen.add(x.email); x = bossOf(x); } return false; }
+
+function card(e, cls = '', extra = '') {
+  const u = BY.get(e), n = (KIDS.get(e) || []).length;
+  const sub = [u.title, u.division || u.department].filter(Boolean).join(' · ');
+  return `<button type="button" class="pc ${cls} ${u.type === 'VIP' ? 'vip' : ''}" data-e="${esc(e)}" title="${esc(u.name + (sub ? '\n' + sub : ''))}">
+    <span class="av">${esc(initials(u.name))}</span><span class="t"><b>${esc(u.name)}</b><span class="muted">${esc(sub || u.email)}</span>${extra}</span>
+    ${n && cls !== 'focus' ? `<span class="n" title="${n} direct report${n === 1 ? '' : 's'}, ${size(e)} in all">${n}</span>` : ''}</button>`;
+}
+
+function draw() {
+  if (!BY.size) { $('chart').innerHTML = '<div class="empty"><b>No users yet</b>Import a CSV with a Line manager column on the Users page.</div>'; return; }
+  const u = BY.get(FOCUS);
+  const chain = [];
+  const seen = new Set([FOCUS]);
+  for (let b = bossOf(u); b && !seen.has(b.email); b = bossOf(b)) { chain.unshift(b.email); seen.add(b.email); }
+  const kids = KIDS.get(FOCUS) || [];
+  const dept = [u.department, u.division].filter(Boolean).join(' › ');
+  let html = '';
+  if (chain.length) html += `<div class="chain">${chain.map(e => card(e, 'small') + '<span class="link"></span>').join('')}</div>`;
+  html += `<div class="chain">${card(FOCUS, 'focus',
+    `${dept ? `<span class="muted">${esc(dept)}</span>` : ''}<span class="muted">${esc(u.email)}</span>${u.type === 'VIP' ? '<span class="badge b-vip" style="margin-top:4px">VIP</span>' : ''}`)}
+    <div class="focusacts"><span class="muted">${kids.length ? `${kids.length} direct report${kids.length === 1 ? '' : 's'} · ${size(FOCUS)} in all` : 'No one reports to them'}</span>
+      <a class="btn small" href="./#${encodeURIComponent(FOCUS)}">Open in Users</a></div></div>`;
+  if (kids.length) html += `<span class="link"></span><div class="reports">${kids.map(e => card(e)).join('')}</div>`;
+  if (!chain.length && TOPS.length > 1) {
+    const others = TOPS.filter(e => e !== FOCUS);
+    html += `<details class="tops"><summary>${others.length} other${others.length === 1 ? '' : 's'} with no line manager on Users</summary>
+      <div class="reports">${others.slice(0, 400).map(e => card(e)).join('')}</div></details>`;
+  }
+  $('chart').innerHTML = html;
+}
+
+function focus(e, push = true) {
+  if (!BY.has(e)) e = TOPS[0];
+  FOCUS = e;
+  if (push) history.replaceState(null, '', '#' + encodeURIComponent(e));
+  draw();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ---------- Find someone ---------- */
+function hideHits() { $('hits').hidden = true; $('q').setAttribute('aria-expanded', 'false'); HIT = -1; }
+function showHits() {
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) { hideHits(); return; }
+  HITS = [...BY.values()].filter(u => words.every(w => [u.name, u.email, u.title, u.department, u.division].join(' ').toLowerCase().includes(w))).slice(0, 30);
+  HIT = HITS.length ? 0 : -1;
+  $('hits').innerHTML = HITS.map((u, i) => `<li role="option" data-e="${esc(u.email)}" aria-selected="${i === HIT}"><b>${esc(u.name)}</b>
+    <span class="muted"> · ${esc([u.title, u.department].filter(Boolean).join(' · ') || u.email)}</span></li>`).join('') || '<li class="muted">Nobody matches.</li>';
+  $('hits').hidden = false; $('q').setAttribute('aria-expanded', 'true');
+}
+$('q').addEventListener('input', showHits);
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!HITS.length) return;
+    HIT = (HIT + (e.key === 'ArrowDown' ? 1 : -1) + HITS.length) % HITS.length;
+    $('hits').querySelectorAll('li[data-e]').forEach((li, i) => li.setAttribute('aria-selected', String(i === HIT)));
+  } else if (e.key === 'Enter' && HIT >= 0) { e.preventDefault(); focus(HITS[HIT].email); $('q').value = ''; hideHits(); }
+  else if (e.key === 'Escape') hideHits();
+});
+$('hits').addEventListener('mousedown', e => { const li = e.target.closest('li[data-e]'); if (li) { e.preventDefault(); focus(li.dataset.e); $('q').value = ''; hideHits(); } });
+$('q').addEventListener('blur', () => setTimeout(hideHits, 100));
+$('chart').addEventListener('click', e => { const b = e.target.closest('.pc[data-e]'); if (b && !b.classList.contains('focus')) focus(b.dataset.e); });
+$('top').onclick = () => focus(TOPS[0]);
+window.addEventListener('hashchange', () => { const e = decodeURIComponent(location.hash.slice(1)); if (e && e !== FOCUS && BY.has(e)) focus(e, false); });
+
+(async () => {
+  try {
+    const me = await api('api/me'); $('who').textContent = me.email;
+    const data = await api('api/users');
+    build(data.items);
+    const want = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+    if (!BY.size) { draw(); return; }
+    focus(BY.has(want) ? want : TOPS[0], false);
+  } catch (e) { const n = $('notice'); n.textContent = e.message; n.hidden = false; $('chart').innerHTML = ''; }
+})();
+</script>
+</body>
+</html>
