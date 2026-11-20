@@ -70,6 +70,11 @@
   .pgroup:last-child { border-bottom: 0; }
   .pgroup .ph { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--soft); border-bottom: 1px solid var(--surface); position: sticky; top: 0; z-index: 1; }
   .pgroup .trow { padding-left: 26px; }
+  .pgroup .psub { display: flex; align-items: center; gap: 8px; padding: 8px 16px 6px 34px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--surface); }
+  .pgroup .psub:hover { background: var(--soft); }
+  .pgroup .psub .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+  .pgroup .psub .gt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .pgroup .trow.ind { padding-left: 50px; }
   .pgroup .trow:last-child { border-bottom: 0; }
   .empty { color: var(--text2); text-align: center; padding: 40px 16px; }
 
@@ -214,6 +219,13 @@
   .tladd { border: 0; background: transparent; color: var(--primary); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; border-radius: 6px; }
   .tladd:hover { background: var(--surface); }
   .tljob .tllab { padding-top: 6px; padding-bottom: 6px; }
+  .tlsub { border-bottom: 1px solid var(--surface); }
+  .tlsub .tllab { flex-direction: row; align-items: center; gap: 8px; padding: 6px 14px 6px 32px; font-size: 13px; font-weight: 600; color: var(--text); background: #FAFBFE; }
+  .tlsub .tllab .gt { flex: 1; min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3; }
+  .tlsub .tllab .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+  .tlsub.sel .tllab { box-shadow: inset 3px 0 0 var(--primary); }
+  .tlsub .tltrack.pick { cursor: copy; }
+  .tljob.ind .tllab { padding-left: 52px; }
   .tljob .tllab .jn, .tljob .tllab .js { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tljob .tllab .jn { font-size: 14px; line-height: 1.3; }
   .tljob .tllab .js { font-size: 12px; color: var(--muted); line-height: 1.35; }
@@ -396,6 +408,13 @@ function peopleGroups(mine) {
   return groups;
 }
 
+/** A person's jobs gathered under their plans, plans in the order their first job comes. */
+function byPlan(jobs) {
+  const m = new Map();
+  jobs.forEach(({ p, j }) => { if (!m.has(p.id)) m.set(p.id, { p, jobs: [] }); m.get(p.id).jobs.push(j); });
+  return [...m.values()];
+}
+
 function setGroup(g) {
   GROUP = g; $('calGroup').value = $('listGroup').value = g;
   try { localStorage.setItem('cp.tl.group', g); } catch {}
@@ -414,17 +433,20 @@ function drawPeople() {
   $('rows').innerHTML = groups.map(g => {
     const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
     const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
-    const jobs = g.jobs.map(({ p, j }) => {
+    const jobs = byPlan(g.jobs).map(({ p, jobs: js }) => {
+      const open = js.filter(j => j.status !== 'Done').length;
+      return `<div class="psub" data-psub="${esc(p.id)}" tabindex="0" title="Open ${esc(p.ref)} ${esc(p.title)}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><span class="ref">${esc(p.ref)}</span><span class="muted" style="font-weight:400;font-size:12px">${open} open</span></div>` +
+      js.map(j => {
       const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
       const meta = [
-        `<span><span class="jdot" style="display:inline-block;margin-right:5px;background:${colourOf(p.id)[0]}"></span>${esc(p.ref)} ${esc(p.title)}</span>`,
         j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
         j.status !== 'To do' && !done ? `<span>${esc(j.status)}</span>` : '',
         j.note ? '<span title="Has a note">📝 Note</span>' : '',
       ].filter(Boolean).join('');
-      return `<div class="trow ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
+      return `<div class="trow ind ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
         <button type="button" class="check ${done ? 'done' : ''}" data-pdone="${esc(j.id)}" data-pplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
         <div class="tmain"><div class="ttitle">${esc(j.title)}</div><div class="tmeta">${meta}</div></div></div>`;
+      }).join('');
     }).join('') || '<div class="trow" style="cursor:default"><span class="muted" style="font-style:italic;padding-left:30px">Nothing planned</span></div>';
     return `<div class="pgroup"><div class="ph">${av}<b>${esc(g.name)}${g.email === ME.email ? ' <span class="muted">(you)</span>' : ''}</b><span class="muted">${open} open</span><span style="flex:1"></span>
         ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>${jobs}</div>`;
@@ -432,6 +454,10 @@ function drawPeople() {
   $('rows').querySelectorAll('.trow[data-job]').forEach(r => {
     r.onclick = e => { if (!e.target.closest('[data-pdone]')) openTask(r.dataset.plan, r.dataset.job); };
     r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.plan, r.dataset.job); };
+  });
+  $('rows').querySelectorAll('[data-psub]').forEach(r => {
+    r.onclick = () => openTask(r.dataset.psub);
+    r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.psub); };
   });
   $('rows').querySelectorAll('[data-pdone]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
@@ -938,13 +964,13 @@ function drawCal() {
     const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
     const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
     const who = j.assigneeName ? j.assigneeName.split(' ')[0] : '';
-    const sub = byPerson ? `${p.ref} ${p.title} · ${dates} · ${said(j.status)}` : `${dates} · ${said(j.status)}${who ? ' · ' + j.assigneeName : ''}`;
+    const sub = byPerson ? `${dates} · ${said(j.status)}` : `${dates} · ${said(j.status)}${who ? ' · ' + j.assigneeName : ''}`;
     const label = byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '');
     const bar = j.start && j.end >= RS && j.start <= end
       ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(j.duration || 1) * DW - 2}px;${cv}"
            data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(j.assigneeName) : ''}\n${esc(said(j.status))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (j.duration || 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
-    return `<div class="tlrow tljob ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:48px">
-      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}">${byPerson ? `<span class="jn"><span class="sq" style="display:inline-block;width:9px;height:9px;margin-right:6px;background:${colourOf(p.id)[0]}"></span>${esc(j.title)}</span>` : `<span class="jn">${esc(j.title)}</span>`}<span class="js">${esc(sub)}</span></div>
+    return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:${byPerson ? 44 : 48}px">
+      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
   };
   const anyChange = CAL.plans.some(p => p.canChange);
@@ -977,7 +1003,16 @@ function drawCal() {
           ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>
         <div class="tltrack ${anyChange ? 'pick' : ''}" style="width:${W}px" data-person="${esc(g.email)}" ${anyChange ? `title="Click a day to add a job for ${esc(g.name)} starting then"` : ''}>${busy}</div></div>`;
       if (!g.jobs.length) rows += `<div class="tlrow tljob" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
-      for (const { p, j } of g.jobs) rows += jobRow(p, j, true);
+      // Each plan they have jobs in is a sub-heading, with its span of their jobs; their jobs in it underneath.
+      for (const { p, jobs: js } of byPlan(g.jobs)) {
+        const dated = js.filter(j => j.start), a = dated.map(j => j.start).sort()[0], b = dated.map(j => j.end).sort().pop();
+        const spanBar = a ? `<div class="tlspan" style="left:${x(a)}px;width:${(between(a, b) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
+        const can = p.canChange, gsel = OPEN?.id === p.id && !JOBOPEN;
+        rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" style="min-height:34px">
+          <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><span class="ref">${esc(p.ref)}</span></div>
+          <div class="tltrack ${can ? 'pick' : ''}" style="width:${W}px" ${can ? `data-subplan="${esc(p.id)}" data-person="${esc(g.email)}" title="Click a day to add a job in ${esc(p.title)} for ${esc(g.name)} starting then"` : ''}>${spanBar}</div></div>`;
+        for (const j of js) rows += jobRow(p, j, true);
+      }
     }
   }
   $('calGrid').innerHTML = `<div class="tlin" style="width:${LEFT + W}px">
@@ -1065,6 +1100,7 @@ function wireTimeline() {
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
+  g.querySelectorAll('.tlsub .tltrack.pick[data-subplan]').forEach(t => t.onclick = e => addJobOn(t.dataset.subplan, dayAt(t, e), t.dataset.person));
   g.querySelectorAll('.tlgroup .tltrack.pick[data-person]').forEach(t => t.onclick = e => planMenu(e, t.dataset.person, dayAt(t, e)));
   g.querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); planMenu(e, b.dataset.addp, ''); });
   g.querySelectorAll('[data-sched]').forEach(t => t.onclick = async e => {
