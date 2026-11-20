@@ -12,6 +12,7 @@
 #   restart        Restart Reminder report     /restart/
 #   projects       Projects, Tasks, Team, Change management and everyone's notifications:
 #                  /projects/, /tasks/, /team/, /changes/, /inbox/
+#   inventory      Users and Devices (Jamf, Intune)   /users/, /devices/
 #
 # Data is kept in one Docker volume per service (SQLite). On the VM, the disk's snapshots back them up.
 name: client-platforms
@@ -40,7 +41,7 @@ services:
     ports:
       # Locally: http://localhost:8080. On the VM, docker-compose.vm.yml swaps this for 80 and 443.
       - "${HTTP_PORT:-8080}:80"
-    depends_on: [portal, notifications, elevation, restart, projects]
+    depends_on: [portal, notifications, elevation, restart, projects, inventory]
 
   portal:
     <<: *service
@@ -100,9 +101,20 @@ services:
     volumes:
       - projects-data:/data
 
+  inventory:
+    <<: *service
+    build: ./services/inventory
+    pull_policy: build   # rebuild from the repo on every (re)deploy
+    environment:
+      <<: *auth
+      SYNC_MINUTES: ${SYNC_MINUTES:-60}   # how often Devices are read again from Jamf and Intune
+    volumes:
+      - inventory-data:/data
+
 volumes:
   portal-data:
   notifications-data:
   elevation-data:
   restart-data:
   projects-data:
+  inventory-data:

@@ -63,6 +63,10 @@ services:
     <<: *logs
     environment:
       AUTH_MODE: ${AUTH_MODE:-oidc}
+  inventory:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
 
 volumes:
   caddy-data:

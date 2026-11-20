@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Users</h1>
+      <p class="sub">The people we look after: their team, line manager, whether they're a VIP, and their primary device from Devices.</p>
+    </div>
+    <div class="acts">
+      <button class="btn" id="matchBtn" type="button" hidden title="For users without a primary device: the one computer Jamf or Intune says is theirs">Match devices</button>
+      <a class="btn" href="api/users.csv" download>Download CSV</a>
+      <button class="btn" id="importBtn" type="button" hidden>Import CSV</button>
+      <button class="btn primary" id="addBtn" type="button" hidden>Add user</button>
+    </div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(4,1fr)">
+    <button class="tile" data-f="all"><b id="s-users">–</b><span>Users</span></button>
+    <button class="tile vip" data-f="VIP"><b id="s-vip">–</b><span>VIPs</span></button>
+    <button class="tile" data-f="device"><b id="s-withDevice">–</b><span>With a primary device</span></button>
+    <button class="tile warn" data-f="nodevice"><b id="s-noDevice">–</b><span>No primary device</span></button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search name, email, team, manager or device" aria-label="Search users">
+      <select id="team" aria-label="Team"><option value="">Every team</option></select>
+      <select id="type" aria-label="User type"><option value="">VIP and Standard</option><option>VIP</option><option>Standard</option></select>
+      <span class="sp"></span>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th data-sort="name"><button type="button">User</button></th>
+        <th data-sort="team"><button type="button">Team</button></th>
+        <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
+        <th data-sort="type"><button type="button">Type</button></th>
+        <th data-sort="device"><button type="button">Primary device</button></th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+</main>
+
+<datalist id="teams"></datalist>
+<datalist id="people"></datalist>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden role="dialog" aria-modal="true" aria-labelledby="p-title">
+  <div class="phd">
+    <div style="min-width:0"><span id="p-badge"></span><h2 id="p-title"></h2><div class="muted" id="p-sub"></div></div>
+    <button class="btn small x" id="p-close" type="button" aria-label="Close">Close</button>
+  </div>
+  <form class="pbody" id="p-form" autocomplete="off">
+    <div class="field" id="emailWrap"><label class="l" for="f-email">Email</label><input type="email" id="f-email" required maxlength="254"></div>
+    <div class="two">
+      <div class="field"><label class="l" for="f-name">Name</label><input type="text" id="f-name" maxlength="200"></div>
+      <div class="field"><label class="l" for="f-title">Job title</label><input type="text" id="f-title" maxlength="200"></div>
+    </div>
+    <h3>Tags</h3>
+    <div class="two">
+      <div class="field"><label class="l" for="f-team" style="margin-top:0">Team</label><input type="text" id="f-team" list="teams" maxlength="100" placeholder="e.g. Platform"></div>
+      <div class="field"><label class="l" for="f-dept" style="margin-top:0">Department</label><input type="text" id="f-dept" maxlength="200"></div>
+    </div>
+    <div class="field"><label class="l" for="f-manager">Line manager</label><input type="text" id="f-manager" list="people" maxlength="200" placeholder="Start typing a name or email">
+      <div class="hint" id="f-managerHint"></div></div>
+    <label class="l">User type</label>
+    <div class="seg" role="group" aria-label="User type"><button type="button" data-type="Standard">Standard</button><button type="button" data-type="VIP">VIP</button></div>
+    <label class="l">Primary device</label>
+    <div id="f-device"></div>
+    <div class="field" id="pickWrap">
+      <input type="search" id="f-devq" placeholder="Search devices by name, serial, model or person" aria-label="Search devices" style="margin-top:8px">
+      <ul class="devlist" id="f-devlist" role="listbox" aria-label="Devices"></ul>
+    </div>
+    <div class="notice" id="p-notice" hidden style="margin:16px 0 0"></div>
+    <button type="submit" hidden></button>
+  </form>
+  <div class="pfoot" id="p-foot">
+    <button class="btn primary" id="p-save" type="button">Save</button>
+    <button class="btn" id="p-cancel" type="button">Cancel</button>
+    <span class="sp"></span>
+    <button class="btn danger" id="p-delete" type="button">Remove</button>
+  </div>
+</aside>
+
+<dialog class="imp" id="imp" aria-labelledby="impTitle">
+  <div class="in">
+    <h2 id="impTitle">Import users from a CSV</h2>
+    <p class="sub" style="margin:0">New emails are added; users already here are updated. Empty cells leave what's there alone.</p>
+    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Team</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
+    <p class="hint">Line manager: an email or a name. User type: VIP or Standard. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
+    <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
+      <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
+    <div id="impOut"></div>
+  </div>
+  <div class="foot"><button class="btn" id="impClose" type="button">Cancel</button><button class="btn primary" id="impGo" type="button" disabled>Import</button></div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const full = s => s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+let ME = null, ALL = [], DEVICES = null, FILTER = 'all', SORT = { key: 'name', dir: 1 }, OPEN = null, DRAFT = null, CSVTEXT = '';
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
+  if (res.status === 401) { showError('Your sign-in has expired. Reload the page to sign in again.'); throw new Error('signed out'); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { const d = j.detail; throw new Error(Array.isArray(d) ? d.map(x => (x.msg || '').replace(/^Value error, /, '')).join('; ') : (d || `Error ${res.status}`)); }
+  return j;
+}
+function showError(msg, kind = '') { const n = $('notice'); n.textContent = msg; n.hidden = !msg; n.className = 'notice ' + kind; }
+
+const ICON = {
+  computer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
+  mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+};
+const typeBadge = t => t === 'VIP' ? '<span class="badge b-vip">VIP</span>' : '<span class="badge b-std">Standard</span>';
+const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
+const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
+
+function deviceCell(d) {
+  if (!d) return '<span class="muted">—</span>';
+  if (d.missing) return '<span class="badge b-gone" title="It isn\'t in Jamf or Intune any more">Device gone</span>';
+  return `<b>${esc(d.name || d.serial)}</b> <span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span>
+    <div class="muted">${esc([d.make, d.model].filter(Boolean).join(' '))}${osText(d) ? ' · ' + esc(osText(d)) : ''}</div>`;
+}
+
+function matches(u) {
+  if (FILTER === 'VIP' && u.type !== 'VIP') return false;
+  if (FILTER === 'device' && !hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && hasDevice(u)) return false;
+  if ($('team').value && u.team !== $('team').value) return false;
+  if ($('type').value && u.type !== $('type').value) return false;
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const d = u.primaryDevice || {};
+  const hay = [u.name, u.email, u.team, u.manager, u.managerName, u.title, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform].join(' ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+function sortVal(u, k) {
+  if (k === 'manager') return (u.managerName || u.manager || '~').toLowerCase();
+  if (k === 'device') return ((u.primaryDevice || {}).name || '~').toLowerCase();
+  if (k === 'type') return u.type === 'VIP' ? 0 : 1;
+  return String(u[k] || '~').toLowerCase();
+}
+
+function draw() {
+  const rows = ALL.filter(matches);
+  const k = SORT.key;
+  rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+  });
+  document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
+  $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} users` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
+  if (!ALL.length) {
+    $('rows').innerHTML = `<tr><td colspan="5" class="empty"><b>No users yet</b>${ME?.canEdit ? 'Import a CSV with an Email column, or add people one at a time.' : 'Nobody has imported any users yet.'}</td></tr>`;
+    return;
+  }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="5" class="empty">No users match.</td></tr>'; return; }
+  $('rows').innerHTML = rows.slice(0, 3000).map(u => `<tr data-email="${esc(u.email)}" tabindex="0">
+    <td><b>${esc(u.name)}</b><div class="muted">${esc(u.email)}${u.title ? ' · ' + esc(u.title) : ''}</div></td>
+    <td>${u.team ? `<span class="badge b-team">${esc(u.team)}</span>` : '<span class="muted">—</span>'}</td>
+    <td class="hide-sm">${u.manager ? `${esc(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? `<div class="muted">${esc(u.manager)}</div>` : ''}` : '<span class="muted">—</span>'}</td>
+    <td>${typeBadge(u.type)}</td>
+    <td>${deviceCell(u.primaryDevice)}</td>
+  </tr>`).join('');
+  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="5" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
+}
+
+async function load() {
+  try {
+    const data = await api('api/users');
+    ALL = data.items;
+    for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
+    const keep = $('team').value;
+    $('team').innerHTML = '<option value="">Every team</option>' + data.teams.map(t => `<option>${esc(t)}</option>`).join('');
+    $('team').value = data.teams.includes(keep) ? keep : '';
+    $('teams').innerHTML = data.teams.map(t => `<option value="${esc(t)}">`).join('');
+    $('people').innerHTML = ALL.map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+    draw();
+  } catch (e) { if (e.message !== 'signed out') showError('Could not load users: ' + e.message); }
+}
+
+async function devices() {
+  if (!DEVICES) DEVICES = (await api('api/devices')).items;
+  return DEVICES;
+}
+
+/* ---------- One user: see and tag ---------- */
+
+function setType(t) { DRAFT.type = t; document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.type === t))); }
+
+function drawPicked() {
+  const id = DRAFT.primaryDevice;
+  const d = id && (DEVICES || []).find(x => x.id === id);
+  const can = ME.canEdit;
+  if (!id) { $('f-device').innerHTML = '<p class="muted" style="margin:0">None picked.</p>'; return; }
+  if (!d) { $('f-device').innerHTML = `<div class="devcard"><div><b>Device gone</b><div class="muted">It isn't in Jamf or Intune any more.</div></div>${can ? '<button class="btn small" type="button" data-clear>Clear</button>' : ''}</div>`; }
+  else $('f-device').innerHTML = `<div class="devcard"><span class="ic">${ICON[d.kind] || ICON.computer}</span><div>
+      <b>${esc(d.name || d.serial)} <span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span></b>
+      <div class="muted">${esc([d.make, d.model].filter(Boolean).join(' '))}</div>
+      <div class="muted">${esc(osText(d))}${d.serial ? ` · <span class="mono">${esc(d.serial)}</span>` : ''}</div>
+      ${d.userEmail && d.userEmail !== DRAFT.email ? `<div class="muted" style="color:var(--warn)">Assigned to ${esc(d.userName || d.userEmail)} in ${esc(d.platform)}</div>` : ''}
+    </div>${can ? '<button class="btn small" type="button" data-clear>Clear</button>' : ''}</div>`;
+  $('f-device').querySelector('[data-clear]')?.addEventListener('click', () => { DRAFT.primaryDevice = ''; drawPicked(); drawPick(); });
+}
+
+function drawPick() {
+  if (!ME.canEdit) { $('pickWrap').hidden = true; return; }
+  $('pickWrap').hidden = false;
+  const all = DEVICES || [];
+  const words = $('f-devq').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const email = ($('f-email').value || DRAFT.email || '').toLowerCase();
+  const line = d => `<li role="option" data-id="${esc(d.id)}" aria-selected="${d.id === DRAFT.primaryDevice}"><span class="grow"><b>${esc(d.name || d.serial)}</b>
+      <div class="muted">${esc([d.make, d.model].filter(Boolean).join(' '))} · ${esc(osText(d))}${d.userEmail ? ' · ' + esc(d.userName || d.userEmail) : ''}</div></span>
+      <span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span></li>`;
+  let html = '';
+  if (!all.length) html = '<li class="none">No devices yet: connect Jamf or Intune under Settings → Connections.</li>';
+  else if (words.length) {
+    const hits = all.filter(d => { const h = [d.name, d.serial, d.model, d.make, d.os, d.userEmail, d.userName].join(' ').toLowerCase(); return words.every(w => h.includes(w)); });
+    html = hits.slice(0, 50).map(line).join('') || '<li class="none">No devices match.</li>';
+  } else {
+    const theirs = email ? all.filter(d => d.userEmail === email) : [];
+    html = theirs.length ? `<li class="sec">Assigned to them in Jamf or Intune</li>${theirs.map(line).join('')}`
+      : '<li class="none">Nothing is assigned to them in Jamf or Intune. Search for a device above.</li>';
+  }
+  $('f-devlist').innerHTML = html;
+}
+
+async function openUser(email) {
+  const u = email ? ALL.find(x => x.email === email) : null;
+  if (email && !u) return;
+  OPEN = email || '';
+  DRAFT = u ? { email: u.email, type: u.type, primaryDevice: (u.primaryDevice || {}).id || '' } : { email: '', type: 'Standard', primaryDevice: '' };
+  const can = ME.canEdit;
+  $('p-badge').innerHTML = u ? typeBadge(u.type) : '';
+  $('p-title').textContent = u ? u.name : 'Add user';
+  $('p-sub').textContent = u ? u.email + (u.updatedAt ? ` · changed ${full(u.updatedAt)}${u.updatedBy ? ' by ' + u.updatedBy : ''}` : '') : 'They can be tagged once added.';
+  $('emailWrap').hidden = !!u;
+  $('f-email').value = u ? u.email : ''; $('f-email').required = !u;
+  $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-team').value = u?.team || '';
+  $('f-dept').value = u?.department || ''; $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
+  managerHint();
+  document.querySelectorAll('#p-form input').forEach(i => { if (i.id !== 'f-devq') i.disabled = !can; });
+  document.querySelectorAll('.seg button').forEach(b => b.disabled = !can);
+  setType(DRAFT.type);
+  $('p-foot').hidden = !can; $('p-delete').hidden = !u;
+  $('p-notice').hidden = true;
+  $('panel').hidden = $('scrim').hidden = false;
+  history.replaceState(null, '', u ? '#' + encodeURIComponent(u.email) : location.pathname);
+  (u ? $('p-close') : $('f-email')).focus();
+  drawPicked(); drawPick();
+  try { await devices(); if (OPEN === (email || '')) { drawPicked(); drawPick(); } } catch (e) { $('f-devlist').innerHTML = `<li class="none">${esc(e.message)}</li>`; }
+}
+
+function managerHint() {
+  const v = $('f-manager').value.trim().toLowerCase();
+  const m = v && ALL.find(u => u.email === v);
+  $('f-managerHint').textContent = m ? m.name + (m.title ? ' · ' + m.title : '') : v && v.includes('@') ? 'Not on the Users list (that\'s fine).' : '';
+}
+
+function closePanel() {
+  $('panel').hidden = $('scrim').hidden = true;
+  const r = OPEN && document.querySelector(`tr[data-email="${CSS.escape(OPEN)}"]`);
+  OPEN = null; DRAFT = null; history.replaceState(null, '', location.pathname); r?.focus();
+}
+
+async function save() {
+  const body = { name: $('f-name').value, title: $('f-title').value, team: $('f-team').value, department: $('f-dept').value,
+                 manager: $('f-manager').value, type: DRAFT.type, primaryDevice: DRAFT.primaryDevice };
+  const adding = !OPEN;
+  if (adding) body.email = $('f-email').value.trim();
+  if (adding && !$('f-email').checkValidity()) { $('f-email').reportValidity(); return; }
+  $('p-save').disabled = true;
+  try {
+    const u = adding ? await api('api/users', { method: 'POST', body: JSON.stringify(body) })
+                     : await api('api/users/' + encodeURIComponent(OPEN), { method: 'PATCH', body: JSON.stringify(body) });
+    closePanel();
+    await load();
+    showError(adding ? `${u.name} added.` : `${u.name} saved.`, 'ok');
+    setTimeout(() => showError(''), 3000);
+  } catch (e) { const n = $('p-notice'); n.textContent = e.message; n.hidden = false; }
+  finally { $('p-save').disabled = false; }
+}
+
+async function removeUser() {
+  const u = ALL.find(x => x.email === OPEN);
+  if (!u || !(await cp.confirm({ title: `Remove ${u.name}?`, message: 'They come off the Users list with their tags. Their devices stay in Devices.', confirm: 'Remove', danger: true }))) return;
+  try { await api('api/users/' + encodeURIComponent(u.email), { method: 'DELETE' }); closePanel(); await load(); }
+  catch (e) { const n = $('p-notice'); n.textContent = e.message; n.hidden = false; }
+}
+
+/* ---------- Import ---------- */
+
+function resetImport() { CSVTEXT = ''; $('file').value = ''; $('impOut').innerHTML = ''; $('impGo').disabled = true; $('impGo').textContent = 'Import'; $('dropText').innerHTML = '<b>Choose a CSV</b> or drop it here'; }
+
+function summary(r, done) {
+  const probs = r.problems.map(p => `<li>Row ${p.row}${p.email ? ` (${esc(p.email)})` : ''}: ${esc(p.message)}</li>`).join('')
+    + (r.moreProblems ? `<li>…and ${r.moreProblems} more.</li>` : '');
+  return `<div class="sum">
+      <div><b>${r.added.toLocaleString()}</b><span class="muted">${done ? 'added' : 'new'}</span></div>
+      <div><b>${r.updated.toLocaleString()}</b><span class="muted">${done ? 'updated' : 'already here, to update'}</span></div>
+      <div><b>${r.problems.length + (r.moreProblems || 0)}</b><span class="muted">to look at</span></div></div>
+    ${done && r.unchanged ? `<p class="muted">${r.unchanged.toLocaleString()} already matched and didn't change.</p>` : ''}
+    ${r.unusedColumns?.length ? `<p class="muted">Columns not used: ${r.unusedColumns.map(esc).join(', ')}.</p>` : ''}
+    ${probs ? `<ul class="probs">${probs}</ul>` : ''}`;
+}
+
+async function readFile(f) {
+  if (!f) return;
+  if (f.size > 5 * 1024 * 1024) { $('impOut').innerHTML = '<div class="notice" style="margin-top:14px">That file is over 5 MB.</div>'; return; }
+  CSVTEXT = await f.text();
+  $('dropText').innerHTML = `<b>${esc(f.name)}</b> · choose another`;
+  $('impOut').innerHTML = '<p class="muted">Checking…</p>';
+  try {
+    const r = await api('api/import', { method: 'POST', body: JSON.stringify({ csv: CSVTEXT, dryRun: true }) });
+    $('impOut').innerHTML = summary(r, false);
+    $('impGo').disabled = !r.rows;
+    $('impGo').textContent = r.rows ? `Import ${r.rows.toLocaleString()} user${r.rows === 1 ? '' : 's'}` : 'Import';
+  } catch (e) { $('impOut').innerHTML = `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`; $('impGo').disabled = true; }
+}
+
+$('impGo').onclick = async () => {
+  $('impGo').disabled = true;
+  try {
+    const r = await api('api/import', { method: 'POST', body: JSON.stringify({ csv: CSVTEXT }) });
+    $('impOut').innerHTML = `<div class="notice ok" style="margin:14px 0 0">Imported.</div>` + summary(r, true);
+    $('impGo').textContent = 'Done'; CSVTEXT = '';
+    $('impClose').textContent = 'Close';
+    DEVICES = null; await load();
+  } catch (e) { $('impOut').insertAdjacentHTML('afterbegin', `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`); $('impGo').disabled = false; }
+};
+$('importBtn').onclick = () => { resetImport(); $('impClose').textContent = 'Cancel'; $('imp').showModal(); };
+$('impClose').onclick = () => $('imp').close();
+$('file').onchange = () => readFile($('file').files[0]);
+$('drop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+['dragenter', 'dragover'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
+
+/* ---------- Wiring ---------- */
+
+$('matchBtn').onclick = async () => {
+  if (!(await cp.confirm({ title: 'Match primary devices?', message: 'Users without a primary device get the one computer Jamf or Intune says is theirs. Anyone with several is left for you to pick.', confirm: 'Match' }))) return;
+  try {
+    const r = await api('api/match-devices', { method: 'POST' });
+    await load();
+    showError(`${r.matched} user${r.matched === 1 ? '' : 's'} given a primary device.${r.several ? ` ${r.several} have several devices: pick theirs by hand.` : ''}`, r.matched ? 'ok' : 'info');
+  } catch (e) { showError(e.message); }
+};
+document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => { FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw(); }));
+document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
+  const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
+}));
+['q', 'team', 'type'].forEach(id => $(id).addEventListener('input', draw));
+$('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-email]'); if (tr) openUser(tr.dataset.email); });
+$('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-email]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openUser(tr.dataset.email); } });
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => setType(b.dataset.type));
+$('f-devq').addEventListener('input', drawPick);
+$('f-email').addEventListener('input', () => { if (!OPEN) drawPick(); });
+$('f-manager').addEventListener('input', managerHint);
+$('f-devlist').addEventListener('click', e => {
+  const li = e.target.closest('li[data-id]'); if (!li) return;
+  DRAFT.primaryDevice = li.dataset.id; drawPicked(); drawPick();
+});
+$('p-form').onsubmit = e => { e.preventDefault(); save(); };
+$('p-save').onclick = save; $('p-cancel').onclick = closePanel; $('p-delete').onclick = removeUser;
+$('p-close').onclick = closePanel; $('scrim').onclick = closePanel;
+$('addBtn').onclick = () => openUser('');
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN !== null && !$('panel').hidden) closePanel(); });
+
+(async () => {
+  try { ME = await api('api/me'); $('who').textContent = ME.email; } catch { return; }
+  ['addBtn', 'importBtn', 'matchBtn'].forEach(id => $(id).hidden = !ME.canEdit);
+  await load();
+  const want = decodeURIComponent(location.hash.slice(1));
+  if (want) openUser(want);
+})();
+</script>
+</body>
+</html>

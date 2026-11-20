@@ -125,6 +125,7 @@
     <button role="tab" data-stab="people" aria-controls="peopleTab" hidden>People</button>
     <button role="tab" data-stab="permissions" aria-controls="permissionsTab" hidden>Permissions</button>
     <button role="tab" data-stab="changes" aria-controls="changesTab" hidden>Change management</button>
+    <button role="tab" data-stab="connections" aria-controls="connectionsTab" hidden>Connections</button>
   </div>
   <div id="accountTab" role="tabpanel" data-panel hidden>
 
@@ -201,6 +202,7 @@
     </div>
   </div>
   <div id="changesTab" role="tabpanel" data-panel hidden></div>
+  <div id="connectionsTab" role="tabpanel" data-panel hidden></div>
 </main>
 
 <dialog id="userDlg">
@@ -539,6 +541,15 @@ function setupTabs(available) {
       sc.onerror = () => { $('changesTab').innerHTML = '<section class="card"><h2>Change management</h2><p class="sub">Couldn\'t load the change management settings. Is the projects service running?</p></section>'; };
       document.head.append(sc);
     }
+    if (tab === 'connections' && !$('connectionsTab').dataset.loaded) {
+      $('connectionsTab').dataset.loaded = '1';
+      // Jamf and Intune live with Devices (inventory service), which draws them here.
+      const sc = document.createElement('script');
+      sc.src = '/devices/static/connections.js';
+      sc.onload = () => window.cpConnections.mount($('connectionsTab'));
+      sc.onerror = () => { $('connectionsTab').innerHTML = '<section class="card"><h2>Connections</h2><p class="sub">Couldn\'t load the connections. Is the inventory service running?</p></section>'; };
+      document.head.append(sc);
+    }
   };
   btns.forEach(b => b.onclick = () => show(b.dataset.stab));
   show(location.hash.slice(1) || available[0]);
@@ -556,8 +567,9 @@ function setupTabs(available) {
   $('account').hidden = !me.passwords;
   const can = p => (me.perms || []).includes(p);
   const changesAdmin = (me.tools || []).some(t => t.id === 'changes' && t.level === 'admin');
+  const devicesAdmin = (me.tools || []).some(t => t.id === 'devices' && t.level === 'admin');
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
-                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes'].filter(Boolean);
+                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes', devicesAdmin && 'connections'].filter(Boolean);
   if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
   if (me.oidc) $('peopleSub').textContent += ` People sign in with ${me.provider}: only people on this list get in. Add them with the email they sign in with${me.directory ? `, or find them in ${me.directory}` : ''}.`;
   if (me.directory) $('udDir').textContent = me.directory;

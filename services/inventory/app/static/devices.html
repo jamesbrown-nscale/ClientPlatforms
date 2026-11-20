@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devices · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Devices</h1>
+      <p class="sub">Every device in Jamf and Intune, as of the last sync. Times are in your time zone.</p>
+    </div>
+    <div class="acts"><a class="btn" href="api/devices.csv" download>Download CSV</a></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="syncbar" id="syncbar" hidden></div>
+
+  <div class="tiles" id="tiles">
+    <button class="tile" data-f="all"><b id="s-devices">–</b><span>Devices</span></button>
+    <button class="tile" data-f="Jamf"><b id="s-Jamf">–</b><span>In Jamf</span></button>
+    <button class="tile" data-f="Intune"><b id="s-Intune">–</b><span>In Intune</span></button>
+    <button class="tile" data-f="computer"><b id="s-computers">–</b><span>Computers</span></button>
+    <button class="tile" data-f="mobile"><b id="s-mobiles">–</b><span>Phones and tablets</span></button>
+    <button class="tile" data-f="primary" title="Someone's primary device on the Users page"><b id="s-primary">–</b><span>Primary devices</span></button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search name, serial, model or person" aria-label="Search devices">
+      <select id="platform" aria-label="Platform"><option value="">Jamf and Intune</option><option>Jamf</option><option>Intune</option></select>
+      <select id="os" aria-label="Operating system"><option value="">Every OS</option></select>
+      <span class="sp"></span>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th data-sort="name"><button type="button">Device</button></th>
+        <th data-sort="model"><button type="button">Make and model</button></th>
+        <th data-sort="os"><button type="button">OS</button></th>
+        <th data-sort="platform"><button type="button">Platform</button></th>
+        <th data-sort="user" class="hide-sm"><button type="button">Assigned to</button></th>
+        <th class="hide-sm">Primary device of</th>
+        <th data-sort="lastSeen" class="hide-sm"><button type="button">Last check-in</button></th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden role="dialog" aria-modal="true" aria-labelledby="p-title">
+  <div class="phd">
+    <div style="min-width:0"><span id="p-badge"></span><h2 id="p-title"></h2><div class="muted" id="p-sub"></div></div>
+    <button class="btn small x" id="p-close" type="button" aria-label="Close">Close</button>
+  </div>
+  <div class="pbody" id="p-body"></div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const full = s => s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+function ago(s) {
+  if (!s) return '';
+  const t = new Date(s); if (isNaN(t)) return s;
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60); if (h < 48) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24); if (d < 60) return `${d} days ago`;
+  return t.toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+const daysOld = s => s && !isNaN(new Date(s)) ? (Date.now() - new Date(s)) / 864e5 : 0;
+let ME = null, ALL = [], CONNS = [], FILTER = 'all', SORT = { key: 'name', dir: 1 }, OPEN = null, POLL = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
+  if (res.status === 401) { showError('Your sign-in has expired. Reload the page to sign in again.'); throw new Error('signed out'); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
+}
+function showError(msg, kind = '') { const n = $('notice'); n.textContent = msg; n.hidden = !msg; n.className = 'notice ' + kind; }
+
+const ICON = {
+  computer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
+  mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+};
+const platformBadge = p => `<span class="badge b-${esc((p || '').toLowerCase())}">${esc(p)}</span>`;
+const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
+
+function drawSync() {
+  const bar = $('syncbar');
+  const on = CONNS.filter(c => c.connected);
+  if (!on.length) {
+    bar.hidden = false;
+    bar.innerHTML = `<span>Nothing is connected yet. ${ME?.admin ? '<a href="/settings#connections">Connect Jamf or Intune under Settings → Connections</a>.' : 'Ask a Devices admin to connect Jamf or Intune under Settings → Connections.'}</span>`;
+    return;
+  }
+  const busy = on.some(c => c.syncing);
+  bar.hidden = false;
+  bar.innerHTML = on.map(c => {
+    const dot = c.syncing ? 'busy' : !c.enabled ? 'off' : c.lastError ? 'err' : '';
+    const txt = c.syncing ? 'syncing…' : c.lastError ? `didn't sync ${ago(c.lastSync)}: ${esc(c.lastError)}`
+      : c.lastOk ? `${(c.count ?? 0).toLocaleString()} devices · synced ${ago(c.lastOk)}${c.enabled ? '' : ' · paused'}` : 'not synced yet';
+    return `<span class="src" title="${esc(c.lastNote || '')}"><span class="dot ${dot}"></span><b style="color:var(--text)">${esc(c.name)}</b> ${txt}</span>`;
+  }).join('') + `<span class="sp"></span>${ME?.admin ? '<a href="/settings#connections">Connections</a>' : ''}
+    ${ME?.canEdit ? `<button class="btn small" id="syncNow" type="button" ${busy ? 'disabled' : ''}>${busy ? 'Syncing…' : 'Sync now'}</button>` : ''}`;
+  $('syncNow')?.addEventListener('click', syncNow);
+  clearTimeout(POLL);
+  if (busy) POLL = setTimeout(load, 3000);
+}
+
+async function syncNow() {
+  try {
+    await api('api/sync', { method: 'POST' });
+    CONNS = CONNS.map(c => c.connected && c.enabled ? { ...c, syncing: true } : c);
+    drawSync();
+    clearTimeout(POLL); POLL = setTimeout(load, 2500);
+  } catch (e) { showError(e.message); }
+}
+
+function matches(d) {
+  if (FILTER === 'Jamf' || FILTER === 'Intune') { if (d.platform !== FILTER) return false; }
+  else if (FILTER === 'computer' || FILTER === 'mobile') { if (d.kind !== FILTER) return false; }
+  else if (FILTER === 'primary' && !d.primaryFor.length) return false;
+  if ($('platform').value && d.platform !== $('platform').value) return false;
+  if ($('os').value && d.os !== $('os').value) return false;
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = [d.name, d.serial, d.make, d.model, d.os, d.osVersion, d.userEmail, d.userName, d.platform,
+               ...d.primaryFor.map(o => o.name + ' ' + o.email)].join(' ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+
+function sortVal(d, k) {
+  if (k === 'user') return (d.userName || d.userEmail || '~').toLowerCase();
+  if (k === 'model') return `${d.make} ${d.model}`.toLowerCase();
+  if (k === 'os') return osText(d).toLowerCase();
+  if (k === 'lastSeen') return d.lastSeen || '';
+  return String(d[k] || '').toLowerCase();
+}
+
+function draw() {
+  const rows = ALL.filter(matches);
+  const k = SORT.key;
+  rows.sort((a, b) => (sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir);
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+  });
+  document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
+  $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} devices` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
+  if (!ALL.length) {
+    $('rows').innerHTML = `<tr><td colspan="7" class="empty"><b>No devices yet</b>${CONNS.some(c => c.connected) ? 'They appear here after the first sync.' : 'Connect Jamf or Intune under Settings → Connections and every device shows up here.'}</td></tr>`;
+    return;
+  }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No devices match.</td></tr>'; return; }
+  $('rows').innerHTML = rows.slice(0, 3000).map(d => `<tr data-id="${esc(d.id)}" tabindex="0">
+    <td><b>${esc(d.name || '(no name)')}</b><div class="muted mono">${esc(d.serial || '')}</div></td>
+    <td>${esc(d.model || '—')}<div class="muted">${esc(d.make || '')}</div></td>
+    <td style="white-space:nowrap">${esc(osText(d) || '—')}</td>
+    <td>${platformBadge(d.platform)}</td>
+    <td class="hide-sm">${esc(d.userName || '')}<div class="muted">${esc(d.userEmail || (d.userName ? '' : '—'))}</div></td>
+    <td class="hide-sm">${d.primaryFor.map(o => `<div>${esc(o.name)}${o.type === 'VIP' ? ' <span class="badge b-vip">VIP</span>' : ''}</div>`).join('') || '<span class="muted">—</span>'}</td>
+    <td class="hide-sm when ${daysOld(d.lastSeen) > 30 ? 'stale' : ''}" title="${esc(full(d.lastSeen))}">${esc(ago(d.lastSeen) || '—')}</td>
+  </tr>`).join('');
+  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="7" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
+}
+
+function openDevice(id) {
+  const d = ALL.find(x => x.id === id);
+  if (!d) return;
+  OPEN = id;
+  $('p-badge').innerHTML = platformBadge(d.platform);
+  $('p-title').textContent = d.name || '(no name)';
+  $('p-sub').textContent = [d.make, d.model].filter(Boolean).join(' ');
+  $('p-body').innerHTML = `<dl>
+      <dt>Make</dt><dd>${esc(d.make || '—')}</dd>
+      <dt>Model</dt><dd>${esc(d.model || '—')}</dd>
+      <dt>OS</dt><dd>${esc(osText(d) || '—')}</dd>
+      <dt>Platform</dt><dd>${esc(d.platform)} <span class="muted">(${d.kind === 'mobile' ? 'phone or tablet' : 'computer'})</span></dd>
+      <dt>Serial</dt><dd class="mono">${esc(d.serial || '—')}</dd>
+      <dt>Assigned to</dt><dd>${esc(d.userName || '')}${d.userEmail ? ` <span class="muted">${esc(d.userEmail)}</span>` : d.userName ? '' : '—'}</dd>
+      <dt>Last check-in</dt><dd>${esc(full(d.lastSeen) || '—')}</dd>
+      <dt>Synced</dt><dd>${esc(full(d.syncedAt) || '—')}</dd>
+    </dl>
+    <h3>Primary device of</h3>
+    ${d.primaryFor.length ? d.primaryFor.map(o => `<div style="margin-bottom:6px"><a href="/users/#${encodeURIComponent(o.email)}">${esc(o.name)}</a> <span class="muted">${esc(o.email)}</span>${o.type === 'VIP' ? ' <span class="badge b-vip">VIP</span>' : ''}</div>`).join('')
+      : '<p class="muted" style="margin:0">Nobody yet. Set it on the Users page.</p>'}`;
+  $('panel').hidden = $('scrim').hidden = false;
+  $('p-close').focus();
+}
+function closePanel() { $('panel').hidden = $('scrim').hidden = true; const r = document.querySelector(`tr[data-id="${CSS.escape(OPEN || '')}"]`); OPEN = null; r?.focus(); }
+
+async function load() {
+  try {
+    const data = await api('api/devices');
+    ALL = data.items; CONNS = data.connections;
+    for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
+    const oses = [...new Set(ALL.map(d => d.os).filter(Boolean))].sort();
+    const keep = $('os').value;
+    $('os').innerHTML = '<option value="">Every OS</option>' + oses.map(o => `<option>${esc(o)}</option>`).join('');
+    $('os').value = oses.includes(keep) ? keep : '';
+    showError('');
+    drawSync();
+    draw();
+  } catch (e) { if (e.message !== 'signed out') showError('Could not load devices: ' + e.message); }
+}
+
+document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => { FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw(); }));
+document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
+  const k = b.parentElement.dataset.sort;
+  SORT = { key: k, dir: SORT.key === k ? -SORT.dir : (k === 'lastSeen' ? -1 : 1) };
+  draw();
+}));
+['q', 'platform', 'os'].forEach(id => $(id).addEventListener('input', draw));
+$('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDevice(tr.dataset.id); });
+$('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-id]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDevice(tr.dataset.id); } });
+$('p-close').onclick = closePanel; $('scrim').onclick = closePanel;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN) closePanel(); });
+
+(async () => {
+  try { ME = await api('api/me'); $('who').textContent = ME.email; } catch { return; }
+  await load();
+})();
+</script>
+</body>
+</html>

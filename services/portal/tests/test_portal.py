@@ -51,7 +51,7 @@ def add(c, email, tools=(), admin=False, password="a-good-password", level="edit
     return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
 
 
-TOOLS = ["notifications", "elevation", "changes", "restart", "projects", "tasks", "team"]
+TOOLS = ["notifications", "elevation", "changes", "devices", "restart", "projects", "tasks", "users", "team"]
 
 
 def test_first_admin_and_sign_in(c):
@@ -165,7 +165,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"]] == ["notifications", "elevation", "changes", "restart", "projects", "tasks", "team"]
+    assert [t["id"] for t in s["tools"]] == TOOLS
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},

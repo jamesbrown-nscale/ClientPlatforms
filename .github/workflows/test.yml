@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [portal, notifications, elevation, restart, projects]
+        service: [portal, notifications, elevation, restart, projects, inventory]
     defaults:
       run:
         working-directory: services/${{ matrix.service }}

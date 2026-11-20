@@ -8,9 +8,11 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/notifications/` | IT Notifications: send branded notifications to Windows and Mac devices | [`services/notifications`](services/notifications) (apps: [ITNotifications](https://github.com/jamesbrown-nscale/ITNotifications)) |
 | `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
 | `/changes/` | Change management: raise, review and approve changes, through a flow per change type | [`services/projects`](services/projects) (`app/changes.py`) |
+| `/devices/` | Devices: every device in Jamf and Intune (make, model, OS, platform, who uses it) | [`services/inventory`](services/inventory) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
+| `/users/` | Users: the people we look after, imported by CSV, tagged with team, line manager, VIP or Standard and primary device | [`services/inventory`](services/inventory) |
 | `/team/` | Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
@@ -22,6 +24,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
  Windows / Mac apps ── device keys ── /notifications/api/v1/checkin ────────────────┼─► /notifications/ notifications
                                       /elevation/api/elevations/ingest ─────────────┼─► /elevation/     elevation
                                       /restart/api/reports ─────────────────────────┴─► /restart/       restart
+ Jamf Pro, Intune (Microsoft Graph) ◄── read only, every hour ── /devices/, /users/   inventory
                                                                        one SQLite volume per service
 ```
 
@@ -57,7 +60,7 @@ Sign in as `ADMIN_EMAIL`, then under **Settings**:
 - **Tools**: where each home page tile links to, and whether it's shown. Point one at another server if that tool runs somewhere else.
 - **Device settings**: the exact installer values for each app, built from the device server address.
 
-Data is in one Docker volume per service (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`, `projects-data`).
+Data is in one Docker volume per service (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`, `projects-data`, `inventory-data`).
 
 ## IT Notifications
 
@@ -114,6 +117,34 @@ The Windows Restart Reminder app reports what happens on each device, and the pa
 The answer is `{"results": [{"reportId", "status": "created" | "updated" | "duplicate" | "rejected", "error"?}]}`. Resending a report is safe. `GET /restart/api/policy` returns the policy (`maxUptimeDays`, `countdownHours`, `latestScheduleTime`), so the app can follow the site instead of its `appsettings.json`.
 
 **Before the page has data,** the WindowsRestart app needs to send these reports (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker).
+
+## Devices
+
+Every device in **Jamf Pro** (Macs, and iPhones and iPads) and **Microsoft Intune** (Windows PCs, Macs and phones), read only, with its make, model, OS and version, platform (Jamf or Intune), serial, who it's assigned to, its last check-in, and whose primary device it is on the Users page. Search, filter by platform or OS, sort by any column, and click a device for its details. *Download CSV* gives the list.
+
+Devices are read again every hour (`SYNC_MINUTES`), and anyone who can edit Devices can press **Sync now**. Each sync replaces what came from that platform: new devices appear, changed ones update and ones no longer there are removed. If a sync fails, the devices from the last good one stay and the bar at the top says what went wrong. Check-ins over 30 days old are shown in amber.
+
+**Settings → Connections** (Devices admins): the Jamf Pro address and API client ID and secret, and the Intune tenant ID, app ID and secret. Each has the steps to set it up in Jamf or Entra, and checks it straight away by reading every device. Secrets are encrypted with a key made from `AUTH_SECRET` and never shown again; change `AUTH_SECRET` and they need entering again. *Disconnect* deletes the details and takes that platform's devices off the page.
+
+| Platform | What it needs | Read from |
+|---|---|---|
+| Jamf Pro | An API client whose API role has **Read Computers** (and **Read Mobile Devices** for iPhones and iPads) | `/api/v1/computers-inventory`, `/api/v2/mobile-devices/detail` |
+| Intune | An Entra app registration with the Graph *application* permission **DeviceManagementManagedDevices.Read.All** (admin consent) and a client secret | `graph.microsoft.com/v1.0/deviceManagement/managedDevices` |
+
+## Users
+
+The people we look after (not who can sign in: that's Settings → People), each tagged with:
+
+- **Team**: free text, suggested from the teams already used.
+- **Line manager**: an email, or a name that's matched to a user. The page shows their name.
+- **User type**: **VIP** or **Standard**.
+- **Primary device**: picked from Devices, starting with what Jamf or Intune says is theirs. The Users list shows its name, platform, make, model and OS. If it leaves Jamf or Intune, it shows as *Device gone*.
+
+**Import CSV** takes a file with an **Email** column, plus any of *Name* (or First name and Last name), *Job title*, *Department*, *Team*, *Line manager*, *User type* (VIP or Standard; yes/no also work) and *Primary device* (a serial or device name). Commas, semicolons or tabs all work, and common heading names (e.g. *E-mail Address*, *Display Name*, *Serial Number*) are recognised. It checks the file first and shows what it'll add, update and couldn't read, then imports. New emails are added; users already here are updated; empty cells leave what's there alone. *Download a template* gives the columns.
+
+**Match devices** gives everyone without a primary device the one computer Jamf or Intune says is theirs (or their one device, if they have no computer); anyone with several is left to pick by hand. *Download CSV* gives every user with their tags and primary device.
+
+Users and Devices run in one service (`services/inventory`, one database). View sees everything; Edit imports, tags and syncs; Admin on Devices also manages Connections.
 
 ## Projects
 
@@ -231,7 +262,7 @@ Nobody is told about their own doing. Opening a notification marks it read and t
 
 ## Permissions
 
-**Settings** has five tabs, each shown only to those who can use it: *Your account* · *Site* · *People* · *Permissions* · *Change management*.
+**Settings** has six tabs, each shown only to those who can use it: *Your account* · *Site* · *People* · *Permissions* · *Change management* · *Connections* (Devices admins: Jamf and Intune).
 
 People are given **roles**; a role says what it allows, and someone with several roles gets the most any of them allows. Make roles under **Permissions**:
 
@@ -240,7 +271,7 @@ People are given **roles**; a role says what it allows, and someone with several
 | **None** | No access; the tool isn't in their sidebar. |
 | **View** | Sees everything, changes nothing. Enforced at the front door: any change is refused, and the tool shows a *View only* bar. |
 | **Edit** | Uses it fully: adds, changes, comments. |
-| **Admin** | Edit, plus the tool's own admin powers: every project as an owner, Change management settings, managing anyone in Team, and so on. |
+| **Admin** | Edit, plus the tool's own admin powers: every project as an owner, Change management settings, managing anyone in Team, the Jamf and Intune connections, and so on. |
 
 A role can also give the **site abilities**: *Manage people and roles* (People and Permissions tabs) and *Manage site settings* (Site tab: addresses and tool links). The built-in **Administrator** role has admin on every tool (including any added later) and both abilities; it can't be changed or deleted. Someone must always be able to manage people and roles: the portal refuses any change that would leave nobody who can, and you can't take that right away from yourself.
 
@@ -269,4 +300,4 @@ Every service runs the same way. `DEV_USER` skips sign-in, so never set it on a 
 | `docker-compose.vm.yml`, `deploy/vm/` | The Google Cloud VM: HTTPS and OIDC on top of the stack, the scripts to create, set up and update it, its settings (`env.example`) and the runbook. |
 | `proxy/` | Caddy: routing and the sign-in check in front of each tool. |
 | `services/portal/` | Home page, sign-in (`oidc.py`, passwords in `db.py`), the directory search (`directory.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match (as does `keyguard.py`, the wrong-key limiter in the three device apps). To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
-| `services/notifications/`, `services/elevation/`, `services/restart/`, `services/projects/` | The tools, each with its page, API and tests. |
+| `services/notifications/`, `services/elevation/`, `services/restart/`, `services/projects/`, `services/inventory/` | The tools, each with its page, API and tests. `inventory` is Users and Devices, and reads Jamf and Intune (`app/connectors.py`). |
