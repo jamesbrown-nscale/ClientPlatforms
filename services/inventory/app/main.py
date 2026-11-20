@@ -29,7 +29,7 @@ import re
 import sys
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
@@ -48,6 +48,7 @@ STATIC = Path(__file__).parent / "static"
 PORTAL_URL = os.environ.get("PORTAL_URL", "/")
 SYNC_MINUTES = float(os.environ.get("SYNC_MINUTES", "60"))
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+STALE_DAYS = 30   # a device that hasn't checked in for this long gets the "Not checked in" tile
 TYPES = ("Standard", "VIP")   # always there; any other user type can be added (Contractor, Executive …)
 MAX_CSV = 5 * 1024 * 1024
 MAX_ROWS = 20000
@@ -255,7 +256,12 @@ def list_devices(user: User = Depends(auth.devices_viewer)):
     stats = {"devices": len(items), **{p: sum(d["platform"] == p for d in items) for p in PLATFORMS.values()},
              "computers": sum(d["kind"] == "computer" for d in items), "mobiles": sum(d["kind"] == "mobile" for d in items),
              "primary": sum(bool(d["primaryFor"]) for d in items)}
-    return {"items": items, "stats": stats, "connections": _connections_view()}
+    # Not checked in for 30 days (or never): likely lost, broken, in a drawer or gone without being retired.
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=STALE_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+    for d in items:
+        d["stale"] = _seen({"last_seen": d["lastSeen"]}) < cutoff
+    stats["stale"] = sum(d["stale"] for d in items)
+    return {"items": items, "stats": stats, "staleDays": STALE_DAYS, "connections": _connections_view()}
 
 
 @devices_app.get("/api/devices.csv")

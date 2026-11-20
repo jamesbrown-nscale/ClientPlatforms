@@ -45,6 +45,7 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
     {"id": "team", "group": "People", "name": "Client Platform Team", "icon": "team", "url": "/team/",
      "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
 ]
+LEGACY_URLS = {"org": ("/users/org", "/users/org/"), "departments": ("/users/departments", "/users/departments/")}
 TOOL_IDS = [t["id"] for t in TOOLS if not t.get("uses")]   # the ones with an access entry
 USES = {t["id"]: t["uses"] for t in TOOLS if t.get("uses")}   # page → the tool whose access it follows
 LEVELS = ["none", "view", "edit", "admin"]
@@ -356,6 +357,9 @@ class DB:
         with self._db() as db:
             stored = {r["key"]: json.loads(r["value"]) for r in db.execute("SELECT key, value FROM settings")}
         tools = stored.get("tools") or {}
+        for tid, old in LEGACY_URLS.items():   # links saved while a tool lived at its old address
+            if (tools.get(tid) or {}).get("url") in old:
+                tools[tid] = {**tools[tid], "url": ""}
         return {
             "publicUrl": stored.get("publicUrl") or os.environ.get("PUBLIC_URL", ""),
             "deviceUrl": stored.get("deviceUrl") or os.environ.get("DEVICE_URL", ""),

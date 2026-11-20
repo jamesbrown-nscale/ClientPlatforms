@@ -342,7 +342,8 @@ def settings_page(request: Request):
 
 @app.get("/api/me")
 def me(user: dict = Depends(require_user)):
-    tools = [{**t, "level": level(user, t["id"])} for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
+    # Every tool they can use is in their sidebar; "On home page" (enabled) only decides the home page tiles.
+    tools = [{**t, "level": level(user, t["id"])} for t in db.settings()["tools"] if can_use(user, t["id"])]
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "perms": user.get("perms", []), "tools": tools,
             "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": uses_password(user["email"]),
             "oidc": OIDC, "provider": oidc.PROVIDER if OIDC else "", "directory": directory.name() if OIDC else "",

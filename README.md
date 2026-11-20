@@ -58,7 +58,7 @@ Sign in as `ADMIN_EMAIL`, then under **Settings**:
 
 - **People**: add each person (on the VM, find them in the directory), and give them roles. Only people on this list can sign in.
 - **Addresses**: the *site address* (what people open) and the *device server address* (what devices send to, if it's different). Devices and installers can read the current addresses from `/api/device-config`.
-- **Tools**: where each home page tile links to, and whether it's shown. Point one at another server if that tool runs somewhere else.
+- **Tools**: where each tool links to, and whether it has a tile on the home page. Unticking *On home page* only takes the tile off the home page: the tool stays in the sidebar for everyone who can use it. Point one at another server if that tool runs somewhere else.
 - **Device settings**: the exact installer values for each app, built from the device server address.
 
 Data is in one Docker volume per service (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`, `projects-data`, `inventory-data`).
@@ -123,7 +123,7 @@ The answer is `{"results": [{"reportId", "status": "created" | "updated" | "dupl
 
 Every device in **Jamf Pro** (Macs, and iPhones and iPads) and **Microsoft Intune** (Windows PCs, Macs and phones), read only, with its make, model, OS and version, platform (Jamf or Intune), serial, who it's assigned to, its last check-in, and whose primary device it is on the Users page. Search, filter by platform or OS, sort by any column, and click a device for its details. *Download CSV* gives the list.
 
-Devices are read again every hour (`SYNC_MINUTES`), and anyone who can edit Devices can press **Sync now**. Each sync replaces what came from that platform: new devices appear, changed ones update and ones no longer there are removed. If a sync fails, the devices from the last good one stay and the bar at the top says what went wrong. Check-ins over 30 days old are shown in amber.
+Devices are read again every hour (`SYNC_MINUTES`), and anyone who can edit Devices can press **Sync now**. Each sync replaces what came from that platform: new devices appear, changed ones update and ones no longer there are removed. If a sync fails, the devices from the last good one stay and the bar at the top says what went wrong. Check-ins over 30 days old are shown in amber, and the **Not checked in for 30 days** tile counts them (with any that have never checked in) and shows just them when clicked.
 
 **Settings → Connections** (Devices admins): the Jamf Pro address and API client ID and secret, and the Intune tenant ID, app ID and secret. Each has the steps to set it up in Jamf or Entra, and checks it straight away by reading every device. Secrets are encrypted with a key made from `AUTH_SECRET` and never shown again; change `AUTH_SECRET` and they need entering again. *Disconnect* deletes the details and takes that platform's devices off the page.
 

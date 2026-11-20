@@ -29,13 +29,14 @@
   <div class="notice" id="notice" hidden></div>
   <div class="syncbar" id="syncbar" hidden></div>
 
-  <div class="tiles" id="tiles">
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
     <button class="tile" data-f="all"><b id="s-devices">–</b><span>Devices</span></button>
     <button class="tile" data-f="Jamf"><b id="s-Jamf">–</b><span>In Jamf</span></button>
     <button class="tile" data-f="Intune"><b id="s-Intune">–</b><span>In Intune</span></button>
     <button class="tile" data-f="computer"><b id="s-computers">–</b><span>Computers</span></button>
     <button class="tile" data-f="mobile"><b id="s-mobiles">–</b><span>Phones and tablets</span></button>
     <button class="tile" data-f="primary" title="Someone's primary device on the Users page"><b id="s-primary">–</b><span>Primary devices</span></button>
+    <button class="tile warn" data-f="stale" title="No check-in with Jamf or Intune for 30 days, or none at all"><b id="s-stale">–</b><span>Not checked in for 30 days</span></button>
   </div>
 
   <div class="card">
@@ -147,6 +148,7 @@ function matches(d) {
   if (FILTER === 'Jamf' || FILTER === 'Intune') { if (d.platform !== FILTER) return false; }
   else if (FILTER === 'computer' || FILTER === 'mobile') { if (d.kind !== FILTER) return false; }
   else if (FILTER === 'primary' && !d.primaryFor.length) return false;
+  else if (FILTER === 'stale' && !d.stale) return false;
   if ($('platform').value && d.platform !== $('platform').value) return false;
   if ($('os').value && d.os !== $('os').value) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);

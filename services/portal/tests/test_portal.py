@@ -204,6 +204,10 @@ def test_settings(c):
     assert s["devices"]["notifications"] == "https://cp.example.com/notifications"
     home = c.get("/").text
     assert 'href="https://notify.example.com/"' in home and 'href="/elevation/"' not in home and 'href="/restart/"' in home
+    side = {t["id"]: t for t in c.get("/api/me").json()["tools"]}
+    assert "elevation" in side and side["elevation"]["enabled"] is False   # off the home page, still in the sidebar
+    c.put("/api/settings", headers=H, json={**body, "tools": body["tools"] + [{"id": "org", "url": "/users/org", "enabled": True}]})
+    assert next(t for t in c.get("/api/settings").json()["tools"] if t["id"] == "org")["url"] == "/org/"   # its old address
     body["deviceUrl"] = "http://10.0.0.5:8080"
     c.put("/api/settings", headers=H, json=body)
     c.cookies.clear()

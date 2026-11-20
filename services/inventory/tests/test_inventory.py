@@ -415,3 +415,16 @@ def test_several_devices(c, fake):
     assert amy["primaryDevice"]["serial"] == "5CG111" and "C02AAA" in [d["serial"] for d in amy["otherDevices"]]
     assert "Other devices" in c.get("/users/api/users.csv", headers=UV).text
     assert main.pick_primary([]) is None
+
+
+def test_not_checked_in_for_30_days(c):
+    from datetime import datetime, timedelta, timezone
+    ago = lambda days: (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    main.store.replace_devices("Intune", [
+        {"id": "intune:a", "platform": "Intune", "name": "FRESH", "last_seen": ago(2)},
+        {"id": "intune:b", "platform": "Intune", "name": "OLD", "last_seen": ago(31)},
+        {"id": "intune:c", "platform": "Intune", "name": "NEVER", "last_seen": ""},
+        {"id": "intune:d", "platform": "Intune", "name": "JAMF-STYLE", "last_seen": ago(45).replace("Z", ".123+00:00")}])
+    r = c.get("/devices/api/devices", headers=DV).json()
+    assert r["stats"]["stale"] == 3 and r["staleDays"] == 30
+    assert {d["name"] for d in r["items"] if d["stale"]} == {"OLD", "NEVER", "JAMF-STYLE"}
