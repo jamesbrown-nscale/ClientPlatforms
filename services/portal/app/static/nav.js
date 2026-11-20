@@ -34,6 +34,9 @@
   .cp-side .cp-brand { display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 20px; border-bottom: 1px solid #E1EAF9;
     color: inherit; text-decoration: none; font-weight: 600; flex-shrink: 0; }
   .cp-side .cp-brand img { width: 22px; height: 22px; }
+  .cp-side .cp-brand span { white-space: nowrap; }
+  .cp-side .cp-brand .cp-ver { margin-left: auto; font-size: 10.5px; font-weight: 600; color: #3B404E; background: #E1EAF9;
+    border-radius: 9px; padding: 0 6px; line-height: 17px; font-variant-numeric: tabular-nums; }
   .cp-side .cp-list { padding: 14px 12px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
   .cp-side .cp-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #3B404E; padding: 14px 10px 6px; }
   .cp-side button.cp-label { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; cursor: pointer;
@@ -124,7 +127,7 @@
     side.className = 'cp-side';
     side.setAttribute('aria-label', 'Client Platforms');
     side.innerHTML = `
-      <a class="cp-brand" href="/"><img src="/static/nscale-icon.svg" alt=""><span>Client Platforms</span></a>
+      <a class="cp-brand" href="/"><img src="/static/nscale-icon.svg" alt=""><span>Client Platforms</span>${/^[0-9.]+$/.test(me.version || '') ? `<span class="cp-ver" title="Client Platforms version ${me.version}">v${me.version}</span>` : ''}</a>
       <div class="cp-list" role="navigation" aria-label="Tools">
         ${item('/', 'home', 'Home')}
         ${me.inbox ? item('/inbox/', 'inbox', 'Notifications', false, 'inbox') : ''}

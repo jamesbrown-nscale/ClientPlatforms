@@ -113,6 +113,11 @@ sudo systemctl disable --now cp-update.timer  # pause it
 sudo systemctl enable --now cp-update.timer   # turn it back on
 ```
 
+**The version** shows in the sidebar beside "Client Platforms": 0.1 was the first, and each commit
+on `main` adds one (0.2, 0.3, … 0.10). It's worked out from the commit count when the site updates
+(`deploy/vm/version.sh`), and `https://<DOMAIN>/healthz` shows it too. For 1.0, change `MAJOR` and
+`BASE` in that script.
+
 To update straight away instead of waiting:
 
 ```bash

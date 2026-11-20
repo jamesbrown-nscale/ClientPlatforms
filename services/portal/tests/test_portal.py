@@ -302,3 +302,11 @@ def test_existing_accounts_move_to_roles(tmp_path):
     assert {r["name"] for r in d.roles()} == {"Administrator", "Team Planning editor", "Restart reminder editor"}
     DB(path)   # running again changes nothing
     assert len(d.roles()) == 3
+
+
+def test_version_is_shown(monkeypatch, c):
+    """The VM passes the site's version in CP_VERSION; /api/me and /healthz carry it for the sidebar."""
+    monkeypatch.setattr(main, "VERSION", "0.12")
+    assert c.get("/healthz").json() == {"ok": True, "version": "0.12"}
+    sign_in(c)
+    assert c.get("/api/me").json()["version"] == "0.12"

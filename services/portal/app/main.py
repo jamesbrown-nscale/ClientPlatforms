@@ -38,6 +38,8 @@ COOKIE = "cp_session"
 SESSION_HOURS = float(os.environ.get("SESSION_HOURS", "12"))
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD = 10
+# The site's version (deploy/vm/version.sh: one more for every commit), shown in the sidebar.
+VERSION = re.sub(r"[^0-9.]", "", os.environ.get("CP_VERSION", ""))[:20]
 
 MODE = "dev" if access.DEV_USER else access.AUTH_MODE
 if MODE not in ("local", "oidc", "dev"):
@@ -308,7 +310,7 @@ def auth_check(request: Request):
 
 @app.get("/healthz")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "version": VERSION}
 
 
 @app.get("/")
@@ -344,7 +346,7 @@ def me(user: dict = Depends(require_user)):
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "perms": user.get("perms", []), "tools": tools,
             "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": uses_password(user["email"]),
             "oidc": OIDC, "provider": oidc.PROVIDER if OIDC else "", "directory": directory.name() if OIDC else "",
-            "minPassword": MIN_PASSWORD}
+            "minPassword": MIN_PASSWORD, "version": VERSION}
 
 
 class PasswordChange(BaseModel):

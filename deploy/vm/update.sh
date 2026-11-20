@@ -13,7 +13,8 @@ if [ -d .git ] && [ "${PULL:-1}" = 1 ]; then
   echo "==> Getting the latest"
   git pull --ff-only
 fi
-echo "==> Building and starting"
+export CP_VERSION; CP_VERSION=$(deploy/vm/version.sh)   # shown in the sidebar
+echo "==> Building and starting version $CP_VERSION"
 docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build --remove-orphans
 docker image prune -f >/dev/null
 docker compose -f docker-compose.yml -f docker-compose.vm.yml ps

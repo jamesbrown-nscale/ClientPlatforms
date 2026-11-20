@@ -42,7 +42,7 @@ PROJECT=<project-id> ./deploy/vm/create.sh                   # once: VM, address
 sudo /opt/client-platforms/deploy/vm/update.sh             # on the VM: start, or update to the latest now
 ```
 
-After that **it updates itself**: every 5 minutes the VM checks GitHub, and a new commit on `main` is pulled, built and started (`journalctl -u cp-update` shows what it did).
+After that **it updates itself**: every 5 minutes the VM checks GitHub, and a new commit on `main` is pulled, built and started (`journalctl -u cp-update` shows what it did). The sidebar shows the version, which goes up by one with every commit (0.1, 0.2, …; see `deploy/vm/version.sh`).
 
 **Every image runs its tests while it builds**, so a version with failing tests doesn't start, and the running one carries on.
 
