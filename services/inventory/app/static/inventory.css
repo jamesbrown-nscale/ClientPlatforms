@@ -78,6 +78,8 @@ table.fit td { overflow: hidden; }
 .b-intune { background: var(--surface); color: var(--primary); }
 .b-vip { background: var(--vip-fill); color: var(--vip); }
 .b-std { background: var(--grey-fill); color: var(--text2); }
+.b-type { background: #EDE7FB; color: #5B32B4; }
+.tile.ty b { color: #5B32B4; }
 .b-gone { background: var(--err-fill); color: var(--err); }
 .b-team { background: var(--surface); color: var(--text); font-weight: 500; }
 .folds { display: inline-flex; gap: 6px; }
@@ -118,7 +120,8 @@ label.l { display: block; font-weight: 600; margin: 14px 0 6px; }
 .field input:disabled { background: var(--page); color: var(--text2); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
 .hint { color: var(--text2); font-size: 12.5px; margin-top: 4px; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+.seg button[data-newtype] { color: var(--primary); font-weight: 600; }
 .seg button { border: 0; background: #fff; padding: 8px 18px; cursor: pointer; font-weight: 600; color: var(--text2); }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button[aria-pressed="true"] { background: var(--primary); color: #fff; }

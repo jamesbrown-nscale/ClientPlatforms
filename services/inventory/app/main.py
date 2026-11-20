@@ -48,7 +48,7 @@ STATIC = Path(__file__).parent / "static"
 PORTAL_URL = os.environ.get("PORTAL_URL", "/")
 SYNC_MINUTES = float(os.environ.get("SYNC_MINUTES", "60"))
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-TYPES = ("Standard", "VIP")
+TYPES = ("Standard", "VIP")   # always there; any other user type can be added (Contractor, Executive …)
 MAX_CSV = 5 * 1024 * 1024
 MAX_ROWS = 20000
 
@@ -376,7 +376,7 @@ def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigne
     return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
             "department": u["department"] or "", "division": u["division"] or "",
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
-            "type": u["user_type"] if u["user_type"] in TYPES else "Standard", "title": u["title"] or "",
+            "type": u["user_type"] or "Standard", "title": u["title"] or "",
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
             "devices": len(assigned.get(u["email"], [])), "updatedAt": u["updated_at"], "updatedBy": u["updated_by"]}
 
@@ -396,10 +396,16 @@ def _users() -> list[dict]:
 @users_app.get("/api/users")
 def list_users(user: User = Depends(auth.users_viewer)):
     items = _users()
-    stats = {"users": len(items), "vip": sum(u["type"] == "VIP" for u in items), "departments": len({u["department"] for u in items if u["department"]}),
+    counts: dict[str, int] = {}
+    for u in items:
+        counts[u["type"]] = counts.get(u["type"], 0) + 1
+    # VIP first, then the others A-Z, Standard last: each but Standard gets a tile on the page.
+    types = [{"name": t, "count": counts.get(t, 0)}
+             for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
+    stats = {"users": len(items), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
-    return {"items": items, "departments": departments(items), "stats": stats}
+    return {"items": items, "departments": departments(items), "types": types, "stats": stats}
 
 
 def departments(users: list[dict]) -> list[dict]:
@@ -467,13 +473,25 @@ def _names() -> dict[str, str]:
     return {(u["name"] or "").lower(): u["email"] for u in store.users() if u["name"]}
 
 
-def _type(v: str) -> str:
-    s = (v or "").strip().lower()
-    if s in ("vip", "yes", "y", "true", "1"):
+def known_types() -> dict[str, str]:
+    """Every user type in use, by its lower-case name, so "contractor" finds "Contractor"."""
+    return {t.lower(): t for t in [*TYPES, *(u["user_type"] for u in store.users() if u["user_type"])]}
+
+
+def _type(v: str, known: dict[str, str] | None = None) -> str:
+    """VIP, Standard, a type already in use (whatever its case), or a new one. yes/no (a VIP column) mean VIP/Standard."""
+    s = re.sub(r"\s+", " ", (v or "").strip())
+    low = s.lower()
+    if low in ("vip", "yes", "y", "true", "1"):
         return "VIP"
-    if s in ("standard", "std", "no", "n", "false", "0", ""):
+    if low in ("standard", "std", "no", "n", "false", "0", ""):
         return "Standard"
-    raise ValueError(f"User type must be VIP or Standard, not \"{v}\".")
+    if len(s) > 40 or not re.match(r"^[\w][\w &'./+-]*$", s):
+        raise ValueError(f"\"{v}\" can't be a user type: up to 40 letters, numbers and spaces.")
+    known = known if known is not None else known_types()
+    if s.islower():
+        s = s[0].upper() + s[1:]   # "contractor" → "Contractor"
+    return known.setdefault(low, s)
 
 
 class DeviceIndex:
@@ -632,6 +650,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
         raw.append((n, r))
 
     devices = DeviceIndex(store.devices())
+    types = known_types()   # new types in this file are added as they come, so their case stays the same
     by_name = _names()
     for _, r in raw:   # managers named in this same file count too
         nm = r.get("name") or " ".join(filter(None, [r.get("first"), r.get("last")]))
@@ -654,7 +673,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
             if r.get(k):
                 u[k] = r[k][:200]
         for k, field, fn in (("manager", "manager", lambda v: _resolve_manager(v, by_name, email)),
-                             ("type", "user_type", _type),
+                             ("type", "user_type", lambda v: _type(v, types)),
                              ("device", "primary_device", devices.find)):
             if r.get(k):
                 try:

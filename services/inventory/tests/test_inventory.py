@@ -262,13 +262,13 @@ def test_csv_import(c, fake):
     msgs = {}
     for prob in r["problems"]:
         msgs[prob["row"]] = msgs.get(prob["row"], "") + prob["message"]
-    assert "no valid email" in msgs[4] and "VIP or Standard" in msgs[5] and "NOPE" in msgs[5]
+    assert "no valid email" in msgs[4] and "NOPE" in msgs[5]
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     amy = users["amy.chen@nscale.com"]
     assert (amy["name"], amy["department"], amy["division"], amy["type"], amy["manager"], amy["managerName"]) == \
         ("Amy Chen", "Engineering", "Platform", "VIP", "sam.lee@nscale.com", "Sam Lee")     # manager by name, from the same file
     assert amy["primaryDevice"]["serial"] == "C02AAA" and amy["primaryDevice"]["model"] == "MacBook Pro (14-inch, 2023)"
-    assert users["pat@nscale.com"]["type"] == "Standard" and users["pat@nscale.com"]["manager"] == "boss@nscale.com"
+    assert users["pat@nscale.com"]["type"] == "Gold" and users["pat@nscale.com"]["manager"] == "boss@nscale.com"
     assert users["pat@nscale.com"]["primaryDevice"] is None
 
     # Again, with some changes: empty cells leave things alone.
@@ -305,7 +305,13 @@ def test_tags(c, fake):
 
     p = lambda body: c.patch("/users/api/users/amy.chen@nscale.com", headers=UE, json=body)
     assert p({"manager": "amy.chen@nscale.com"}).status_code == 422          # not your own manager
-    assert p({"type": "Gold"}).status_code == 422
+    assert p({"type": "<b>x</b>"}).status_code == 422 and p({"type": "x" * 41}).status_code == 422
+    assert p({"type": "contractor"}).json()["type"] == "Contractor"         # a new type
+    c.post("/users/api/users", headers=UE, json={"email": "kai@nscale.com", "type": "CONTRACTOR"})
+    got = c.get("/users/api/users", headers=UV).json()
+    assert next(u for u in got["items"] if u["email"] == "kai@nscale.com")["type"] == "Contractor"   # the same one
+    assert got["types"] == [{"name": "VIP", "count": 0}, {"name": "Contractor", "count": 2}, {"name": "Standard", "count": 1}]
+    c.delete("/users/api/users/kai@nscale.com", headers=UE)
     assert p({"primaryDevice": "C02ZZZ"}).status_code == 422
     did = next(d["id"] for d in c.get("/users/api/devices", headers=UV).json()["items"] if d["serial"] == "C02AAA")
     u = p({"primaryDevice": did, "type": "Standard", "division": ""}).json()

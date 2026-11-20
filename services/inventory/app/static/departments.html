@@ -136,7 +136,7 @@ function draw() {
             <span style="min-width:0"><b class="cut">${esc(u.name)}</b><span class="cut muted">${esc(u.title || u.email)}</span></span>
             <span class="hide-md" style="min-width:0">${u.managerName ? `<span class="cut muted">Reports to</span><span class="cut">${esc(u.managerName)}</span>` : '<span class="muted">—</span>'}</span>
             <span class="hide-md" style="min-width:0">${u.primaryDevice && !u.primaryDevice.missing ? `<span class="cut">${esc(u.primaryDevice.name || u.primaryDevice.serial)}</span><span class="cut muted">${esc([u.primaryDevice.platform, u.primaryDevice.model].filter(Boolean).join(' · '))}</span>` : '<span class="muted">No primary device</span>'}</span>
-            <span>${u.type === 'VIP' ? '<span class="badge b-vip">VIP</span>' : '<span class="badge b-std">Standard</span>'}</span></li>`).join('')}</ul>`;
+            <span><span class="badge ${u.type === 'VIP' ? 'b-vip' : u.type === 'Standard' ? 'b-std' : 'b-type'}">${esc(u.type)}</span></span></li>`).join('')}</ul>`;
         html += '</div>';
       }
     }

@@ -33,10 +33,9 @@
   </div>
   <div class="notice" id="notice" hidden></div>
 
-  <div class="tiles" id="tiles" style="grid-template-columns:repeat(5,1fr)">
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
     <button class="tile" data-f="all"><b id="s-users">–</b><span>Users</span></button>
     <button class="tile" data-f="group" title="Everyone, grouped by department and division"><b id="s-departments">–</b><span>Departments</span></button>
-    <button class="tile vip" data-f="VIP"><b id="s-vip">–</b><span>VIPs</span></button>
     <button class="tile" data-f="device"><b id="s-withDevice">–</b><span>With a primary device</span></button>
     <button class="tile warn" data-f="nodevice"><b id="s-noDevice">–</b><span>No primary device</span></button>
   </div>
@@ -46,7 +45,7 @@
       <input type="search" id="q" placeholder="Search name, email, department, manager or device" aria-label="Search users">
       <select id="dept" aria-label="Department"><option value="">Every department</option></select>
       <select id="div" aria-label="Division" hidden><option value="">Every division</option></select>
-      <select id="type" aria-label="User type"><option value="">VIP and Standard</option><option>VIP</option><option>Standard</option></select>
+      <select id="type" aria-label="User type"><option value="">Every user type</option></select>
       <label class="grpby"><input type="checkbox" id="group"> Group by department</label>
       <span class="folds" id="folds" hidden><button class="btn small" type="button" id="expandAll">Expand all</button><button class="btn small" type="button" id="collapseAll">Collapse all</button></span>
       <span class="sp"></span>
@@ -91,7 +90,8 @@
     <div class="field"><label class="l" for="f-manager">Line manager</label><input type="text" id="f-manager" list="people" maxlength="200" placeholder="Start typing a name or email">
       <div class="hint" id="f-managerHint"></div></div>
     <label class="l">User type</label>
-    <div class="seg" role="group" aria-label="User type"><button type="button" data-type="Standard">Standard</button><button type="button" data-type="VIP">VIP</button></div>
+    <div class="seg" id="seg" role="group" aria-label="User type"></div>
+    <div class="hint">Add a type (e.g. Contractor) and it gets its own tile at the top of the page.</div>
     <label class="l">Primary device</label>
     <div id="f-device"></div>
     <div class="field" id="pickWrap">
@@ -114,7 +114,7 @@
     <h2 id="impTitle">Import users from a CSV</h2>
     <p class="sub" style="margin:0">Each column is matched to Users by its heading, and only those fields change: a file with just Email and User type only changes user types. Empty cells leave what's there alone. You'll see every change before anything is saved.</p>
     <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
-    <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP or Standard. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
+    <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP, Standard or a type of your own. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
       <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
     <div id="impOut"></div>
@@ -141,7 +141,25 @@ const ICON = {
   computer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
   mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
 };
-const typeBadge = t => t === 'VIP' ? '<span class="badge b-vip">VIP</span>' : '<span class="badge b-std">Standard</span>';
+let TYPES = [];   // [{name, count}] in use: VIP first, the others A-Z, Standard last
+const typeBadge = t => `<span class="badge ${t === 'VIP' ? 'b-vip' : t === 'Standard' ? 'b-std' : 'b-type'}">${esc(t)}</span>`;
+
+/** A tile for every user type but Standard (VIP always), before the device tiles. Click one to show just them. */
+function drawTypeTiles() {
+  document.querySelectorAll('#tiles [data-typetile]').forEach(t => t.remove());
+  const before = document.querySelector('#tiles [data-f="device"]');
+  for (const t of TYPES.filter(x => x.name !== 'Standard')) {
+    const b = document.createElement('button');
+    b.className = 'tile ' + (t.name === 'VIP' ? 'vip' : 'ty');
+    b.dataset.f = 'type:' + t.name; b.dataset.typetile = '1';
+    b.title = `Users whose type is ${t.name}`;
+    b.innerHTML = `<b>${t.count.toLocaleString()}</b><span>${esc(t.name === 'VIP' ? 'VIPs' : t.name)}</span>`;
+    before.before(b);
+  }
+  const keep = $('type').value;
+  $('type').innerHTML = '<option value="">Every user type</option>' + TYPES.map(t => `<option>${esc(t.name)}</option>`).join('');
+  $('type').value = TYPES.some(t => t.name === keep) ? keep : '';
+}
 const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
 const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
 
@@ -155,7 +173,7 @@ function deviceCell(d) {
 }
 
 function matches(u) {
-  if (FILTER === 'VIP' && u.type !== 'VIP') return false;
+  if (FILTER.startsWith('type:') && u.type !== FILTER.slice(5)) return false;
   if (FILTER === 'device' && !hasDevice(u)) return false;
   if (FILTER === 'nodevice' && hasDevice(u)) return false;
   if ($('dept').value && u.department !== ($('dept').value === '__none__' ? '' : $('dept').value)) return false;
@@ -258,6 +276,9 @@ async function load() {
     const data = await api('api/users');
     ALL = data.items;
     for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
+    TYPES = data.types;
+    if (FILTER.startsWith('type:') && !TYPES.some(t => 'type:' + t.name === FILTER)) FILTER = 'all';
+    drawTypeTiles();
     DEPTS = data.departments;
     drawFilters();
     $('depts').innerHTML = DEPTS.filter(d => d.name).map(d => `<option value="${esc(d.name)}">`).join('');
@@ -273,7 +294,14 @@ async function devices() {
 
 /* ---------- One user: see and tag ---------- */
 
-function setType(t) { DRAFT.type = t; document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.type === t))); }
+/** The type buttons: Standard, VIP, every other type in use, this person's (even if new), and + New type. */
+function drawSeg() {
+  const names = ['Standard', 'VIP', ...TYPES.map(t => t.name).filter(n => n !== 'Standard' && n !== 'VIP')];
+  if (DRAFT.type && !names.some(n => n.toLowerCase() === DRAFT.type.toLowerCase())) names.push(DRAFT.type);
+  $('seg').innerHTML = names.map(n => `<button type="button" data-type="${esc(n)}" aria-pressed="${n === DRAFT.type}" ${ME.canEdit ? '' : 'disabled'}>${esc(n)}</button>`).join('')
+    + (ME.canEdit ? '<button type="button" data-newtype>+ New type</button>' : '');
+}
+function setType(t) { DRAFT.type = t; drawSeg(); }
 
 function drawPicked() {
   const id = DRAFT.primaryDevice;
@@ -328,7 +356,6 @@ async function openUser(email) {
   $('f-dept').value = u?.department || ''; divisionList(); $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
   managerHint();
   document.querySelectorAll('#p-form input').forEach(i => { if (i.id !== 'f-devq') i.disabled = !can; });
-  document.querySelectorAll('.seg button').forEach(b => b.disabled = !can);
   setType(DRAFT.type);
   $('p-foot').hidden = !can; $('p-delete').hidden = !u;
   $('p-notice').hidden = true;
@@ -465,10 +492,11 @@ $('matchBtn').onclick = async () => {
     showError(`${r.matched} user${r.matched === 1 ? '' : 's'} given a primary device.${r.several ? ` ${r.several} have several devices: pick theirs by hand.` : ''}`, r.matched ? 'ok' : 'info');
   } catch (e) { showError(e.message); }
 };
-document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => {
+$('tiles').addEventListener('click', e => {
+  const t = e.target.closest('.tile'); if (!t) return;
   if (t.dataset.f === 'group') { $('group').checked = !$('group').checked; FILTER = 'all'; saveGroup(); draw(); return; }
   FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw();
-}));
+});
 function saveGroup() { try { localStorage.setItem('cp-users-group', $('group').checked ? '1' : ''); } catch {} }
 $('group').addEventListener('change', () => { saveGroup(); draw(); });
 $('expandAll').onclick = () => { FOLDED.clear(); draw(); };
@@ -488,7 +516,15 @@ document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListene
 try { $('group').checked = localStorage.getItem('cp-users-group') === '1'; } catch {}
 $('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-email]'); if (tr) openUser(tr.dataset.email); });
 $('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-email]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openUser(tr.dataset.email); } });
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => setType(b.dataset.type));
+$('seg').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.type) { setType(b.dataset.type); return; }
+  const name = await cp.prompt({ title: 'New user type', message: 'It gets its own tile on the Users page once someone has it.', label: 'Name', value: '' });
+  const v = (name || '').trim().replace(/\s+/g, ' ');
+  if (!v) return;
+  const same = ['Standard', 'VIP', ...TYPES.map(t => t.name)].find(n => n.toLowerCase() === v.toLowerCase());
+  setType(same || (v === v.toLowerCase() ? v[0].toUpperCase() + v.slice(1) : v));
+});
 $('f-devq').addEventListener('input', drawPick);
 $('f-email').addEventListener('input', () => { if (!OPEN) drawPick(); });
 $('f-manager').addEventListener('input', managerHint);
