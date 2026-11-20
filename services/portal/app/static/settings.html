@@ -107,6 +107,20 @@
   .dhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .dhead h3 { margin: 0; font-size: 15px; font-weight: 600; }
   .dapp .copy { margin-top: 10px; }
+  .dbtns { display: flex; gap: 8px; align-items: center; }
+  .howbtn { display: inline-flex; align-items: center; gap: 6px; }
+  .howbtn svg { width: 14px; height: 14px; transition: transform .15s; }
+  .howbtn[aria-expanded="true"] { background: var(--surface); }
+  .howbtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .howto { margin-top: 12px; background: var(--page); border: 1px solid var(--surface); border-radius: 10px; padding: 4px 20px 18px; }
+  .howto h4 { margin: 16px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); }
+  .howto ol { margin: 0; padding-left: 20px; }
+  .howto li { margin: 6px 0; }
+  .howto li::marker { color: var(--text2); }
+  .howto pre { margin: 6px 0 2px; background: #fff; border: 1px solid var(--surface); border-radius: 8px; padding: 9px 11px; white-space: pre-wrap;
+    overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .howto .warn { background: var(--warn-fill, #FFF1D6); color: var(--warn, #8A5300); border-radius: 8px; padding: 9px 12px; margin-top: 14px; }
+  .howto a { color: var(--primary); }
   .dkeys { margin-top: 12px; }
   .dkeys tr.gone td { color: var(--text2); }
   .dkeys tr.gone td b { font-weight: 600; color: var(--text2); }
@@ -185,19 +199,25 @@
     <p class="sub">What to put in each app's installer, and the keys devices use. Create a key for each group of devices: it's shown once, so copy it into the installer then. A key never expires unless you give it a date, and you can expire it at any time to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
     <div class="dapp">
       <div class="dhead"><h3>IT Notifications: Windows MSI and Mac profile</h3>
-        <button class="btn primary small" type="button" data-create="notifications" hidden>Create key</button></div>
+        <div class="dbtns"><button class="btn small howbtn" type="button" data-howto="notifications" aria-expanded="false" aria-controls="howto-notifications">Install instructions <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="btn primary small" type="button" data-create="notifications" hidden>Create key</button></div></div>
+      <div class="howto" id="howto-notifications" hidden></div>
       <span class="copy" id="dvNotify"></span>
       <div class="dkeys" data-keys="notifications"></div>
     </div>
     <div class="dapp">
       <div class="dhead"><h3>Admin Elevation: ClientPlatforms.json beside Install.ps1</h3>
-        <button class="btn primary small" type="button" data-create="elevation" hidden>Create key</button></div>
+        <div class="dbtns"><button class="btn small howbtn" type="button" data-howto="elevation" aria-expanded="false" aria-controls="howto-elevation">Install instructions <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="btn primary small" type="button" data-create="elevation" hidden>Create key</button></div></div>
+      <div class="howto" id="howto-elevation" hidden></div>
       <span class="copy" id="dvElevation"></span>
       <div class="dkeys" data-keys="elevation"></div>
     </div>
     <div class="dapp">
       <div class="dhead"><h3>Restart Reminder: appsettings.json</h3>
-        <button class="btn primary small" type="button" data-create="restart" hidden>Create key</button></div>
+        <div class="dbtns"><button class="btn small howbtn" type="button" data-howto="restart" aria-expanded="false" aria-controls="howto-restart">Install instructions <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <button class="btn primary small" type="button" data-create="restart" hidden>Create key</button></div></div>
+      <div class="howto" id="howto-restart" hidden></div>
       <span class="copy" id="dvRestart"></span>
       <div class="dkeys" data-keys="restart"></div>
     </div>
@@ -341,7 +361,89 @@ const KEYAPPS = {
 };
 function drawSnippets() {
   for (const [id, a] of Object.entries(KEYAPPS)) if (DEVURLS[id]) $(a.box).textContent = a.snippet(DEVURLS[id], NEWKEY[id]);
+  drawHowto();
 }
+
+/* Install instructions under each heading, with this site's address and a new key if one was just made. */
+const GH = 'https://github.com/jamesbrown-nscale/';
+const pre = t => `<pre>${esc(t)}</pre>`;
+const HOWTO = {
+  notifications: (u, k) => `
+    <h4>Windows (Intune)</h4>
+    <ol>
+      <li>Create a key above for the devices you're installing on, and copy it (it's shown once).</li>
+      <li>Get <code>NscaleITNotifications.msi</code> from the <a href="${GH}ITNotifications" target="_blank" rel="noopener">ITNotifications</a> repo's CI, or build it on Windows with the .NET 8 SDK:${pre('.\\windows\\installer\\build-msi.ps1 -Version 1.0.0')}</li>
+      <li>In Intune: <b>Apps → Windows → Add → Windows app (Line-of-business)</b>, upload the MSI, and set the command-line arguments to:${pre(`SERVERURL=${u} ENROLLMENTKEY=${k}`)}</li>
+      <li>Assign it to a test group of devices first, then wider.</li>
+    </ol>
+    <p class="muted" style="margin:8px 0 0">By hand instead: ${'<code>'}${esc(`msiexec /i NscaleITNotifications.msi /qn SERVERURL=${u} ENROLLMENTKEY=${k}`)}</code></p>
+    <h4>Mac (Intune or Jamf)</h4>
+    <ol>
+      <li>Build, sign and notarise <code>NscaleITNotifications.pkg</code> on a Mac (<code>macos/build.sh</code> in the repo), or take it from CI.</li>
+      <li>Deploy the pkg (<b>macOS app (PKG)</b> in Intune, or a Jamf policy). It installs the app and starts it at every sign-in.</li>
+      <li>Deploy <code>NscaleITNotifications.mobileconfig</code> with <code>ServerUrl</code> set to <code>${esc(u)}</code>, <code>EnrollmentKey</code> set to the key, and your Team ID. It turns notifications on as Alerts without asking the user.</li>
+    </ol>
+    <h4>Check it worked</h4>
+    <ol>
+      <li>The device appears under <a href="/notifications/">IT Notifications</a> → <b>Devices</b> within a minute, and this key's <b>Last used</b> fills in.</li>
+      <li>If not: on Windows see <code>%LOCALAPPDATA%\\Nscale\\ITNotifications\\agent.log</code>; on a Mac run <code>log stream --predicate 'subsystem == "com.nscale.itnotifications"'</code>.</li>
+    </ol>`,
+  elevation: (u, k) => `
+    <div class="warn">Reporting to this site needs <b>Admin Elevation 2.3</b> or later (both the 15 and 60 minute versions). Earlier versions report to TechOps only.</div>
+    <h4>Build the package (on Windows)</h4>
+    <ol>
+      <li>Create a key above for the devices you're installing on, and copy it (it's shown once).</li>
+      <li>From the <a href="${GH}ElevationApp" target="_blank" rel="noopener">ElevationApp</a> repo, make a build folder (e.g. <code>C:\\Build\\Elevate</code>) with only the app's scripts, <code>Elevate.ico</code> and <code>TechOps.json</code>, as listed in its README. For the 60-minute version use the files in <code>AdminElevation60</code>.</li>
+      <li>Add <code>ClientPlatforms.json</code> to that folder, containing:${pre(JSON.stringify({ url: u, key: k }, null, 2))}</li>
+      <li>Build the package with Microsoft's <code>IntuneWinAppUtil.exe</code>:${pre('IntuneWinAppUtil.exe -c C:\\Build\\Elevate -s Install.ps1 -o C:\\Build\\Out -q')}It contains the keys, so keep <code>Install.intunewin</code> private.</li>
+    </ol>
+    <h4>Add it in Intune</h4>
+    <ol>
+      <li><b>Apps → Windows → Add → Windows app (Win32)</b> (or update the existing app), and upload <code>Install.intunewin</code>.</li>
+      <li>Install command:${pre('%SystemRoot%\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Install.ps1')}Uninstall command: the same with <code>.\\Uninstall.ps1</code>. Install behaviour: <b>System</b>.</li>
+      <li>Detection: custom script <code>Detect.ps1</code> from the same folder of the repo. Upload the new one with every new version, and set the app's Version to match.</li>
+      <li>Assign it to a test group of devices first, then the groups whose users may elevate.</li>
+    </ol>
+    <h4>Check it worked</h4>
+    <ol>
+      <li>Request admin rights on a test device: the request shows in the <a href="/elevation/">Admin elevation log</a> within a few minutes, and this key's <b>Last used</b> fills in.</li>
+      <li>If not: see <code>C:\\ProgramData\\Nscale\\Elevate\\Logs\\worker.log</code> (lines mentioning Client Platforms) and event 1006 in the Application log.</li>
+    </ol>`,
+  restart: (u, k) => `
+    <div class="warn">The Restart Reminder app needs a build that sends reports to this site (<code>ReportUrl</code> and <code>ReportKey</code>). The version in the <a href="${GH}WindowsRestart" target="_blank" rel="noopener">WindowsRestart</a> repo doesn't send them yet, so devices won't appear here until it does.</div>
+    <h4>Build (on Windows, with the .NET 8 SDK)</h4>
+    <ol>
+      <li>Create a key above for the devices you're installing on, and copy it (it's shown once).</li>
+      <li>Build it:${pre('cd RestartReminder\ndotnet publish -c Release -o publish')}</li>
+      <li>In <code>publish\\appsettings.json</code>, add:${pre(`"ReportUrl": "${u}",\n"ReportKey": "${k}"`)}</li>
+      <li>Try it without restarting anything: <code>.\\publish\\RestartReminder.exe --test --reset</code></li>
+    </ol>
+    <h4>Deploy with Intune</h4>
+    <ol>
+      <li>Put <code>RestartReminder.exe</code>, <code>appsettings.json</code>, <code>Install.ps1</code> and <code>Uninstall.ps1</code> (from <code>deploy</code>) in one folder and package it with <code>IntuneWinAppUtil.exe</code>, with <code>Install.ps1</code> as the setup file.</li>
+      <li>Add it as a <b>Windows app (Win32)</b>. Install command (<code>Sysnative</code> makes it run as 64-bit, so it installs to the right Program Files):${pre('%SystemRoot%\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Install.ps1')}Uninstall command: the same with <code>.\\Uninstall.ps1</code>. Install behaviour: <b>System</b>. Detection: the file <code>C:\\Program Files\\Nscale\\RestartReminder\\RestartReminder.exe</code> exists.</li>
+      <li>Assign it to a test group of devices first, then wider.</li>
+    </ol>
+    <h4>Check it worked</h4>
+    <ol>
+      <li>The device appears in the <a href="/restart/">Restart reminder</a> page, and this key's <b>Last used</b> fills in.</li>
+      <li>If not: see <code>%LOCALAPPDATA%\\RestartReminder\\log.txt</code> on the device.</li>
+    </ol>`,
+};
+function drawHowto() {
+  for (const id of Object.keys(HOWTO)) {
+    const box = $('howto-' + id);
+    if (!box || !DEVURLS[id]) continue;
+    const word = KEYAPPS[id].word;
+    box.innerHTML = HOWTO[id](DEVURLS[id], NEWKEY[id] || `<${word}>`);
+  }
+}
+document.querySelectorAll('[data-howto]').forEach(b => b.onclick = () => {
+  const box = $('howto-' + b.dataset.howto);
+  const open = b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', String(open));
+  box.hidden = !open;
+});
 const day = s => s ? new Date(s + (s.length === 10 ? 'T00:00:00' : '')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
 const isKeyAdmin = id => (me.tools || []).some(t => t.id === id && t.level === 'admin');
