@@ -351,3 +351,64 @@ def test_version_is_shown(monkeypatch, c):
     assert c.get("/healthz").json() == {"ok": True, "version": "0.12"}
     sign_in(c)
     assert c.get("/api/me").json()["version"] == "0.12"
+
+
+def test_deleted_people_go_to_the_recycle_bin(c):
+    sign_in(c)
+    assert add(c, "dora@nscale.com", tools=["restart", "projects"]).status_code == 200
+    roles = next(u for u in c.get("/api/users").json()["users"] if u["email"] == "dora@nscale.com")["roles"]
+    dora = TestClient(main.app)
+    sign_in(dora, "dora@nscale.com", "a-good-password")
+    assert c.delete("/api/users/dora@nscale.com", headers=H).status_code == 200
+    assert dora.get("/api/me").status_code == 401   # signed out at once
+
+    items = c.get("/api/bin").json()["items"]
+    item = next(i for i in items if i["context"] == "dora@nscale.com")
+    assert item["kind"] == "Person" and item["deletedBy"] == os.environ["ADMIN_EMAIL"]
+    assert c.post(f"/api/bin/{item['id']}/restore").status_code == 403   # needs the page's header
+    assert c.post(f"/api/bin/{item['id']}/restore", headers=H).status_code == 200
+    back = next(u for u in c.get("/api/users").json()["users"] if u["email"] == "dora@nscale.com")
+    assert back["roles"] == roles   # with her roles
+    sign_in(dora, "dora@nscale.com", "a-good-password")   # and her password
+    assert dora.get("/api/me").status_code == 200
+
+    # Only people who manage people and roles see the bin.
+    add(c, "eve@nscale.com", tools=["restart"])
+    eve = TestClient(main.app)
+    sign_in(eve, "eve@nscale.com", "a-good-password")
+    assert eve.get("/api/bin").status_code == 403
+
+
+def test_recycle_module_is_the_same_everywhere():
+    copies = list((Path(__file__).resolve().parents[2]).glob("*/app/recycle.py"))
+    if len(copies) < 2:
+        pytest.skip("the other services aren't here (Docker build)")
+    assert len({c.read_text() for c in copies}) == 1
+
+
+def test_team_members_get_a_sign_in(c):
+    sign_in(c)
+    rid = role_for(c, ["team", "tasks"])[0]
+    assert c.get("/api/people/team-role").json() == {"role": ""}
+    assert c.put("/api/people/team-role", headers=H, json={"role": "nope"}).status_code == 422
+    assert c.put("/api/people/team-role", headers=H, json={"role": rid}).json() == {"role": rid}
+
+    send = lambda token, email="val.de.lame@nscale.com": c.post(  # noqa: E731
+        "/api/people/from-team", headers={"x-cp-service": token}, json={"email": email, "name": "Val De Lame"})
+    assert send("").status_code == 401
+    assert send(access.issue("boss@nscale.com", "Boss", "team", secret=SECRET)).status_code == 401   # a person's own token: no
+    assert send(access.issue("boss@nscale.com", "Boss", "team-adds-person", secret="x" * 40)).status_code == 401   # wrong secret
+    ok = access.issue("boss@nscale.com", "Boss", "team-adds-person", secret=SECRET)
+    assert send(ok).json() == {"email": "val.de.lame@nscale.com", "status": "added", "roles": [rid]}
+    assert send(ok).json()["status"] == "exists"   # nothing changes for someone already here
+    val = next(u for u in c.get("/api/users").json()["users"] if u["email"] == "val.de.lame@nscale.com")
+    assert val["roles"] == [rid] and val["name"] == "Val De Lame"
+
+    # Team members from before: added from Settings → People.
+    r = c.post("/api/people/from-team-list", headers=H, json={"people": [{"email": "zhao.li@nscale.com", "name": "Zhao Li"},
+                                                                        {"email": "val.de.lame@nscale.com", "name": "Val"}]})
+    assert [x["status"] for x in r.json()["results"]] == ["added", "exists"]
+    add(c, "fay@nscale.com", tools=["restart"])
+    fay = TestClient(main.app)
+    sign_in(fay, "fay@nscale.com", "a-good-password")
+    assert fay.post("/api/people/from-team-list", headers=H, json={"people": []}).status_code == 403

@@ -46,6 +46,7 @@ PERSONAL = ("one_to_one", "well", "improve")      # the person can read these
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 INVENTORY_URL = os.environ.get("INVENTORY_URL", "http://inventory:8080").rstrip("/")
+PORTAL_INTERNAL_URL = os.environ.get("PORTAL_INTERNAL_URL", "http://portal:8080").rstrip("/")
 
 router = APIRouter()
 _store: Store | None = None
@@ -322,6 +323,19 @@ def _save(m: dict, user: User, new: bool) -> None:
                       (m["name"], m["title"], m["department"], m["team"], m["manager"], m["startDate"], m["location"], m["about"], t, user.email, m["email"]))
 
 
+def give_sign_in(email: str, name: str, by: User) -> str:
+    """Adds a new team member to the portal's People list (Settings → People), with the role chosen
+    there for new team members, so they can sign in. "added", "exists", "off" (no people list kept),
+    or "failed" (the portal couldn't be reached: add them under People by hand)."""
+    token = access.issue(by.email, by.name, "team-adds-person")   # signed with AUTH_SECRET; only for this
+    try:
+        r = httpx.post(PORTAL_INTERNAL_URL + "/api/people/from-team", json={"email": email, "name": name},
+                       headers={"x-cp-service": token}, timeout=5)
+        return r.json().get("status", "failed") if r.status_code == 200 else "failed"
+    except (httpx.HTTPError, ValueError):
+        return "failed"
+
+
 @router.post("/api/members")
 def add_member(body: MemberIn, user: User = Depends(require_team_user)):
     email = (body.email or "").strip().lower()
@@ -335,7 +349,7 @@ def add_member(body: MemberIn, user: User = Depends(require_team_user)):
             raise HTTPException(403, "You can add people who report to you. An admin can add anyone.")
         m["manager"] = user.email
     _save(m, user, new=True)
-    return read_member(email, user)
+    return {**read_member(email, user), "signIn": give_sign_in(email, m["name"], user)}
 
 
 @router.get("/api/members/{email}")
@@ -364,7 +378,10 @@ def remove_member(email: str, user: User = Depends(require_team_user)):
     m = _found(email)
     if not user.admin:
         raise HTTPException(403, "Only an admin can take someone off the team.")
-    with _store.lock, db() as d:
+    with _store.lock, db() as d:   # with their responsibilities, 1-2-1s and notes; and who reported to them
+        _store.bin.put(d, kind="Team member", label=m["name"], context=m.get("title") or "", table="team_members",
+                       where={"email": m["email"]}, by=user.email, tool="team",
+                       fields=[("team_members", {"manager": m["email"]}, ["manager"])])
         d.execute("UPDATE team_members SET manager = '' WHERE manager = ?", (m["email"],))
         d.execute("DELETE FROM team_members WHERE email = ?", (m["email"],))
     return {"ok": True}
@@ -582,6 +599,11 @@ def delete_entry(email: str, eid: str, user: User = Depends(require_team_user)):
     if not manages(user, m):
         raise HTTPException(403, "Only their manager or an admin can delete this.")
     with _store.lock, db() as d:
+        e = d.execute("SELECT kind, date FROM team_entries WHERE id = ? AND member = ?", (eid, m["email"])).fetchone()
+        if e:   # the label says what it was and when, never what it said
+            what = KINDS.get(e["kind"], e["kind"])
+            _store.bin.put(d, kind=what, label=f"{what} · {e['date']}" if e["date"] else what,
+                           context=m["name"], table="team_entries", where={"id": eid}, by=user.email, tool="team")
         if d.execute("DELETE FROM team_entries WHERE id = ? AND member = ?", (eid, m["email"])).rowcount == 0:
             raise HTTPException(404, "Not found.")
     return list_entries(email, user)

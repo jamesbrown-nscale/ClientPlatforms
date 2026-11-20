@@ -134,6 +134,17 @@
   dialog { border: 1px solid var(--surface); border-radius: 14px; padding: 24px; width: min(480px, calc(100vw - 32px)); background: var(--bg); color: var(--text); }
   dialog::backdrop { background: rgba(4,14,39,.35); }
   dialog h2 { margin-bottom: 8px; }
+  .binbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  .binbar input[type=search], .binbar select, .teamsync select { height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px;
+    font: inherit; color: inherit; background: #fff; }
+  .binbar input[type=search] { min-width: 240px; flex: 1; max-width: 360px; }
+  table.bin td { vertical-align: top; }
+  table.bin td.binacts { white-space: nowrap; text-align: right; }
+  table.bin td.binacts .btn + .btn { margin-left: 6px; }
+  .kindtag { display: inline-block; font-size: 11.5px; font-weight: 600; color: var(--text2); background: var(--grey-fill); border-radius: 8px; padding: 1px 8px; margin-right: 6px; }
+  .teamsync { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--surface); }
+  .teamsync h3 { margin: 0 0 4px; font-size: 15px; }
+  .teamsync .missing { margin-top: 12px; background: var(--page); border-radius: 10px; padding: 12px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   [hidden] { display: none !important; }
   @media (max-width: 600px) { .bar { padding: 0 16px; } .bar .app { display: none; } main { padding: 24px 16px 48px; } section.card { padding: 18px; }
     .tablewrap { margin: 0 -18px; padding: 0 18px; } }
@@ -155,6 +166,7 @@
     <button role="tab" data-stab="permissions" aria-controls="permissionsTab" hidden>Permissions</button>
     <button role="tab" data-stab="changes" aria-controls="changesTab" hidden>Change management</button>
     <button role="tab" data-stab="connections" aria-controls="connectionsTab" hidden>Connections</button>
+    <button role="tab" data-stab="bin" aria-controls="binTab" hidden>Recycle bin</button>
   </div>
   <div id="accountTab" role="tabpanel" data-panel hidden>
 
@@ -235,6 +247,31 @@
       <tbody id="userRows"></tbody>
     </table></div>
     <div id="userNotice" class="notice" hidden></div>
+    <div class="teamsync" id="teamSync" hidden>
+      <h3>From the Client Platform Team</h3>
+      <p class="sub" style="margin-bottom:10px">Adding someone to the team also adds them here, with this role, so they can sign in. Taking them off the team doesn't remove them here.</p>
+      <label for="teamRole" style="margin-top:0">Role for new team members</label>
+      <select id="teamRole" aria-label="Role for new team members"></select>
+      <div class="hint" id="teamRoleHint"></div>
+      <div class="missing" id="teamMissing" hidden></div>
+    </div>
+  </section>
+  </div>
+
+  <div id="binTab" role="tabpanel" data-panel hidden>
+  <section class="card">
+    <h2>Recycle bin</h2>
+    <p class="sub">Deleted things are kept here for 30 days, then removed for good. <b>Restore</b> puts something back where it was, with everything that went with it: a project's records and files, a plan's jobs and comments, a document's every version.</p>
+    <div class="binbar">
+      <input type="search" id="binQ" placeholder="Search what was deleted" aria-label="Search the recycle bin">
+      <select id="binFrom" aria-label="From"><option value="">Everything</option></select>
+      <span class="muted" id="binCount"></span>
+    </div>
+    <div class="tablewrap" style="margin-top:14px"><table class="bin">
+      <thead><tr><th>What</th><th>From</th><th>Deleted</th><th>Gone for good</th><th></th></tr></thead>
+      <tbody id="binRows"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+    </table></div>
+    <div id="binNotice" class="notice" hidden></div>
   </section>
   </div>
 
@@ -614,6 +651,7 @@ function renderUsers() {
 
 async function loadUsers() {
   const r = await api('/api/users'); users = r.users; tools = r.tools; roles = r.roles; LEVELS = r.levels; SITE = r.sitePerms; renderUsers();
+  loadTeamSync().catch(() => {});
 }
 
 async function change(u, body) {
@@ -793,6 +831,80 @@ $('resetForm').addEventListener('submit', async e => {
   } catch (err) { notice($('rpNotice'), err.message); }
 });
 
+/* ---------- Recycle bin: each service keeps its own; this shows them together ---------- */
+const BIN_FROM = { people: 'People', projects: 'Projects', tasks: 'Team Planning', team: 'Client Platform Team', changes: 'Change management', users: 'Users' };
+let BIN_SOURCES = [], BIN = [];
+async function quiet(path) {   // a service you can't open is just left out
+  try { const r = await fetch(path, { cache: 'no-store', headers: { 'X-Requested-With': 'nscale-admin' } }); return r.ok ? r.json() : null; } catch { return null; }
+}
+async function loadBin() {
+  const lists = await Promise.all(BIN_SOURCES.map(async src => ((await quiet(src + '/api/bin'))?.items || []).map(i => ({ ...i, src }))));
+  BIN = lists.flat().sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  const froms = [...new Set(BIN.map(i => i.tool))];
+  const pick = $('binFrom').value;
+  $('binFrom').innerHTML = '<option value="">Everything</option>' + froms.map(f => `<option value="${esc(f)}">${esc(BIN_FROM[f] || f)}</option>`).join('');
+  $('binFrom').value = froms.includes(pick) ? pick : '';
+  drawBin();
+}
+function drawBin() {
+  const q = $('binQ').value.trim().toLowerCase(), from = $('binFrom').value;
+  const rows = BIN.filter(i => (!from || i.tool === from) && (!q || `${i.kind} ${i.label} ${i.context} ${i.deletedBy}`.toLowerCase().includes(q)));
+  $('binCount').textContent = BIN.length ? `${rows.length} of ${BIN.length}` : '';
+  const day = s => new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  $('binRows').innerHTML = rows.map(i => `<tr>
+      <td><span class="kindtag">${esc(i.kind)}</span><b>${esc(i.label)}</b>${i.context ? `<div class="muted">${esc(i.context)}</div>` : ''}</td>
+      <td>${esc(BIN_FROM[i.tool] || i.tool || '')}</td>
+      <td>${esc(fmt(i.deletedAt))}${i.deletedBy ? `<div class="muted">by ${esc(i.deletedBy)}</div>` : ''}</td>
+      <td class="muted">${esc(day(i.expiresAt))}</td>
+      <td class="binacts"><button class="btn small" type="button" data-restore="${esc(i.id)}">Restore</button><button class="btn small danger" type="button" data-purge="${esc(i.id)}">Delete for good</button></td></tr>`).join('')
+    || `<tr><td colspan="5" class="muted">${BIN.length ? 'Nothing matches.' : 'The recycle bin is empty.'}</td></tr>`;
+  const find = id => BIN.find(i => i.id === id);
+  $('binRows').querySelectorAll('[data-restore]').forEach(b => b.onclick = async () => {
+    const i = find(b.dataset.restore);
+    b.disabled = true;
+    try { await api(`${i.src}/api/bin/${encodeURIComponent(i.id)}/restore`, { method: 'POST' }); notice($('binNotice'), `Restored ${i.kind.toLowerCase()} “${i.label}”.`, true); await loadBin(); if (i.tool === 'people') loadUsers(); }
+    catch (err) { notice($('binNotice'), err.message); b.disabled = false; }
+  });
+  $('binRows').querySelectorAll('[data-purge]').forEach(b => b.onclick = async () => {
+    const i = find(b.dataset.purge);
+    if (!(await cp.confirm({ title: `Delete “${i.label}” for good?`, message: 'It can\'t be restored after this.', confirm: 'Delete for good', danger: true }))) return;
+    try { await api(`${i.src}/api/bin/${encodeURIComponent(i.id)}`, { method: 'DELETE' }); notice($('binNotice'), ''); await loadBin(); }
+    catch (err) { notice($('binNotice'), err.message); }
+  });
+}
+$('binQ').addEventListener('input', drawBin);
+$('binFrom').addEventListener('change', drawBin);
+
+/* ---------- People from the Client Platform Team ---------- */
+async function loadTeamSync() {
+  $('teamSync').hidden = false;
+  const tr = await api('/api/people/team-role');
+  $('teamRole').innerHTML = '<option value="">No role (they can sign in but see no tools)</option>' +
+    roles.map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+  $('teamRole').value = tr.role;
+  $('teamRoleHint').textContent = tr.role ? '' : 'Pick a role, or give each new team member one here after they\'re added.';
+  // Team members added before this, or while the site couldn't add them: offer to add them now.
+  const team = await quiet('/team/api/members');
+  const have = new Set(users.map(u => u.email));
+  const missing = (team?.members || []).filter(m => !have.has(m.email));
+  const box = $('teamMissing');
+  box.hidden = !missing.length;
+  if (missing.length) {
+    box.innerHTML = `<span>${missing.length === 1 ? '1 team member doesn\'t' : missing.length + ' team members don\'t'} have a sign-in yet: <b>${missing.map(m => esc(m.name)).join(', ')}</b></span>
+      <button class="btn small primary" type="button" id="teamAdd">Add ${missing.length === 1 ? 'them' : 'them all'}</button>`;
+    $('teamAdd').onclick = async () => {
+      try {
+        await api('/api/people/from-team-list', { method: 'POST', body: JSON.stringify({ people: missing.map(m => ({ email: m.email, name: m.name })) }) });
+        await loadUsers(); notice($('userNotice'), `Added ${missing.length === 1 ? missing[0].name : missing.length + ' team members'} with the team role.`, true);
+      } catch (err) { notice($('userNotice'), err.message); }
+    };
+  }
+}
+$('teamRole').addEventListener('change', async e => {
+  try { await api('/api/people/team-role', { method: 'PUT', body: JSON.stringify({ role: e.target.value }) }); $('teamRoleHint').textContent = 'Saved.'; }
+  catch (err) { notice($('userNotice'), err.message); }
+});
+
 /* ---------- Tabs: what you can see depends on what you may change ---------- */
 function setupTabs(available) {
   const btns = [...document.querySelectorAll('[data-stab]')];
@@ -806,6 +918,7 @@ function setupTabs(available) {
     document.querySelectorAll('[data-panel]').forEach(p => { p.hidden = p.id !== tab + 'Tab'; });
     history.replaceState(null, '', '#' + tab);
     if (tab === 'permissions' && !$('roleList').children.length) loadRoles();
+    if (tab === 'bin') loadBin();
     if (tab === 'changes' && !$('changesTab').dataset.loaded) {
       $('changesTab').dataset.loaded = '1';
       // The flow builder lives with Change management (projects service) and draws itself here.
@@ -842,8 +955,11 @@ function setupTabs(available) {
   const can = p => (me.perms || []).includes(p);
   const changesAdmin = (me.tools || []).some(t => t.id === 'changes' && t.level === 'admin');
   const devicesAdmin = (me.tools || []).some(t => t.id === 'devices' && t.level === 'admin');
+  const adminOf = id => (me.tools || []).some(t => t.id === id && t.level === 'admin');
+  BIN_SOURCES = [...(can('people') && me.accounts ? [''] : []), ...(adminOf('projects') ? ['/projects'] : []), ...(adminOf('users') ? ['/users'] : [])];   // '' is this portal
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
-                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes', devicesAdmin && 'connections'].filter(Boolean);
+                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes', devicesAdmin && 'connections',
+                     BIN_SOURCES.length && 'bin'].filter(Boolean);
   if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
   if (me.oidc) $('peopleSub').textContent += ` People sign in with ${me.provider}: only people on this list get in. Add them with the email they sign in with${me.directory ? `, or find them in ${me.directory}` : ''}.`;
   if (me.directory) $('udDir').textContent = me.directory;

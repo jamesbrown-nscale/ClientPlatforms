@@ -17,9 +17,12 @@ Settings (environment): AUTH_SECRET, DATABASE_PATH, ADMIN_EMAIL + ADMIN_PASSWORD
 used while there are no accounts), SESSION_HOURS, PUBLIC_URL / DEVICE_URL (defaults for the settings),
 BREAK_GLASS_EMAILS and the OIDC_* and DIRECTORY_* settings (AUTH_MODE=oidc).
 """
+import json
+import logging
 import os
 import re
 import secrets
+import sys
 import time
 from html import escape
 from pathlib import Path
@@ -30,7 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import access, directory, oidc
+from . import access, directory, oidc, recycle
 from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, USES
 
 STATIC = Path(__file__).parent / "static"
@@ -563,8 +566,91 @@ def delete_user(email: str, user: dict = Depends(require_people)):
         raise HTTPException(400, "You can't delete your own account.")
     if db.count_people_managers(without=u["email"]) < 1:
         raise HTTPException(400, "Someone must always be able to manage people and roles.")
-    db.delete_user(u["email"])
+    db.delete_user(u["email"], by=user["email"])
     return {"ok": True}
+
+
+# ---------- People added from the Client Platform Team page ----------
+# Adding someone to the team (projects service, team.py) also gives them a sign-in here, with the
+# role chosen under Settings → People. The Team service proves it's asking with a 2-minute token
+# signed with AUTH_SECRET, for a purpose no tool uses (so no person's own token can do this), naming
+# whoever added them.
+
+TEAM_ADDS = "team-adds-person"
+log = logging.getLogger("portal")
+if not log.handlers:   # one JSON line per event, for Cloud Logging / docker logs
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
+class TeamRole(BaseModel):
+    role: str = Field(default="", max_length=64)   # "" for no role: they can sign in but see no tools yet
+
+
+@app.get("/api/people/team-role", dependencies=[Depends(require_accounts)])
+def get_team_role(user: dict = Depends(require_people)):
+    rid = db.setting("teamRole", "")
+    return {"role": rid if any(r["id"] == rid for r in db.roles()) else ""}
+
+
+@app.put("/api/people/team-role", dependencies=[Depends(require_accounts)])
+def put_team_role(body: TeamRole, user: dict = Depends(require_people)):
+    if body.role and not any(r["id"] == body.role for r in db.roles()):
+        raise HTTPException(422, "No such role.")
+    db.save_settings({"teamRole": body.role})
+    return get_team_role(user)
+
+
+class FromTeam(BaseModel):
+    email: str = Field(max_length=254)
+    name: str = Field(default="", max_length=100)
+
+
+@app.post("/api/people/from-team")
+def add_from_team(body: FromTeam, request: Request):
+    claims = access.verify(request.headers.get("x-cp-service", ""), TEAM_ADDS)
+    if not claims:
+        raise HTTPException(401, "Only the Team service can do this.")
+    if not ACCOUNTS:
+        return {"status": "off"}
+    return _add_team_person(body.email, body.name, claims["email"])
+
+
+def _add_team_person(email: str, name: str, by: str) -> dict:
+    """Gives a team member a sign-in with the team role, unless they have one."""
+    email = email.strip().lower()
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(422, "That isn't an email address.")
+    if db.get_user(email):
+        return {"email": email, "status": "exists"}
+    rid = db.setting("teamRole", "")
+    roles = [rid] if rid and any(r["id"] == rid for r in db.roles()) else []
+    # Nobody knows the password: they sign in with Google (an admin can set one with AUTH_MODE=local).
+    db.create_user(email, name.strip() or access.display_name(email), secrets.token_urlsafe(32), roles)
+    log.info(json.dumps({"severity": "NOTICE", "message": "person added from the team", "email": email, "by": by, "roles": roles}))
+    return {"email": email, "status": "added", "roles": roles}
+
+
+class TeamList(BaseModel):
+    people: list[FromTeam] = Field(max_length=500)
+
+
+@app.post("/api/people/from-team-list", dependencies=[Depends(require_accounts)])
+def add_team_list(body: TeamList, user: dict = Depends(require_people)):
+    """For team members added before this: Settings → People lists those without a sign-in, and adds them."""
+    return {"results": [_add_team_person(p.email, p.name, user["email"]) for p in body.people]}
+
+
+def _bin_admin(user: dict = Depends(require_people)) -> str:
+    """Deleted people are for whoever manages people and roles."""
+    require_accounts()
+    return user["email"]
+
+
+app.include_router(recycle.router(lambda: db.bin, _bin_admin))
 
 
 @app.get("/api/directory", dependencies=[Depends(require_accounts)])

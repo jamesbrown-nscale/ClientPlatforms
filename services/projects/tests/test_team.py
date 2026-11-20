@@ -180,3 +180,30 @@ def test_departments_and_sub_teams_come_from_users(c, monkeypatch):
     assert c.get("/team/api/lookup?email=CJ@nscale.com", headers=ADMIN).json() == {"name": "CJ Ng", "title": "Engineer", "department": "Technology", "division": "Network"}
     assert c.get("/team/api/lookup?email=ghost@nscale.com", headers=ADMIN).json() == {}
     assert c.get("/team/api/lookup?email=x/../y", headers=ADMIN).json() == {}
+
+
+def test_new_team_members_are_sent_for_a_sign_in(c, monkeypatch):
+    sent = []
+
+    class Answer:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"status": "added"}
+
+    def post(url, json, headers, timeout):
+        sent.append((url, json, headers))
+        return Answer()
+
+    monkeypatch.setattr(team.httpx, "post", post)
+    r = c.post(BASE, headers=ADMIN, json={"email": "Val.De.Lame@nscale.com", "name": "Val De Lame", "title": "Engineer II"})
+    assert r.status_code == 200 and r.json()["signIn"] == "added"
+    url, body, headers = sent[0]
+    assert url.endswith("/api/people/from-team") and body == {"email": "val.de.lame@nscale.com", "name": "Val De Lame"}
+    claims = access.verify(headers["x-cp-service"], "team-adds-person")
+    assert claims and claims["email"] == "boss@nscale.com"   # signed, naming who added them
+
+    monkeypatch.setattr(team.httpx, "post", lambda *a, **k: (_ for _ in ()).throw(team.httpx.ConnectError("down")))
+    r = c.post(BASE, headers=ADMIN, json={"email": "zhao.li@nscale.com", "name": "Zhao Li"})
+    assert r.status_code == 200 and r.json()["signIn"] == "failed"   # still on the team; the page says to add them by hand

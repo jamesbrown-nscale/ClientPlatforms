@@ -57,9 +57,11 @@ After that **it updates itself**: every 2 minutes the VM checks GitHub, and a ne
 Sign in as `ADMIN_EMAIL`, then under **Settings**:
 
 - **People**: add each person (on the VM, find them in the directory), and give them roles. Only people on this list can sign in.
+  Adding someone to the **Client Platform Team** adds them here too, with the *Role for new team members* chosen at the bottom of People. Team members without a sign-in (added before this, or while the portal was down) are listed there with **Add them all**. Taking someone off the team doesn't remove their sign-in.
 - **Addresses**: the *site address* (what people open) and the *device server address* (what devices send to, if it's different). Devices and installers can read the current addresses from `/api/device-config`.
 - **Tools**: where each tool links to, and whether it has a tile on the home page. Unticking *On home page* only takes the tile off the home page: the tool stays in the sidebar for everyone who can use it. Point one at another server if that tool runs somewhere else.
 - **Device settings**: the exact installer values for each app, built from the device server address.
+- **Recycle bin**: what people delete is kept for 30 days, then removed for good. **Restore** puts it back where it was, with everything that went with it (a project's records, files and members; a plan's jobs and comments; every version of a document; a person's roles). It covers projects and their records and documents, plans, jobs, sub jobs, comments, change requests, team members and their 1-2-1s and notes, Users and People. Each service keeps its own bin (`recycle.py`, the same file in each); you see the parts you're an admin of. If what something belonged to has been deleted since, restore that first.
 
 Data is in one Docker volume per service (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`, `projects-data`, `inventory-data`).
 

@@ -39,7 +39,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, connectors
+from . import access, auth, connectors, recycle
 from .auth import DEPARTMENTS, DEVICES, ORG, USERS, User
 from .connectors import PLATFORMS, SyncError
 from .store import Store, now
@@ -349,6 +349,19 @@ users_app.add_exception_handler(HTTPException, _http_error)
 users_app.add_exception_handler(ValueError, _value_error)
 
 
+def _bin_admin(request: Request) -> str:
+    """The recycle bin's deleted users are for Users admins."""
+    user = auth.current_user(request, USERS)
+    if not user:
+        raise HTTPException(401, access.sign_in_message())
+    if user.level != "admin":
+        raise HTTPException(403, "Only admins can see the recycle bin.")
+    return user.email
+
+
+users_app.include_router(recycle.router(lambda: store.bin, _bin_admin))
+
+
 @users_app.get("/")
 def users_page(request: Request):
     if not auth.current_user(request, USERS):
@@ -608,7 +621,7 @@ def change_user(email: str, body: UserChange, user: User = Depends(auth.users_ed
 
 @users_app.delete("/api/users/{email}")
 def delete_user(email: str, user: User = Depends(auth.users_editor)):
-    if not store.delete_users([email.lower()]):
+    if not store.delete_users([email.lower()], by=user.email):
         raise HTTPException(404, "User not found.")
     log.info(json.dumps({"severity": "NOTICE", "message": "user removed", "user": email.lower(), "by": user.email}))
     return {"ok": True}

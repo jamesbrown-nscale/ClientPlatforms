@@ -603,6 +603,8 @@ def delete_draft(cid: str, user: User = Depends(require_changes_user)):
     if c["state"] not in ("draft", "recalled") or (c["requestor"] != user.email and not user.admin):
         raise HTTPException(403, "Only a draft or a recalled change can be deleted, by its requestor. Recall or cancel it first.")
     with _store.lock, _store.db() as d:
+        _store.bin.put(d, kind="Change", label=f"{c.get('ref') or ''} {c.get('title') or ''}".strip() or "Change", table="changes",
+                       where={"id": cid}, by=user.email, tool="changes")
         d.execute("DELETE FROM changes WHERE id = ?", (cid,))
     return {"ok": True}
 

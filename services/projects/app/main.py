@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, changes, files, inbox, modules, tasks, team
+from . import access, auth, changes, files, inbox, modules, recycle, tasks, team
 from .auth import User, require_user
 from .modules import BY_KEY, ValidationError
 from .store import Store
@@ -178,7 +178,11 @@ def update_project(pid: str, body: ProjectIn, user: User = Depends(require_user)
 @app.delete("/api/projects/{pid}")
 def delete_project(pid: str, user: User = Depends(require_user)):
     need(pid, user, "Owner")
-    store.delete_project(pid)
+    p = store.project(pid) or {}
+    with store.lock, store.db() as db:   # its records, files and members go into the bin with it
+        store.bin.put(db, kind="Project", label=p.get("name") or "Project", table="projects", where={"id": pid},
+                      by=user.email, tool="projects")
+        db.execute("DELETE FROM projects WHERE id = ?", (pid,))
     return {"ok": True}
 
 
@@ -349,7 +353,13 @@ def delete_item(pid: str, key: str, iid: str, user: User = Depends(require_user)
     old = store.item(pid, iid)
     if not old or old["module"] != key:
         raise HTTPException(404, "Record not found.")
-    store.delete_item(pid, iid)
+    mod, p = section(key), store.project(pid) or {}
+    title = str(old["data"].get(mod.get("titleField") or "title") or "").strip()
+    label = " ".join(x for x in (old.get("ref"), title[:120]) if x) or mod["singular"]
+    with store.lock, store.db() as db:   # a document goes with every version of its file
+        store.bin.put(db, kind=mod["singular"], label=label, context=f"{p.get('name', '')} · {mod['label']}",
+                      table="items", where={"id": iid}, by=user.email, tool="projects")
+        db.execute("DELETE FROM items WHERE project_id = ? AND id = ?", (pid, iid))
     return {"ok": True}
 
 
@@ -557,6 +567,16 @@ def _back_to_meeting(pid: str, action: dict, user: User) -> None:
         rows.append(a)
     if changed:
         store.update_item(pid, meeting["id"], {**meeting["data"], "actions": rows}, user.email)
+
+
+def _bin_admin(user: User = Depends(require_user)) -> str:
+    """The recycle bin (Projects, Team Planning, Team, Change management) is for Projects admins."""
+    if not user.admin:
+        raise HTTPException(403, "Only admins can see the recycle bin.")
+    return user.email
+
+
+app.include_router(recycle.router(lambda: store.bin, _bin_admin))
 
 
 @app.exception_handler(HTTPException)

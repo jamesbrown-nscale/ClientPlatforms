@@ -562,7 +562,10 @@ function profileForm(add) {
       location: $('p_loc').value, about: $('p_about').value };
     if ($('p_manager')) body.manager = $('p_manager').value;
     try {
-      if (add) { body.email = $('p_email').value; const r = await send('members', body); await loadList(); openPerson(r.email); }
+      if (add) {
+        body.email = $('p_email').value; const r = await send('members', body); await loadList(); openPerson(r.email);
+        if (r.signIn === 'failed') cp.alert({ title: 'Added to the team', message: `${r.name} is on the team, but couldn't be added under Settings → People, so they can't sign in yet. Add them there.` });
+      }
       else { CUR = { ...CUR, ...(await send('members/' + enc(CUR.email), body, 'PATCH')) }; drawPerson(); loadList(); }
     } catch (e) { cp.alert(e.message); }
   };

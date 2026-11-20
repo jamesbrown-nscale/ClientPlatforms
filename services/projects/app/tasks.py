@@ -53,6 +53,22 @@ def setup(store: Store, static_dir) -> None:
     """Called by main.py with the shared store (whose tables include Tasks', see store.py)."""
     global _store, STATIC
     _store, STATIC = store, static_dir
+    bin = getattr(store, "bin", None)
+    if bin:
+        bin.restore_custom("Sub job")(_restore_sub)
+
+
+def _restore_sub(db, data: dict) -> None:
+    """Puts a deleted sub job back in its job's list, where it was (the recycle bin, see recycle.py)."""
+    from .recycle import BinError
+    r = db.execute("SELECT subs FROM pipeline_jobs WHERE id = ?", (data["job"],)).fetchone()
+    if not r:
+        raise BinError("The job it was in has been deleted since. Restore that first.")
+    subs = json.loads(r[0] or "[]")
+    if any(x.get("id") == data["sub"].get("id") for x in subs):
+        raise BinError("It's already back in its job.")
+    subs.insert(min(int(data.get("position") or 0), len(subs)), data["sub"])
+    db.execute("UPDATE pipeline_jobs SET subs = ?, updated_at = ? WHERE id = ?", (json.dumps(subs), now(), data["job"]))
 
 
 def store() -> Store:
@@ -453,7 +469,9 @@ def delete_task(tid: str, user: User = Depends(require_task_user)):
     t = _found(tid, user)
     if not can_delete(t, user):
         raise HTTPException(403, "Only whoever created this task (or a project owner) can delete it.")
-    with store().lock, store().db() as db:
+    with store().lock, store().db() as db:   # its jobs and comments go into the bin with it
+        store().bin.put(db, kind="Plan", label=f"{t.get('ref', '')} {t.get('title', '')}".strip(), table="tasks",
+                        where={"id": tid}, by=user.email, tool="tasks")
         db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
     return {"ok": True}
 
@@ -532,6 +550,12 @@ def delete_activity(tid: str, aid: str, user: User = Depends(require_task_user))
             raise HTTPException(404, "Not found.")
         if r["author"] != user.email and not user.admin:
             raise HTTPException(403, "You can only delete what you wrote.")
+        body = db.execute("SELECT body FROM task_activity WHERE id = ?", (aid,)).fetchone()["body"] or ""
+        plan = get_task(tid) or {}
+        store().bin.put(db, kind="Comment", label=(body[:80] + ("…" if len(body) > 80 else "")) or "Comment",
+                        context=f"{plan.get('ref', '')} {plan.get('title', '')}".strip(), table="task_activity", where={"id": aid},
+                        by=user.email, tool="tasks",
+                        fields=[("task_activity", {"id": r["answers"]}, ["answered_at", "answered_by"])] if r["answers"] else [])
         db.execute("DELETE FROM task_activity WHERE id = ?", (aid,))
         if r["answers"]:   # deleting an answer reopens its question
             db.execute("UPDATE task_activity SET answered_at = NULL, answered_by = NULL WHERE id = ?", (r["answers"],))
@@ -782,7 +806,10 @@ def update_job(tid: str, jid: str, body: JobIn, user: User = Depends(require_tas
 def delete_job(tid: str, jid: str, user: User = Depends(require_task_user)):
     _changeable(tid, user)
     j = _job_row(tid, jid)
+    plan = get_task(tid) or {}
     with store().lock, store().db() as db:
+        store().bin.put(db, kind="Job", label=j["title"], context=f"{plan.get('ref', '')} {plan.get('title', '')}".strip(),
+                        table="pipeline_jobs", where={"id": jid}, by=user.email, tool="tasks")
         db.execute("DELETE FROM pipeline_jobs WHERE id = ?", (jid,))
     _add_activity(tid, "change", user, data={"field": "job", "action": "removed", "to": j["title"]})
     return read_task(tid, user)
@@ -864,6 +891,10 @@ def delete_sub(tid: str, jid: str, sid: str, user: User = Depends(require_task_u
     subs = [s for s in j["subs"] if s["id"] != sid]
     if len(subs) == len(j["subs"]):
         raise HTTPException(404, "Sub job not found.")
+    pos = next(i for i, s in enumerate(j["subs"]) if s["id"] == sid)
+    with store().lock, store().db() as db:   # kept with its place in the list, to go back there
+        store().bin.put_custom(db, kind="Sub job", label=j["subs"][pos].get("title") or "Sub job", context=j["title"],
+                               data={"job": jid, "sub": j["subs"][pos], "position": pos}, by=user.email, tool="tasks")
     _save_subs(tid, jid, subs)
     return read_task(tid, user)
 

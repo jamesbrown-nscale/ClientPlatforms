@@ -15,6 +15,8 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
+from .recycle import Bin
+
 
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -105,6 +107,7 @@ class Store:
             CREATE INDEX IF NOT EXISTS change_activity_change ON change_activity(change_id, created_at);
             """)
             self._add_columns(db, "team_members", {"department": "TEXT DEFAULT ''"})   # team is their sub team (Division) within it
+        self.bin = Bin(self.db, self.lock)   # deleted things, kept 30 days (recycle.py; Settings → Recycle bin)
 
     @staticmethod
     def _add_columns(db, table: str, cols: dict) -> None:

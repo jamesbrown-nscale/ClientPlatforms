@@ -428,3 +428,15 @@ def test_not_checked_in_for_30_days(c):
     r = c.get("/devices/api/devices", headers=DV).json()
     assert r["stats"]["stale"] == 3 and r["staleDays"] == 30
     assert {d["name"] for d in r["items"] if d["stale"]} == {"OLD", "NEVER", "JAMF-STYLE"}
+
+
+def test_deleted_users_go_to_the_recycle_bin(c):
+    UA = who("users")
+    c.post("/users/api/users", headers=UE, json={"email": "amy.chen@nscale.com", "name": "Amy Chen", "department": "IT"})
+    assert c.delete("/users/api/users/amy.chen@nscale.com", headers=UE).status_code == 200
+    assert c.get("/users/api/bin", headers=UE).status_code == 403   # editors can delete, only admins see the bin
+    item = c.get("/users/api/bin", headers=UA).json()["items"][0]
+    assert item["kind"] == "User" and item["label"] == "Amy Chen" and item["context"] == "amy.chen@nscale.com"
+    assert c.post(f"/users/api/bin/{item['id']}/restore", headers=UA).status_code == 200
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["amy.chen@nscale.com"]["department"] == "IT"

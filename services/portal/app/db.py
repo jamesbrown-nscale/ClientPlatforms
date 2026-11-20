@@ -19,6 +19,8 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 
+from .recycle import Bin
+
 TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) and its access entry.
     # group is the heading it's listed under in the sidebar. An entry with "uses" is another page of
     # that tool: its own sidebar link and tile, but no access entry of its own (that tool's decides).
@@ -81,6 +83,7 @@ def check_password(password: str, stored: str | None) -> bool:
 
 # ---------- Database ----------
 
+
 class DB:
     def __init__(self, path: str):
         self.path = path
@@ -103,6 +106,7 @@ class DB:
                 CREATE TABLE IF NOT EXISTS user_roles (email TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY (email, role_id));
             """)
         self._migrate()
+        self.bin = Bin(self._db, self._lock)   # deleted people, kept 30 days (recycle.py; Settings → Recycle bin)
         self._copy_levels("users", ["org", "departments"], "pages-from-users")
 
     def _db(self):
@@ -305,9 +309,15 @@ class DB:
                        (hash_password(password), iso(now()), email.lower()))
         self.end_sessions(email, keep=keep_session)
 
-    def delete_user(self, email: str) -> bool:
+    def delete_user(self, email: str, by: str = "") -> bool:
+        """by: who deleted them; they go into the recycle bin with their roles (not their sign-ins)."""
         self.end_sessions(email)
         with self._lock, self._db() as db:
+            if by:
+                r = db.execute("SELECT name FROM users WHERE email = ?", (email.lower(),)).fetchone()
+                if r:
+                    self.bin.put(db, kind="Person", label=r["name"] or email, context=email.lower(), table="users",
+                                 where={"email": email.lower()}, also=[("user_roles", {"email": email.lower()})], by=by, tool="people")
             db.execute("DELETE FROM user_roles WHERE email = ?", (email.lower(),))
             return db.execute("DELETE FROM users WHERE email = ?", (email.lower(),)).rowcount > 0
 
@@ -367,6 +377,11 @@ class DB:
                        "defaultUrl": t["url"],
                        "enabled": (tools.get(t["id"]) or {}).get("enabled", True)} for t in TOOLS],
         }
+
+    def setting(self, key: str, default=None):
+        with self._db() as db:
+            r = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(r["value"]) if r else default
 
     def save_settings(self, values: dict) -> None:
         with self._lock, self._db() as db:

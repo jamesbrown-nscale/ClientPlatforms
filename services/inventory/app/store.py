@@ -21,12 +21,15 @@ from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from .recycle import Bin
+
 DEVICE_FIELDS = ("platform", "kind", "name", "make", "model", "os", "os_version", "serial", "user_email", "user_name", "last_seen")
 USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title")
 
 
 def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 
 class Store:
@@ -59,6 +62,7 @@ class Store:
                 # Team tag moves across.
                 db.execute("ALTER TABLE users ADD COLUMN division TEXT DEFAULT ''")
                 db.execute("UPDATE users SET division = team WHERE COALESCE(team, '') != ''")
+        self.bin = Bin(self._db, self._lock)   # deleted users, kept 30 days (recycle.py; Settings → Recycle bin)
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -129,10 +133,16 @@ class Store:
                     updated += 1
         return added, updated
 
-    def delete_users(self, emails: list[str]) -> int:
+    def delete_users(self, emails: list[str], by: str = "") -> int:
+        """by: who deleted them from the page; they go into the recycle bin. (An import replacing them doesn't.)"""
         with self._lock, self._db() as db:
             n = 0
             for e in emails:
+                if by:
+                    r = db.execute("SELECT name FROM users WHERE email = ?", (e,)).fetchone()
+                    if r:
+                        self.bin.put(db, kind="User", label=r["name"] or e, context=e, table="users", where={"email": e},
+                                     by=by, tool="users")
                 n += db.execute("DELETE FROM users WHERE email = ?", (e,)).rowcount
             return n
 
