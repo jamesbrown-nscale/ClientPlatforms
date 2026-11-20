@@ -10,7 +10,7 @@
 # What it makes (names start with cp-):
 #   cp-vm             the VM: e2-small, Debian 12, 20 GB disk, Shielded VM, no SSH from the internet
 #   cp-ip             its fixed public address (point DNS at it)
-#   cp-vm@…           the VM's own service account: no project roles, only allowed to sign as itself
+#   client-platforms-vm@…  the VM's own service account: no project roles, only allowed to sign as itself
 #                     (for the Google directory search, so no key file is needed)
 #   cp-daily          a snapshot schedule on the disk: every day, kept KEEP_DAYS days (the backups)
 #   firewall          80/443 open to everyone (people and devices); SSH only through Google's IAP tunnel
@@ -22,16 +22,16 @@ ZONE=${ZONE:-europe-west2-b}
 MACHINE=${MACHINE:-e2-small}
 DISK_GB=${DISK_GB:-20}
 KEEP_DAYS=${KEEP_DAYS:-14}
-SA="cp-vm@$PROJECT.iam.gserviceaccount.com"
+SA="client-platforms-vm@$PROJECT.iam.gserviceaccount.com"
 g() { gcloud --project "$PROJECT" --quiet "$@"; }
 exists() { "$@" >/dev/null 2>&1; }
 
 echo "==> Turning on the APIs (Compute Engine, IAM Credentials for keyless directory search)"
 g services enable compute.googleapis.com iamcredentials.googleapis.com admin.googleapis.com
 
-echo "==> Service account cp-vm"
+echo "==> Service account client-platforms-vm"
 exists g iam service-accounts describe "$SA" || \
-  g iam service-accounts create cp-vm --display-name "Client Platforms VM"
+  g iam service-accounts create client-platforms-vm --display-name "Client Platforms VM"
 # Only lets the VM sign tokens as itself (domain-wide delegation without a key file). No project roles.
 g iam service-accounts add-iam-policy-binding "$SA" --member "serviceAccount:$SA" \
   --role roles/iam.serviceAccountTokenCreator >/dev/null
