@@ -153,7 +153,15 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 
 **Jobs.** Each job has a title, description, a note (access, contacts, dependencies…), an expected start date, a duration in working days (which gives its end date; weekends don't count, so five days from a Thursday ends the Wednesday after, and a job always starts on a weekday), the people on it (one or several) and a status; while it's **In progress**, a % complete (shown beside it, and as how much of its bar is filled on the timeline). Add them with **+ Add job**, tick them off, and drag to reorder. Type `@` in a job's note or description to tag someone; they're notified. Everyone given a job is notified, and the plan shows under their **Mine**; a job with several people is under each of them on the timeline and in the list.
 
-**Timeline.** Switch between **List** and **Timeline** at the top. The timeline is a Gantt chart with each job as a bar from its start to its end, grouped **By person** (every staff member with Team Planning, their jobs listed under them, a faint line where they're busy and red where two of their jobs overlap; **+** adds a job for them) or **By plan** (one group per open plan, its due date as a diamond). Drag a bar to move a job, or its right edge to change its duration (weekends are skipped either way); click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. It opens on this week and the next two; move earlier or later, zoom in and out, **Fit** to show the whole plan, or **Today** to go back to the three weeks. Filter by project or to just your jobs.
+**Three views**, switched at the top:
+
+| View | What it shows |
+|---|---|
+| **All Tasks** | Every job in every plan in one list, finished plans included. Each row shows its plan, dates, progress and people. Search, filter by status (not done, not started, in progress, blocked, done) and project, and sort by start date, plan, person or status. Tick jobs off there, or click one to open it. |
+| **List** | Plans, grouped **By person** or **By plan**. By person: each staff member, with the plans they have jobs in as headings and their jobs underneath. **+** adds a job for them. By plan: the views **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. |
+| **Timeline** | A Gantt chart, each job a bar from its start to its end, grouped **By person** or **By plan**. By person: a faint line where someone is busy, red where two of their jobs overlap. By plan: the plan's due date as a diamond. Drag a bar to move a job, or its right edge to change its length; weekends are skipped either way. Click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. It opens on this week and the next two. Move earlier or later, zoom in and out, **Fit** to show the whole plan, or **Today** to go back to the three weeks. Filter by project or to just your jobs. |
+
+**Plan headings** (in the List by person, and on the Timeline) start folded: click the arrow to show or hide their jobs, and the page remembers which are open. Each shows the plan's **% complete** as a bar, worked out from all its jobs: each job counts equally, Done counts 100%, In progress its own %, anything else 0%. The bar turns green at 100%.
 
 A plan's activity is one thread:
 
@@ -163,8 +171,6 @@ A plan's activity is one thread:
 | **Question** | Waits on one person (the owner, or the creator if the owner asks, or whoever you pick) until someone answers. It's highlighted until then and listed under **Waiting on me**. |
 | **Update** | A progress note with an optional percentage. It sets the plan's progress, and starts one that was still *To do*. |
 | *Changes* | Recorded by the app: owner, status, priority, due date, project, and jobs added, scheduled, finished or removed. |
-
-**All Tasks** (first of the three views) lists every job in every plan, finished plans included. Each row shows its plan, dates, progress and people. Search them, filter by status (not done, not started, in progress, blocked, done) and project, and sort by start date, plan, person or status. Tick jobs off there, or click one to open it. The list can be grouped **By person** (each staff member with their jobs underneath, tick them off or click to open, **+** to add one for them) or **By plan**. By plan, the views are **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter.
 
 **Who sees what.** A plan with no project: everyone with the **Team Planning** tool. In a project: that project's members, plus whoever created it, owns it or has a job in it. In a project, viewers can comment but not change it or its jobs. Only its creator, a project owner or an admin can delete it. Team Planning runs inside the projects service (same database).
 
