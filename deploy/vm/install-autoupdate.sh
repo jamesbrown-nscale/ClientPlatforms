@@ -4,14 +4,14 @@
 #
 #   sudo /opt/client-platforms/deploy/vm/install-autoupdate.sh
 #
-# Check every N minutes instead of 5:   sudo EVERY=2 ./install-autoupdate.sh
+# Check every N minutes instead of 2:   sudo EVERY=5 ./install-autoupdate.sh
 # Pause it:                             sudo systemctl disable --now cp-update.timer
 # Turn it back on:                      sudo systemctl enable --now cp-update.timer
 # What it did:                          journalctl -u cp-update
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "Run with sudo." >&2; exit 1; }
 DIR=$(cd "$(dirname "$0")/../.." && pwd)
-EVERY=${EVERY:-5}
+EVERY=${EVERY:-2}
 
 cat > /etc/systemd/system/cp-update.service <<EOF
 [Unit]
@@ -41,6 +41,7 @@ EOF
 
 chmod +x "$DIR/deploy/vm/autoupdate.sh" "$DIR/deploy/vm/update.sh"
 systemctl daemon-reload
-systemctl enable --now cp-update.timer
+systemctl enable cp-update.timer
+systemctl restart cp-update.timer   # picks up a new interval even if it was already running
 echo "Automatic updates are on: every $EVERY minutes. Log: journalctl -u cp-update"
 systemctl list-timers cp-update.timer --no-pager | head -3

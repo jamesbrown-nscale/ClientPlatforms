@@ -59,7 +59,7 @@ if [ ! -d "$DIR/.git" ]; then
   git clone --branch "$BRANCH" "$REPO" "$DIR"
 fi
 
-echo "==> Automatic updates (checks GitHub every 5 minutes)"
+echo "==> Automatic updates (checks GitHub every 2 minutes)"
 bash "$DIR/deploy/vm/install-autoupdate.sh" >/dev/null && echo "    on: pushes to $BRANCH reach the site by themselves (journalctl -u cp-update)"
 
 echo "==> Settings"
