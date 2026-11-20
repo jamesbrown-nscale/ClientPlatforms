@@ -5,7 +5,8 @@ Settings → Connections (see connectors.py). They're read again every SYNC_MINU
 someone presses Sync now.
 
 Users (/users/): the people we look after, imported from a CSV (or added by hand), each tagged with
-a team, a line manager, a user type (VIP or Standard) and a primary device, picked from Devices.
+a department and a division (their team within it), a line manager, a user type (VIP or Standard)
+and a primary device, picked from Devices.
 
 People:   /devices/api/devices[.csv]      devices, with whose primary device each is
           /devices/api/sync               sync now (edit)
@@ -14,6 +15,8 @@ People:   /devices/api/devices[.csv]      devices, with whose primary device eac
           /users/api/import               a CSV: adds new users and updates the ones already here
           /users/api/match-devices        primary devices for users without one, from Jamf and Intune
           /users/api/devices              devices to pick a primary device from
+Services: /internal/teams, /internal/users/{email}   departments and divisions, and one user, for
+          the Team tool (projects service). Not routed by the front door: only reachable inside the stack.
 
 Settings: DATABASE_PATH, SYNC_MINUTES (0 = only when asked), AUTH_MODE, AUTH_SECRET, PORTAL_URL.
 """
@@ -356,10 +359,10 @@ def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigne
     pd = u["primary_device"]
     dev = devices.get(pd)
     mgr = u["manager"] or ""
-    return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]), "team": u["team"] or "",
+    return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
+            "department": u["department"] or "", "division": u["division"] or "",
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
             "type": u["user_type"] if u["user_type"] in TYPES else "Standard", "title": u["title"] or "",
-            "department": u["department"] or "",
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
             "devices": len(assigned.get(u["email"], [])), "updatedAt": u["updated_at"], "updatedBy": u["updated_by"]}
 
@@ -379,11 +382,30 @@ def _users() -> list[dict]:
 @users_app.get("/api/users")
 def list_users(user: User = Depends(auth.users_viewer)):
     items = _users()
-    teams = sorted({u["team"] for u in items if u["team"]}, key=str.lower)
-    stats = {"users": len(items), "vip": sum(u["type"] == "VIP" for u in items),
+    stats = {"users": len(items), "vip": sum(u["type"] == "VIP" for u in items), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
-    return {"items": items, "teams": teams, "stats": stats}
+    return {"items": items, "departments": departments(items), "stats": stats}
+
+
+def departments(users: list[dict]) -> list[dict]:
+    """Department → divisions, with how many users are in each: [{name, count, divisions: [{name, count}]}].
+    People with a division but no department are under "" (shown as No department)."""
+    tree: dict[str, dict[str, int]] = {}
+    for u in users:
+        if u["department"] or u["division"]:
+            divs = tree.setdefault(u["department"], {})
+            if u["division"]:
+                divs[u["division"]] = divs.get(u["division"], 0) + 1
+            else:
+                divs.setdefault("", 0)
+                divs[""] += 1
+    out = []
+    for dep in sorted(tree, key=lambda x: (x == "", x.lower())):
+        divs = tree[dep]
+        out.append({"name": dep, "count": sum(divs.values()),
+                    "divisions": [{"name": d, "count": n} for d, n in sorted(divs.items(), key=lambda x: x[0].lower()) if d]})
+    return out
 
 
 @users_app.get("/api/users.csv")
@@ -391,7 +413,7 @@ def users_csv(user: User = Depends(auth.users_viewer)):
     rows = [{**u, "pd": (u["primaryDevice"] or {}).get("name", ""), "pdSerial": (u["primaryDevice"] or {}).get("serial", ""),
              "pdModel": (u["primaryDevice"] or {}).get("model", ""), "pdOs": " ".join(filter(None, [(u["primaryDevice"] or {}).get("os"), (u["primaryDevice"] or {}).get("osVersion")])),
              "pdPlatform": (u["primaryDevice"] or {}).get("platform", "")} for u in _users()]
-    cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("team", "Team"),
+    cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
             ("manager", "Line manager"), ("type", "User type"), ("pd", "Primary device"), ("pdSerial", "Serial"),
             ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Platform")]
     return _csv(cols, rows, f"users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
@@ -399,10 +421,10 @@ def users_csv(user: User = Depends(auth.users_viewer)):
 
 @users_app.get("/api/template.csv")
 def users_template(user: User = Depends(auth.users_viewer)):
-    cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("team", "Team"),
+    cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
             ("manager", "Line manager"), ("type", "User type"), ("pd", "Primary device")]
     return _csv(cols, [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "Engineer", "department": "Engineering",
-                        "team": "Platform", "manager": "sam.lee@nscale.com", "type": "Standard", "pd": "C02XL0AAJGH5"}],
+                        "division": "Platform", "manager": "sam.lee@nscale.com", "type": "Standard", "pd": "C02XL0AAJGH5"}],
                 "users-template.csv")
 
 
@@ -469,7 +491,7 @@ class DeviceIndex:
 class UserIn(BaseModel):
     email: str = Field(max_length=254)
     name: str = Field("", max_length=200)
-    team: str = Field("", max_length=100)
+    division: str = Field("", max_length=200)
     manager: str = Field("", max_length=200)
     type: str = Field("Standard", max_length=20)
     primaryDevice: str = Field("", max_length=200)
@@ -479,7 +501,7 @@ class UserIn(BaseModel):
 
 class UserChange(BaseModel):
     name: str | None = Field(None, max_length=200)
-    team: str | None = Field(None, max_length=100)
+    division: str | None = Field(None, max_length=200)
     manager: str | None = Field(None, max_length=200)
     type: str | None = Field(None, max_length=20)
     primaryDevice: str | None = Field(None, max_length=200)
@@ -490,7 +512,7 @@ class UserChange(BaseModel):
 def _fields(body: BaseModel, email: str) -> dict:
     d = body.model_dump(exclude_none=True)
     out = {}
-    for k in ("name", "team", "title", "department"):
+    for k in ("name", "division", "title", "department"):
         if k in d:
             out[k] = re.sub(r"\s+", " ", d[k]).strip()
     if "manager" in d:
@@ -540,7 +562,7 @@ COLUMNS = {   # a CSV heading (lower case, letters and digits only) → the fiel
     "email": "email", "emailaddress": "email", "mail": "email", "workemail": "email", "userprincipalname": "email", "upn": "email",
     "name": "name", "displayname": "name", "fullname": "name", "username": "name",
     "firstname": "first", "givenname": "first", "lastname": "last", "surname": "last", "familyname": "last",
-    "team": "team",
+    "division": "division", "team": "division", "subteam": "division", "dept": "department",
     "linemanager": "manager", "manager": "manager", "linemanageremail": "manager", "manageremail": "manager", "reportsto": "manager",
     "usertype": "type", "type": "type", "vip": "type",
     "primarydevice": "device", "device": "device", "primarydeviceserial": "device", "serial": "device", "serialnumber": "device",
@@ -604,7 +626,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str]]:
         name = r.get("name") or " ".join(filter(None, [r.get("first"), r.get("last")]))
         if name:
             u["name"] = re.sub(r"\s+", " ", name)[:200]
-        for k in ("team", "title", "department"):
+        for k in ("division", "title", "department"):
             if r.get(k):
                 u[k] = r[k][:200]
         for k, field, fn in (("manager", "manager", lambda v: _resolve_manager(v, by_name, email)),
@@ -659,6 +681,22 @@ def match_devices(user: User = Depends(auth.users_editor)):
 # ---------- One app, two paths ----------
 
 app = FastAPI(title="Nscale Users and Devices", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+
+
+# For the Team tool (projects service), inside the stack only: the front door sends /users/* and
+# /devices/* here, never /internal/*. Names and job details only, nothing about devices.
+@app.get("/internal/teams", include_in_schema=False)
+def internal_teams():
+    return {"departments": departments(_users())}
+
+
+@app.get("/internal/users/{email}", include_in_schema=False)
+def internal_user(email: str):
+    u = store.user(email.strip().lower())
+    if not u:
+        raise HTTPException(404, "Not a user.")
+    v = next(x for x in _users() if x["email"] == u["email"])
+    return {k: v[k] for k in ("email", "name", "title", "department", "division", "manager", "managerName")}
 
 
 @app.get("/healthz", include_in_schema=False)

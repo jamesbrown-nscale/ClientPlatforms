@@ -22,7 +22,7 @@
   <div class="head">
     <div>
       <h1>Users</h1>
-      <p class="sub">The people we look after: their team, line manager, whether they're a VIP, and their primary device from Devices.</p>
+      <p class="sub">The people we look after: their department and division, line manager, whether they're a VIP, and their primary device from Devices.</p>
     </div>
     <div class="acts">
       <button class="btn" id="matchBtn" type="button" hidden title="For users without a primary device: the one computer Jamf or Intune says is theirs">Match devices</button>
@@ -33,8 +33,9 @@
   </div>
   <div class="notice" id="notice" hidden></div>
 
-  <div class="tiles" id="tiles" style="grid-template-columns:repeat(4,1fr)">
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(5,1fr)">
     <button class="tile" data-f="all"><b id="s-users">–</b><span>Users</span></button>
+    <button class="tile" data-f="group" title="Everyone, grouped by department and division"><b id="s-departments">–</b><span>Departments</span></button>
     <button class="tile vip" data-f="VIP"><b id="s-vip">–</b><span>VIPs</span></button>
     <button class="tile" data-f="device"><b id="s-withDevice">–</b><span>With a primary device</span></button>
     <button class="tile warn" data-f="nodevice"><b id="s-noDevice">–</b><span>No primary device</span></button>
@@ -42,16 +43,18 @@
 
   <div class="card">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Search name, email, team, manager or device" aria-label="Search users">
-      <select id="team" aria-label="Team"><option value="">Every team</option></select>
+      <input type="search" id="q" placeholder="Search name, email, department, manager or device" aria-label="Search users">
+      <select id="dept" aria-label="Department"><option value="">Every department</option></select>
+      <select id="div" aria-label="Division" hidden><option value="">Every division</option></select>
       <select id="type" aria-label="User type"><option value="">VIP and Standard</option><option>VIP</option><option>Standard</option></select>
+      <label class="grpby"><input type="checkbox" id="group"> Group by department</label>
       <span class="sp"></span>
       <span class="count" id="count"></span>
     </div>
     <div class="tablewrap"><table>
       <thead><tr>
         <th data-sort="name"><button type="button">User</button></th>
-        <th data-sort="team"><button type="button">Team</button></th>
+        <th data-sort="team"><button type="button">Department</button></th>
         <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
         <th data-sort="type"><button type="button">Type</button></th>
         <th data-sort="device"><button type="button">Primary device</button></th>
@@ -61,7 +64,8 @@
   </div>
 </main>
 
-<datalist id="teams"></datalist>
+<datalist id="depts"></datalist>
+<datalist id="divs"></datalist>
 <datalist id="people"></datalist>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -78,8 +82,8 @@
     </div>
     <h3>Tags</h3>
     <div class="two">
-      <div class="field"><label class="l" for="f-team" style="margin-top:0">Team</label><input type="text" id="f-team" list="teams" maxlength="100" placeholder="e.g. Platform"></div>
-      <div class="field"><label class="l" for="f-dept" style="margin-top:0">Department</label><input type="text" id="f-dept" maxlength="200"></div>
+      <div class="field"><label class="l" for="f-dept" style="margin-top:0">Department</label><input type="text" id="f-dept" list="depts" maxlength="200" placeholder="e.g. Engineering"></div>
+      <div class="field"><label class="l" for="f-div" style="margin-top:0">Division <span class="muted" style="font-weight:400">(their team)</span></label><input type="text" id="f-div" list="divs" maxlength="200" placeholder="e.g. Platform"></div>
     </div>
     <div class="field"><label class="l" for="f-manager">Line manager</label><input type="text" id="f-manager" list="people" maxlength="200" placeholder="Start typing a name or email">
       <div class="hint" id="f-managerHint"></div></div>
@@ -106,8 +110,8 @@
   <div class="in">
     <h2 id="impTitle">Import users from a CSV</h2>
     <p class="sub" style="margin:0">New emails are added; users already here are updated. Empty cells leave what's there alone.</p>
-    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Team</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
-    <p class="hint">Line manager: an email or a name. User type: VIP or Standard. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
+    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
+    <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP or Standard. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
       <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
     <div id="impOut"></div>
@@ -119,7 +123,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const full = s => s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
-let ME = null, ALL = [], DEVICES = null, FILTER = 'all', SORT = { key: 'name', dir: 1 }, OPEN = null, DRAFT = null, CSVTEXT = '';
+let ME = null, ALL = [], DEPTS = [], DEVICES = null, FILTER = 'all', SORT = { key: 'name', dir: 1 }, OPEN = null, DRAFT = null, CSVTEXT = '';
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
@@ -149,18 +153,20 @@ function matches(u) {
   if (FILTER === 'VIP' && u.type !== 'VIP') return false;
   if (FILTER === 'device' && !hasDevice(u)) return false;
   if (FILTER === 'nodevice' && hasDevice(u)) return false;
-  if ($('team').value && u.team !== $('team').value) return false;
+  if ($('dept').value && u.department !== ($('dept').value === '__none__' ? '' : $('dept').value)) return false;
+  if ($('div').value && u.division !== $('div').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const d = u.primaryDevice || {};
-  const hay = [u.name, u.email, u.team, u.manager, u.managerName, u.title, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform].join(' ').toLowerCase();
+  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform].join(' ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
 function sortVal(u, k) {
   if (k === 'manager') return (u.managerName || u.manager || '~').toLowerCase();
   if (k === 'device') return ((u.primaryDevice || {}).name || '~').toLowerCase();
   if (k === 'type') return u.type === 'VIP' ? 0 : 1;
+  if (k === 'team') return `${u.department || '~'}\u0001${u.division || '~'}`.toLowerCase();
   return String(u[k] || '~').toLowerCase();
 }
 
@@ -171,21 +177,70 @@ function draw() {
   document.querySelectorAll('th[data-sort]').forEach(th => {
     if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
   });
-  document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
+  document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === 'group' ? $('group').checked : t.dataset.f === FILTER)));
   $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} users` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
   if (!ALL.length) {
     $('rows').innerHTML = `<tr><td colspan="5" class="empty"><b>No users yet</b>${ME?.canEdit ? 'Import a CSV with an Email column, or add people one at a time.' : 'Nobody has imported any users yet.'}</td></tr>`;
     return;
   }
   if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="5" class="empty">No users match.</td></tr>'; return; }
-  $('rows').innerHTML = rows.slice(0, 3000).map(u => `<tr data-email="${esc(u.email)}" tabindex="0">
+  const row = u => `<tr data-email="${esc(u.email)}" tabindex="0">
     <td><b>${esc(u.name)}</b><div class="muted">${esc(u.email)}${u.title ? ' · ' + esc(u.title) : ''}</div></td>
-    <td>${u.team ? `<span class="badge b-team">${esc(u.team)}</span>` : '<span class="muted">—</span>'}</td>
+    <td>${u.department ? esc(u.department) : u.division ? '<span class="muted">No department</span>' : '<span class="muted">—</span>'}${u.division ? `<div><span class="badge b-team">${esc(u.division)}</span></div>` : ''}</td>
     <td class="hide-sm">${u.manager ? `${esc(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? `<div class="muted">${esc(u.manager)}</div>` : ''}` : '<span class="muted">—</span>'}</td>
     <td>${typeBadge(u.type)}</td>
     <td>${deviceCell(u.primaryDevice)}</td>
-  </tr>`).join('');
+  </tr>`;
+  if ($('group').checked) { $('rows').innerHTML = grouped(rows, row); return; }
+  $('rows').innerHTML = rows.slice(0, 3000).map(row).join('');
   if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="5" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
+}
+
+/** Rows under Department, then Division, headings (each folds), in the table's sort order within them. */
+const FOLDED = new Set();
+function grouped(rows, row) {
+  const tree = new Map();
+  for (const u of rows) {
+    const d = u.department || '', v = u.division || '';
+    if (!tree.has(d)) tree.set(d, new Map());
+    const divs = tree.get(d);
+    if (!divs.has(v)) divs.set(v, []);
+    divs.get(v).push(u);
+  }
+  const by = (a, b) => (a === '') - (b === '') || a.localeCompare(b);
+  let html = '', shown = 0;
+  for (const d of [...tree.keys()].sort(by)) {
+    const divs = tree.get(d), n = [...divs.values()].reduce((s, l) => s + l.length, 0), dk = 'd:' + d;
+    html += `<tr class="gh"><td colspan="5"><button type="button" data-fold="${esc(dk)}" aria-expanded="${!FOLDED.has(dk)}">
+      <span class="chev">▾</span> ${esc(d || 'No department')} <span class="muted">${n} user${n === 1 ? '' : 's'}${divs.size > 1 || [...divs.keys()][0] ? ` · ${[...divs.keys()].filter(Boolean).length} division${[...divs.keys()].filter(Boolean).length === 1 ? '' : 's'}` : ''}</span></button></td></tr>`;
+    if (FOLDED.has(dk)) continue;
+    for (const v of [...divs.keys()].sort(by)) {
+      const list = divs.get(v), vk = dk + '\u0001' + v;
+      if (v || divs.size > 1) html += `<tr class="gh2"><td colspan="5"><button type="button" data-fold="${esc(vk)}" aria-expanded="${!FOLDED.has(vk)}">
+        <span class="chev">▾</span> ${esc(v || 'No division')} <span class="muted">${list.length}</span></button></td></tr>`;
+      if (FOLDED.has(vk)) continue;
+      for (const u of list) { if (shown++ < 3000) html += row(u); }
+    }
+  }
+  return html;
+}
+
+function drawFilters() {
+  const keepD = $('dept').value, keepV = $('div').value;
+  $('dept').innerHTML = '<option value="">Every department</option>' + DEPTS.map(d => `<option value="${d.name ? esc(d.name) : '__none__'}">${esc(d.name || 'No department')} (${d.count})</option>`).join('');
+  $('dept').value = [...$('dept').options].some(o => o.value === keepD) ? keepD : '';
+  const dep = DEPTS.find(d => (d.name || '__none__') === $('dept').value);
+  const divs = dep ? dep.divisions : [];
+  $('div').hidden = !dep || !divs.length;
+  $('div').innerHTML = '<option value="">Every division</option>' + divs.map(v => `<option>${esc(v.name)}</option>`).join('');
+  $('div').value = divs.some(v => v.name === keepV) ? keepV : '';
+}
+
+function divisionList() {
+  const d = $('f-dept').value.trim().toLowerCase();
+  const names = new Set();
+  for (const dep of DEPTS) if (!d || dep.name.toLowerCase() === d) dep.divisions.forEach(v => names.add(v.name));
+  $('divs').innerHTML = [...names].sort().map(v => `<option value="${esc(v)}">`).join('');
 }
 
 async function load() {
@@ -193,10 +248,9 @@ async function load() {
     const data = await api('api/users');
     ALL = data.items;
     for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
-    const keep = $('team').value;
-    $('team').innerHTML = '<option value="">Every team</option>' + data.teams.map(t => `<option>${esc(t)}</option>`).join('');
-    $('team').value = data.teams.includes(keep) ? keep : '';
-    $('teams').innerHTML = data.teams.map(t => `<option value="${esc(t)}">`).join('');
+    DEPTS = data.departments;
+    drawFilters();
+    $('depts').innerHTML = DEPTS.filter(d => d.name).map(d => `<option value="${esc(d.name)}">`).join('');
     $('people').innerHTML = ALL.map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
     draw();
   } catch (e) { if (e.message !== 'signed out') showError('Could not load users: ' + e.message); }
@@ -259,8 +313,8 @@ async function openUser(email) {
   $('p-sub').textContent = u ? u.email + (u.updatedAt ? ` · changed ${full(u.updatedAt)}${u.updatedBy ? ' by ' + u.updatedBy : ''}` : '') : 'They can be tagged once added.';
   $('emailWrap').hidden = !!u;
   $('f-email').value = u ? u.email : ''; $('f-email').required = !u;
-  $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-team').value = u?.team || '';
-  $('f-dept').value = u?.department || ''; $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
+  $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-div').value = u?.division || '';
+  $('f-dept').value = u?.department || ''; divisionList(); $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
   managerHint();
   document.querySelectorAll('#p-form input').forEach(i => { if (i.id !== 'f-devq') i.disabled = !can; });
   document.querySelectorAll('.seg button').forEach(b => b.disabled = !can);
@@ -287,7 +341,7 @@ function closePanel() {
 }
 
 async function save() {
-  const body = { name: $('f-name').value, title: $('f-title').value, team: $('f-team').value, department: $('f-dept').value,
+  const body = { name: $('f-name').value, title: $('f-title').value, division: $('f-div').value, department: $('f-dept').value,
                  manager: $('f-manager').value, type: DRAFT.type, primaryDevice: DRAFT.primaryDevice };
   const adding = !OPEN;
   if (adding) body.email = $('f-email').value.trim();
@@ -369,11 +423,24 @@ $('matchBtn').onclick = async () => {
     showError(`${r.matched} user${r.matched === 1 ? '' : 's'} given a primary device.${r.several ? ` ${r.several} have several devices: pick theirs by hand.` : ''}`, r.matched ? 'ok' : 'info');
   } catch (e) { showError(e.message); }
 };
-document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => { FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw(); }));
+document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => {
+  if (t.dataset.f === 'group') { $('group').checked = !$('group').checked; FILTER = 'all'; saveGroup(); draw(); return; }
+  FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw();
+}));
+function saveGroup() { try { localStorage.setItem('cp-users-group', $('group').checked ? '1' : ''); } catch {} }
+$('group').addEventListener('change', () => { saveGroup(); draw(); });
+$('dept').addEventListener('change', () => { $('div').value = ''; drawFilters(); draw(); });
+$('f-dept').addEventListener('input', divisionList);
+$('rows').addEventListener('click', e => {
+  const b = e.target.closest('[data-fold]'); if (!b) return;
+  e.stopPropagation();
+  const k = b.dataset.fold; FOLDED.has(k) ? FOLDED.delete(k) : FOLDED.add(k); draw();
+}, true);
 document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
   const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
 }));
-['q', 'team', 'type'].forEach(id => $(id).addEventListener('input', draw));
+['q', 'div', 'type'].forEach(id => $(id).addEventListener('input', draw));
+try { $('group').checked = localStorage.getItem('cp-users-group') === '1'; } catch {}
 $('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-email]'); if (tr) openUser(tr.dataset.email); });
 $('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-email]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openUser(tr.dataset.email); } });
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => setType(b.dataset.type));

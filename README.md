@@ -135,16 +135,18 @@ Devices are read again every hour (`SYNC_MINUTES`), and anyone who can edit Devi
 
 The people we look after (not who can sign in: that's Settings → People), each tagged with:
 
-- **Team**: free text, suggested from the teams already used.
+- **Department**, and **Division**: their team within the department (what used to be the Team tag). Both are free text, suggested from the ones already used.
 - **Line manager**: an email, or a name that's matched to a user. The page shows their name.
 - **User type**: **VIP** or **Standard**.
 - **Primary device**: picked from Devices, starting with what Jamf or Intune says is theirs. The Users list shows its name, platform, make, model and OS. If it leaves Jamf or Intune, it shows as *Device gone*.
 
-**Import CSV** takes a file with an **Email** column, plus any of *Name* (or First name and Last name), *Job title*, *Department*, *Team*, *Line manager*, *User type* (VIP or Standard; yes/no also work) and *Primary device* (a serial or device name). Commas, semicolons or tabs all work, and common heading names (e.g. *E-mail Address*, *Display Name*, *Serial Number*) are recognised. It checks the file first and shows what it'll add, update and couldn't read, then imports. New emails are added; users already here are updated; empty cells leave what's there alone. *Download a template* gives the columns.
+**Import CSV** takes a file with an **Email** column, plus any of *Name* (or First name and Last name), *Job title*, *Department*, *Division* (a *Team* column fills it too), *Line manager*, *User type* (VIP or Standard; yes/no also work) and *Primary device* (a serial or device name). Commas, semicolons or tabs all work, and common heading names (e.g. *E-mail Address*, *Display Name*, *Serial Number*) are recognised. It checks the file first and shows what it'll add, update and couldn't read, then imports. New emails are added; users already here are updated; empty cells leave what's there alone. *Download a template* gives the columns.
+
+**Departments.** Filter by department, then by division within it, or tick **Group by department** (or the *Departments* tile) to see everyone under Department, then Division headings, each of which folds.
 
 **Match devices** gives everyone without a primary device the one computer Jamf or Intune says is theirs (or their one device, if they have no computer); anyone with several is left to pick by hand. *Download CSV* gives every user with their tags and primary device.
 
-Users and Devices run in one service (`services/inventory`, one database). View sees everything; Edit imports, tags and syncs; Admin on Devices also manages Connections.
+Users and Devices run in one service (`services/inventory`, one database). The Team tool reads the departments and divisions from it inside the stack (`/internal/teams`, never routed by the front door). View sees everything; Edit imports, tags and syncs; Admin on Devices also manages Connections.
 
 ## Projects
 
@@ -209,7 +211,7 @@ A plan's activity is one thread:
 
 ## Team
 
-Everyone on the team, grouped by team, with their role, manager, start date, location and a short "about". Each person's page has:
+Everyone on the team, grouped by **department** and then **sub team** (their Division), with their role, manager, start date, location and a short "about". The departments and sub teams to pick from are the ones on the Users page (plus any the team already uses), and adding someone who's in Users fills in their name, role, department and sub team. Each person's page has:
 
 | Tab | What's on it | Who sees it |
 |---|---|---|

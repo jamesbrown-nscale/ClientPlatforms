@@ -50,11 +50,31 @@ def tenant_id(v: str) -> str:
     return v
 
 
+def _why(r: httpx.Response) -> str:
+    """What the server said was wrong, if it said (Jamf: {"errors": [{"description"}]}; Graph: {"error": {"message"}})."""
+    try:
+        j = r.json()
+    except ValueError:
+        return ""
+    if not isinstance(j, dict):
+        return ""
+    errs = j.get("errors")
+    if isinstance(errs, list):
+        parts = [" ".join(filter(None, [_s(e.get("description")), f"({_s(e.get('field'))})" if e.get("field") else ""]))
+                 for e in errs if isinstance(e, dict)]
+        return "; ".join(p for p in parts if p)[:300]
+    e = j.get("error")
+    if isinstance(e, dict):
+        return _s(e.get("message"))[:300]
+    return ""
+
+
 def _fail(r: httpx.Response, who: str, what: str) -> None:
     if r.status_code in (401, 403):
         raise SyncError(f"{who} turned down {what} ({r.status_code}). Check the client ID, the secret and the permissions it has.")
     if r.status_code >= 400:
-        raise SyncError(f"{who} answered {r.status_code} to {what}.")
+        why = _why(r)
+        raise SyncError(f"{who} answered {r.status_code} to {what}" + (f": {why}" if why else "."))
 
 
 def _json(r: httpx.Response, who: str):
@@ -97,10 +117,10 @@ def jamf_token(client: httpx.Client, settings: dict, secret: str) -> str:
     return token
 
 
-def _jamf_pages(client, base, token, path, sections):
+def _jamf_pages(client, base, token, path, sections, sort):
     out = []
     for page in range(MAX_PAGES):
-        params = [("section", s) for s in sections] + [("page", page), ("page-size", PAGE), ("sort", "id:asc")]
+        params = [("section", s) for s in sections] + [("page", page), ("page-size", PAGE), ("sort", sort)]
         r = _call(client, "Jamf", "GET", f"{base}{path}", params=params, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
         if r.status_code in (403, 404) and path.endswith("mobile-devices/detail"):
             return None   # this API role can't read mobile devices
@@ -119,7 +139,7 @@ def jamf_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[lis
     token = jamf_token(client, settings, secret)
     devices, notes = [], []
     for c in _jamf_pages(client, base, token, "/api/v1/computers-inventory",
-                         ["GENERAL", "HARDWARE", "OPERATING_SYSTEM", "USER_AND_LOCATION"]) or []:
+                         ["GENERAL", "HARDWARE", "OPERATING_SYSTEM", "USER_AND_LOCATION"], "id:asc") or []:
         g, h, o, u = (c.get(k) or {} for k in ("general", "hardware", "operatingSystem", "userAndLocation"))
         if not c.get("id"):
             continue
@@ -129,7 +149,13 @@ def jamf_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[lis
                         "os_version": _s(o.get("version")), "serial": _s(h.get("serialNumber")),
                         "user_email": _s(u.get("email")).lower(), "user_name": _s(u.get("realname")) or _s(u.get("username")),
                         "last_seen": _s(g.get("lastContactTime"))})
-    mobiles = _jamf_pages(client, base, token, "/api/v2/mobile-devices/detail", ["GENERAL", "HARDWARE", "USER_AND_LOCATION"])
+    # Phones and tablets are extra: if Jamf won't give them, the Macs still count, with a note why.
+    try:
+        mobiles = _jamf_pages(client, base, token, "/api/v2/mobile-devices/detail", ["GENERAL", "HARDWARE", "USER_AND_LOCATION"],
+                              "mobileDeviceId:asc")
+    except SyncError as e:
+        mobiles = []
+        notes.append(f"iPhones and iPads weren't read: {e}")
     if mobiles is None:
         notes.append("iPhones and iPads weren't read: give the Jamf API role \"Read Mobile Devices\" to include them.")
     for m in mobiles or []:

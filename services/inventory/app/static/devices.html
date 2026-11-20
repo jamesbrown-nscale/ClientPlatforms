@@ -46,17 +46,18 @@
       <span class="sp"></span>
       <span class="count" id="count"></span>
     </div>
-    <div class="tablewrap"><table>
+    <div class="tablewrap"><table class="fit">
+      <colgroup><col style="width:21%"><col style="width:21%"><col style="width:14%"><col style="width:9%">
+        <col class="hide-sm" style="width:23%"><col class="hide-sm" style="width:12%"></colgroup>
       <thead><tr>
         <th data-sort="name"><button type="button">Device</button></th>
         <th data-sort="model"><button type="button">Make and model</button></th>
         <th data-sort="os"><button type="button">OS</button></th>
         <th data-sort="platform"><button type="button">Platform</button></th>
         <th data-sort="user" class="hide-sm"><button type="button">Assigned to</button></th>
-        <th class="hide-sm">Primary device of</th>
         <th data-sort="lastSeen" class="hide-sm"><button type="button">Last check-in</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
     </table></div>
   </div>
 </main>
@@ -102,6 +103,14 @@ const ICON = {
 };
 const platformBadge = p => `<span class="badge b-${esc((p || '').toLowerCase())}">${esc(p)}</span>`;
 const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
+/** "SAMSUNG ELECTRONICS CO., LTD." → "Samsung", "Dell Inc." → "Dell", "LENOVO" → "Lenovo". The full name stays in the details. */
+function makeName(m) {
+  let s = String(m || '').replace(/[,.]?\s*(inc\.?|co\.?,?\s*ltd\.?|ltd\.?|corporation|corp\.?|limited|llc|gmbh)\s*$/i, '')
+    .replace(/\s+(electronics|computer|computers|technology|technologies)\s*$/i, '').trim();
+  if (s && s === s.toUpperCase() && s.length > 3) s = s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return s || m || '';
+}
+const cut = (text, cls = '') => `<div class="cut ${cls}" title="${esc(text)}">${esc(text)}</div>`;
 
 function drawSync() {
   const bar = $('syncbar');
@@ -165,20 +174,19 @@ function draw() {
   document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
   $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} devices` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
   if (!ALL.length) {
-    $('rows').innerHTML = `<tr><td colspan="7" class="empty"><b>No devices yet</b>${CONNS.some(c => c.connected) ? 'They appear here after the first sync.' : 'Connect Jamf or Intune under Settings → Connections and every device shows up here.'}</td></tr>`;
+    $('rows').innerHTML = `<tr><td colspan="6" class="empty"><b>No devices yet</b>${CONNS.some(c => c.connected) ? 'They appear here after the first sync.' : 'Connect Jamf or Intune under Settings → Connections and every device shows up here.'}</td></tr>`;
     return;
   }
-  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No devices match.</td></tr>'; return; }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="6" class="empty">No devices match.</td></tr>'; return; }
   $('rows').innerHTML = rows.slice(0, 3000).map(d => `<tr data-id="${esc(d.id)}" tabindex="0">
-    <td><b>${esc(d.name || '(no name)')}</b><div class="muted mono">${esc(d.serial || '')}</div></td>
-    <td>${esc(d.model || '—')}<div class="muted">${esc(d.make || '')}</div></td>
-    <td style="white-space:nowrap">${esc(osText(d) || '—')}</td>
+    <td><b class="cut" title="${esc(d.name)}">${esc(d.name || '(no name)')}</b>${cut(d.serial || '', 'muted mono')}</td>
+    <td>${cut(d.model || '—')}${cut(makeName(d.make), 'muted')}</td>
+    <td>${cut(d.os || '—')}${cut(d.osVersion || '', 'muted')}</td>
     <td>${platformBadge(d.platform)}</td>
-    <td class="hide-sm">${esc(d.userName || '')}<div class="muted">${esc(d.userEmail || (d.userName ? '' : '—'))}</div></td>
-    <td class="hide-sm">${d.primaryFor.map(o => `<div>${esc(o.name)}${o.type === 'VIP' ? ' <span class="badge b-vip">VIP</span>' : ''}</div>`).join('') || '<span class="muted">—</span>'}</td>
+    <td class="hide-sm">${cut(d.userName || (d.userEmail ? '' : '—'))}${cut(d.userEmail || '', 'muted')}</td>
     <td class="hide-sm when ${daysOld(d.lastSeen) > 30 ? 'stale' : ''}" title="${esc(full(d.lastSeen))}">${esc(ago(d.lastSeen) || '—')}</td>
   </tr>`).join('');
-  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="7" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
+  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
 }
 
 function openDevice(id) {

@@ -21,14 +21,14 @@ from datetime import datetime, timedelta, timezone
 
 TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) and its access entry.
     # group is the heading it's listed under in the sidebar.
+    {"id": "devices", "group": "Device Management", "name": "Devices", "icon": "laptop", "url": "/devices/",
+     "about": "Every Mac, PC and phone in Jamf and Intune: make, model, OS, who uses it and whose primary device it is."},
     {"id": "notifications", "group": "Device Management", "name": "IT Notifications", "icon": "bell", "url": "/notifications/",
      "about": "Send branded notifications to Windows and Mac devices, and see who has read them."},
     {"id": "elevation", "group": "Device Management", "name": "Admin elevation log", "icon": "shield", "url": "/elevation/",
      "about": "Every Windows admin elevation request: who, which device, why, and how it ended."},
     {"id": "changes", "group": "Device Management", "name": "Change management", "icon": "changes", "url": "/changes/",
      "about": "Raise, review and approve changes to devices and services, through the right flow for each change type."},
-    {"id": "devices", "group": "Device Management", "name": "Devices", "icon": "laptop", "url": "/devices/",
-     "about": "Every Mac, PC and phone in Jamf and Intune: make, model, OS, who uses it and whose primary device it is."},
     {"id": "restart", "group": "Device Management", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",

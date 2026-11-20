@@ -2,8 +2,9 @@
 /data/inventory.db in the container).
 
     devices      every device from Jamf and Intune, as of the last sync (id = "jamf:<id>" / "intune:<id>")
-    users        the people imported by CSV (or added by hand), with their tags: team, line manager,
-                 user type (VIP / Standard) and primary device (a device id)
+    users        the people imported by CSV (or added by hand), with their tags: department, division
+                 (their team within it), line manager, user type (VIP / Standard) and primary device (a
+                 device id)
     connections  Jamf and Intune: where to connect, the client ID, the secret (encrypted) and how the
                  last sync went
 
@@ -21,7 +22,7 @@ from datetime import datetime, timezone
 from cryptography.fernet import Fernet, InvalidToken
 
 DEVICE_FIELDS = ("platform", "kind", "name", "make", "model", "os", "os_version", "serial", "user_email", "user_name", "last_seen")
-USER_FIELDS = ("name", "team", "manager", "user_type", "primary_device", "title", "department")
+USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title")
 
 
 def now() -> str:
@@ -52,6 +53,12 @@ class Store:
                     enabled INTEGER NOT NULL DEFAULT 1, last_sync TEXT, last_ok TEXT, last_error TEXT DEFAULT '',
                     last_count INTEGER, last_note TEXT DEFAULT '', updated_at TEXT, updated_by TEXT DEFAULT '');
             """)
+            have = {r[1] for r in db.execute("PRAGMA table_info(users)")}
+            if "division" not in have:
+                # A user's team is now their Division (within their Department): the old free-text
+                # Team tag moves across.
+                db.execute("ALTER TABLE users ADD COLUMN division TEXT DEFAULT ''")
+                db.execute("UPDATE users SET division = team WHERE COALESCE(team, '') != ''")
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)

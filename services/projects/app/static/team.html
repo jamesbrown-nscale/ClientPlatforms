@@ -52,6 +52,8 @@
   .filters { display: flex; gap: 8px; padding: 0 16px 12px; }
   .filters input, .filters select { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; min-width: 0; }
   .filters input { flex: 1; }
+  .grp2 { font-size: 12.5px; font-weight: 600; color: var(--text2); padding: 8px 16px 2px 28px; }
+  .filters.two select { flex: 1; }
   .grp { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 12px 16px 6px; border-top: 1px solid var(--surface); }
   .prow { display: flex; gap: 12px; align-items: center; padding: 10px 16px; cursor: pointer; }
   .prow:hover { background: var(--soft); }
@@ -171,7 +173,10 @@
     <div class="head"><h1>Team</h1><span style="flex:1"></span><button class="btn primary" id="addBtn" hidden>Add person</button></div>
     <div class="filters">
       <input type="search" id="q" placeholder="Search name, role or responsibility" aria-label="Search">
-      <select id="teamF" aria-label="Team"><option value="">All teams</option></select>
+    </div>
+    <div class="filters two">
+      <select id="deptF" aria-label="Department"><option value="">All departments</option></select>
+      <select id="teamF" aria-label="Sub team" hidden><option value="">All sub teams</option></select>
     </div>
     <div id="people"><div class="empty">Loading…</div></div>
   </section>
@@ -179,12 +184,13 @@
 </main>
 
 <datalist id="accounts"></datalist>
+<datalist id="depts"></datalist>
 <datalist id="teams"></datalist>
 
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-let ME = null, MEMBERS = [], TEAMS = [], ACCOUNTS = [], CUR = null, TAB = 'overview', ENTRIES = null, WORK = null, EDIT = null;
+let ME = null, MEMBERS = [], DEPTS = [], ACCOUNTS = [], CUR = null, TAB = 'overview', ENTRIES = null, WORK = null, EDIT = null;
 
 async function api(path, opts = {}) {
   const res = await fetch('api/' + path, { ...opts, cache: 'no-store',
@@ -220,28 +226,56 @@ function wellbeing(n) {
 /* ---------- The list ---------- */
 async function loadList() {
   const r = await api('members');
-  MEMBERS = r.members; TEAMS = r.teams;
-  const keep = $('teamF').value;
-  $('teamF').innerHTML = '<option value="">All teams</option>' + TEAMS.map(t => `<option>${esc(t)}</option>`).join('');
-  $('teamF').value = keep;
-  $('teams').innerHTML = TEAMS.map(t => `<option value="${esc(t)}">`).join('');
+  MEMBERS = r.members; DEPTS = r.departments;
+  // Only departments someone on the team is in, for the filter; every one (from Users) for the form.
+  const used = new Set(MEMBERS.map(m => m.department));
+  const keep = $('deptF').value;
+  $('deptF').innerHTML = '<option value="">All departments</option>' + DEPTS.filter(d => used.has(d.name))
+    .map(d => `<option value="${d.name ? esc(d.name) : '__none__'}">${esc(d.name || 'No department')}</option>`).join('');
+  $('deptF').value = [...$('deptF').options].some(o => o.value === keep) ? keep : '';
+  $('depts').innerHTML = DEPTS.filter(d => d.name).map(d => `<option value="${esc(d.name)}">`).join('');
+  drawTeamFilter();
   drawList();
 }
 
+const deptOf = v => v === '__none__' ? '' : v;
+function drawTeamFilter() {
+  const dv = $('deptF').value, keep = $('teamF').value;
+  const subs = dv ? [...new Set(MEMBERS.filter(m => m.department === deptOf(dv) && m.team).map(m => m.team))].sort() : [];
+  $('teamF').hidden = !subs.length;
+  $('teamF').innerHTML = '<option value="">All sub teams</option>' + subs.map(t => `<option>${esc(t)}</option>`).join('');
+  $('teamF').value = subs.includes(keep) ? keep : '';
+}
+
+/** Sub teams (divisions) to suggest in the form: those of the department typed, or all of them. */
+function subTeamList(dep) {
+  const d = (dep || '').trim().toLowerCase();
+  const names = new Set();
+  for (const x of DEPTS) if (!d || x.name.toLowerCase() === d) x.divisions.forEach(v => names.add(v));
+  $('teams').innerHTML = [...names].sort().map(t => `<option value="${esc(t)}">`).join('');
+}
+
 function drawList() {
-  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), tf = $('teamF').value;
-  const rows = MEMBERS.filter(m => (!tf || m.team === tf) && (!words.length || words.every(w => `${m.name} ${m.email} ${m.title} ${m.team} ${m.managerName}`.toLowerCase().includes(w))));
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), df = $('deptF').value, tf = $('teamF').value;
+  const rows = MEMBERS.filter(m => (!df || m.department === deptOf(df)) && (!tf || m.team === tf) &&
+    (!words.length || words.every(w => `${m.name} ${m.email} ${m.title} ${m.department} ${m.team} ${m.managerName}`.toLowerCase().includes(w))));
   if (!MEMBERS.length) { $('people').innerHTML = `<div class="empty">No one on the team yet.${ME.canAdd ? ' Add the first person.' : ''}</div>`; return; }
   if (!rows.length) { $('people').innerHTML = '<div class="empty">Nobody matches.</div>'; return; }
+  // Department, then sub team (Division), then people.
   const groups = {};
-  for (const m of rows) (groups[m.team || 'No team'] ||= []).push(m);
-  $('people').innerHTML = Object.keys(groups).sort((a, b) => (a === 'No team') - (b === 'No team') || a.localeCompare(b)).map(g => `<div class="grp">${esc(g)}</div>` +
-    groups[g].map(m => `<div class="prow" data-email="${esc(m.email)}" aria-current="${CUR?.email === m.email}" tabindex="0">
+  for (const m of rows) ((groups[m.department || ''] ||= {})[m.team || ''] ||= []).push(m);
+  const by = (a, b) => (a === '') - (b === '') || a.localeCompare(b);
+  const person = m => `<div class="prow" data-email="${esc(m.email)}" aria-current="${CUR?.email === m.email}" tabindex="0">
       <span class="av">${esc(initials(m.name))}</span>
       <div style="min-width:0"><div class="pname">${esc(m.name)}${m.email === ME.email ? ' <span class="chip blue">You</span>' : ''}</div>
         <div class="pmeta"><span>${esc(m.title || 'No role set')}</span>${m.managerName ? `<span>· reports to ${esc(m.managerName)}</span>` : ''}</div>
         <div class="pmeta"><span>${m.projects} project${m.projects === 1 ? '' : 's'}</span><span>${m.openTasks} open plan${m.openTasks === 1 ? '' : 's'}</span>
-          ${m.rights.personal && (m.lastOneToOne || m.manager) ? `<span>${m.lastOneToOne ? 'Last 1-2-1 ' + esc(ago(m.lastOneToOne)) : '<span class="late">No 1-2-1 yet</span>'}</span>` : ''}</div></div></div>`).join('')).join('');
+          ${m.rights.personal && (m.lastOneToOne || m.manager) ? `<span>${m.lastOneToOne ? 'Last 1-2-1 ' + esc(ago(m.lastOneToOne)) : '<span class="late">No 1-2-1 yet</span>'}</span>` : ''}</div></div></div>`;
+  $('people').innerHTML = Object.keys(groups).sort(by).map(d => {
+    const subs = groups[d], keys = Object.keys(subs).sort(by);
+    return `<div class="grp">${esc(d || 'No department')}</div>` + keys.map(t =>
+      (t || keys.length > 1 ? `<div class="grp2">${esc(t || 'No sub team')}</div>` : '') + subs[t].map(person).join('')).join('');
+  }).join('');
   $('people').querySelectorAll('.prow').forEach(r => { r.onclick = () => openPerson(r.dataset.email); r.onkeydown = e => { if (e.key === 'Enter') openPerson(r.dataset.email); }; });
 }
 
@@ -269,7 +303,7 @@ function drawPerson() {
   const n = k => ENTRIES?.entries?.[k]?.length || 0;
   $('person').innerHTML = `
     <div class="phead"><span class="av big">${esc(initials(m.name))}</span>
-      <div style="flex:1;min-width:0"><h2>${esc(m.name)}</h2><div class="role">${esc(m.title || 'No role set')}${m.team ? ' · ' + esc(m.team) : ''}</div>
+      <div style="flex:1;min-width:0"><h2>${esc(m.name)}</h2><div class="role">${esc(m.title || 'No role set')}${m.department ? ' · ' + esc(m.department) : ''}${m.team ? ' · ' + esc(m.team) : ''}</div>
         <div class="facts">${m.manager ? `<span>Reports to <a href="#" data-go="${esc(m.manager)}">${esc(m.managerName)}</a></span>` : '<span>No manager set</span>'}
           ${m.startDate ? `<span>Started ${esc(fmtDate(m.startDate))}</span>` : ''}${m.location ? `<span>${esc(m.location)}</span>` : ''}<span>${esc(m.email)}</span></div></div>
       <div style="display:flex;gap:8px">${r.edit ? '<button class="btn small" id="editP">Edit</button>' : ''}${r.delete ? '<button class="btn small danger" id="delP">Remove</button>' : ''}</div></div>
@@ -500,7 +534,8 @@ function profileForm(add) {
       ${add ? `<div class="fld"><label for="p_email">Email</label><input id="p_email" type="email" list="accounts" placeholder="name@nscale.com"></div>` : ''}
       <div class="fld${add ? '' : ' third'}"><label for="p_name">Name</label><input id="p_name" value="${esc(m.name || '')}" placeholder="From the email if empty" maxlength="100"></div>
       <div class="fld third"><label for="p_title">Role</label><input id="p_title" value="${esc(m.title || '')}" placeholder="Endpoint Engineer" maxlength="120"></div>
-      <div class="fld third"><label for="p_team">Team</label><input id="p_team" list="teams" value="${esc(m.team || '')}" placeholder="Client Platforms" maxlength="80"></div>
+      <div class="fld third"><label for="p_dept">Department</label><input id="p_dept" list="depts" value="${esc(m.department || '')}" placeholder="Technology" maxlength="200"></div>
+      <div class="fld third"><label for="p_team">Sub team</label><input id="p_team" list="teams" value="${esc(m.team || '')}" placeholder="Client Platforms" maxlength="200" title="Their Division"></div>
       ${mgrField}
       <div class="fld third"><label for="p_start">Start date</label><input id="p_start" type="date" value="${esc(m.startDate || '')}"></div>
       <div class="fld third"><label for="p_loc">Location</label><input id="p_loc" value="${esc(m.location || '')}" placeholder="London" maxlength="80"></div>
@@ -508,9 +543,22 @@ function profileForm(add) {
     </div>
     <div style="display:flex;gap:8px;margin-top:12px"><span style="flex:1"></span><button class="btn" id="p_cancel">Cancel</button><button class="btn primary" id="p_save">${add ? 'Add to team' : 'Save'}</button></div>`;
   $('p_cancel').onclick = () => add ? ($('person').innerHTML = '<div class="empty">Pick someone to see their role, responsibilities, projects and 1-2-1s.</div>') : drawPerson();
-  if (add) $('p_email').oninput = e => { const a = ACCOUNTS.find(x => x.email === e.target.value.trim().toLowerCase()); if (a && !$('p_name').value) $('p_name').value = a.name; };
+  subTeamList(m.department);
+  $('p_dept').oninput = () => subTeamList($('p_dept').value);
+  if (add) {
+    $('p_email').oninput = e => { const a = ACCOUNTS.find(x => x.email === e.target.value.trim().toLowerCase()); if (a && !$('p_name').value) $('p_name').value = a.name; };
+    // Someone in Users: their name, role, department and division, for anything still empty.
+    $('p_email').onchange = async () => {
+      const email = $('p_email').value.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+      const u = await api('lookup?email=' + enc(email)).catch(() => ({}));
+      const fill = (id, v) => { if (v && !$(id).value) $(id).value = v; };
+      fill('p_name', u.name); fill('p_title', u.title); fill('p_dept', u.department); fill('p_team', u.division);
+      subTeamList($('p_dept').value);
+    };
+  }
   $('p_save').onclick = async () => {
-    const body = { name: $('p_name').value, title: $('p_title').value, team: $('p_team').value, startDate: $('p_start').value,
+    const body = { name: $('p_name').value, title: $('p_title').value, department: $('p_dept').value, team: $('p_team').value, startDate: $('p_start').value,
       location: $('p_loc').value, about: $('p_about').value };
     if ($('p_manager')) body.manager = $('p_manager').value;
     try {
@@ -535,6 +583,7 @@ function remember() {
   $('addBtn').hidden = !ME.canAdd;
   $('addBtn').onclick = () => { CUR = null; drawList(); profileForm(true); };
   $('q').oninput = drawList; $('teamF').onchange = drawList;
+  $('deptF').onchange = () => { $('teamF').value = ''; drawTeamFilter(); drawList(); };
   const people = await fetch('/api/people', { cache: 'no-store' }).then(r => r.ok ? r.json() : { people: [] }).catch(() => ({ people: [] }));
   ACCOUNTS = people.people || [];
   $('accounts').innerHTML = ACCOUNTS.map(a => `<option value="${esc(a.email)}">${esc(a.name)}</option>`).join('');

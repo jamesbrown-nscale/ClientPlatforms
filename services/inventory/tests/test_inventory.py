@@ -58,6 +58,10 @@ class Fake:
             page, size = int(u.params["page"]), int(u.params["page-size"])
             return httpx.Response(200, json={"totalCount": len(self.computers), "results": self.computers[page * size:(page + 1) * size]})
         if u.path == "/api/v2/mobile-devices/detail":
+            if u.params["sort"] != "mobileDeviceId:asc":   # Jamf: "id" isn't a field here
+                return httpx.Response(400, json={"httpStatus": 400, "errors": [{"code": "INVALID_FIELD", "field": "sort", "description": "Invalid sort field"}]})
+            if self.mobile_status == 400:
+                return httpx.Response(400, json={"httpStatus": 400, "errors": [{"code": "INVALID_FIELD", "field": "section", "description": "Bad section"}]})
             if self.mobile_status != 200:
                 return httpx.Response(self.mobile_status, json={})
             return httpx.Response(200, json={"totalCount": 1, "results": [
@@ -165,6 +169,12 @@ def test_jamf_connection_and_sync(c, fake, tmp_path):
     phone = next(d for d in items if d["serial"] == "F2LXX")
     assert phone["kind"] == "mobile" and phone["userEmail"] == "amy.chen@nscale.com" and phone["model"] == "iPhone 15"
 
+    # Jamf turning down the phone list doesn't lose the Macs; the note says why.
+    fake.mobile_status = 400
+    r = main.sync("jamf")
+    assert r["ok"] and r["count"] == 2 and "Bad section (section)" in r["note"]
+    fake.mobile_status = 200
+
     # Saving without a secret keeps it; a wrong one is reported, and the devices stay.
     assert c.put("/devices/api/connections/jamf", headers=DA, json={"url": "https://nscale.jamfcloud.com", "clientId": "abc", "secret": ""}).status_code == 200
     assert main.sync("jamf")["ok"]
@@ -227,11 +237,11 @@ def test_sync_all_runs_whats_due(c, fake, monkeypatch):
 
 # ---------- Users ----------
 
-CSV = "﻿E-mail Address;Display Name;Team;Line Manager;VIP;Serial Number;Cost centre\n" \
-      "Amy.Chen@nscale.com;Amy Chen;Platform;Sam Lee;yes;C02AAA;123\n" \
-      "sam.lee@nscale.com;Sam Lee;Platform;;Standard;;\n" \
-      "not-an-email;Nobody;;;;;\n" \
-      "pat@nscale.com;Pat Jones;Support;boss@nscale.com;gold;NOPE;\n" \
+CSV = "﻿E-mail Address;Display Name;Dept;Team;Line Manager;VIP;Serial Number;Cost centre\n" \
+      "Amy.Chen@nscale.com;Amy Chen;Engineering;Platform;Sam Lee;yes;C02AAA;123\n" \
+      "sam.lee@nscale.com;Sam Lee;Engineering;Platform;;Standard;;\n" \
+      "not-an-email;Nobody;;;;;;\n" \
+      "pat@nscale.com;Pat Jones;;Support;boss@nscale.com;gold;NOPE;\n" \
       "\n"
 
 
@@ -253,20 +263,28 @@ def test_csv_import(c, fake):
     assert "no valid email" in msgs[4] and "VIP or Standard" in msgs[5] and "NOPE" in msgs[5]
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     amy = users["amy.chen@nscale.com"]
-    assert (amy["name"], amy["team"], amy["type"], amy["manager"], amy["managerName"]) == \
-        ("Amy Chen", "Platform", "VIP", "sam.lee@nscale.com", "Sam Lee")     # manager by name, from the same file
+    assert (amy["name"], amy["department"], amy["division"], amy["type"], amy["manager"], amy["managerName"]) == \
+        ("Amy Chen", "Engineering", "Platform", "VIP", "sam.lee@nscale.com", "Sam Lee")     # manager by name, from the same file
     assert amy["primaryDevice"]["serial"] == "C02AAA" and amy["primaryDevice"]["model"] == "MacBook Pro (14-inch, 2023)"
     assert users["pat@nscale.com"]["type"] == "Standard" and users["pat@nscale.com"]["manager"] == "boss@nscale.com"
     assert users["pat@nscale.com"]["primaryDevice"] is None
 
     # Again, with some changes: empty cells leave things alone.
-    again = c.post("/users/api/import", headers=UE, json={"csv": "email,team,user type\namy.chen@nscale.com,,Standard\nsam.lee@nscale.com,Platform,\n"}).json()
+    again = c.post("/users/api/import", headers=UE, json={"csv": "email,division,user type\namy.chen@nscale.com,,Standard\nsam.lee@nscale.com,Platform,\n"}).json()
     assert (again["added"], again["updated"], again["unchanged"]) == (0, 1, 1)
     amy = next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "amy.chen@nscale.com")
-    assert amy["team"] == "Platform" and amy["type"] == "Standard" and amy["primaryDevice"]["serial"] == "C02AAA"
+    assert amy["division"] == "Platform" and amy["type"] == "Standard" and amy["primaryDevice"]["serial"] == "C02AAA"
 
     stats = c.get("/users/api/users", headers=UV).json()
-    assert stats["teams"] == ["Platform", "Support"] and stats["stats"] == {"users": 3, "vip": 0, "withDevice": 1, "noDevice": 2}
+    assert stats["departments"] == [
+        {"name": "Engineering", "count": 2, "divisions": [{"name": "Platform", "count": 2}]},
+        {"name": "", "count": 1, "divisions": [{"name": "Support", "count": 1}]}]
+    assert stats["stats"] == {"users": 3, "vip": 0, "departments": 1, "withDevice": 1, "noDevice": 2}
+    # The Team tool reads these, inside the stack.
+    assert c.get("/internal/teams").json()["departments"] == stats["departments"]
+    assert c.get("/internal/users/Amy.Chen@nscale.com").json() == {"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "",
+        "department": "Engineering", "division": "Platform", "manager": "sam.lee@nscale.com", "managerName": "Sam Lee"}
+    assert c.get("/internal/users/ghost@nscale.com").status_code == 404
     devs = {d["serial"]: d for d in c.get("/devices/api/devices", headers=DV).json()["items"]}
     assert devs["C02AAA"]["primaryFor"] == [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "type": "Standard"}]
 
@@ -275,9 +293,9 @@ def test_tags(c, fake):
     connect_jamf(c)
     main.sync("jamf")
     assert c.post("/users/api/users", headers=UE, json={"email": "nope"}).status_code == 422
-    u = c.post("/users/api/users", headers=UE, json={"email": "Amy.Chen@nscale.com", "name": "Amy Chen", "team": " Platform ",
+    u = c.post("/users/api/users", headers=UE, json={"email": "Amy.Chen@nscale.com", "name": "Amy Chen", "division": " Platform ",
                                                      "type": "VIP", "manager": "sam.lee@nscale.com"}).json()
-    assert (u["email"], u["team"], u["type"], u["manager"], u["managerName"]) == ("amy.chen@nscale.com", "Platform", "VIP", "sam.lee@nscale.com", "")
+    assert (u["email"], u["division"], u["type"], u["manager"], u["managerName"]) == ("amy.chen@nscale.com", "Platform", "VIP", "sam.lee@nscale.com", "")
     assert c.post("/users/api/users", headers=UE, json={"email": "amy.chen@nscale.com"}).status_code == 409
     c.post("/users/api/users", headers=UE, json={"email": "sam.lee@nscale.com", "name": "Sam Lee"})
     u = c.get("/users/api/users", headers=UV).json()["items"][0]
@@ -288,10 +306,10 @@ def test_tags(c, fake):
     assert p({"type": "Gold"}).status_code == 422
     assert p({"primaryDevice": "C02ZZZ"}).status_code == 422
     did = next(d["id"] for d in c.get("/users/api/devices", headers=UV).json()["items"] if d["serial"] == "C02AAA")
-    u = p({"primaryDevice": did, "type": "Standard", "team": ""}).json()
-    assert u["primaryDevice"]["id"] == did and u["primaryDevice"]["platform"] == "Jamf" and u["type"] == "Standard" and u["team"] == ""
+    u = p({"primaryDevice": did, "type": "Standard", "division": ""}).json()
+    assert u["primaryDevice"]["id"] == did and u["primaryDevice"]["platform"] == "Jamf" and u["type"] == "Standard" and u["division"] == ""
     assert p({"manager": "Sam Lee"}).json()["manager"] == "sam.lee@nscale.com"   # by name
-    assert c.patch("/users/api/users/ghost@nscale.com", headers=UE, json={"team": "x"}).status_code == 404
+    assert c.patch("/users/api/users/ghost@nscale.com", headers=UE, json={"division": "x"}).status_code == 404
 
     # The device leaves Jamf: the tag stays, shown as gone.
     fake.computers = [x for x in fake.computers if x["hardware"]["serialNumber"] != "C02AAA"]
@@ -326,3 +344,19 @@ def test_addresses():
     assert connectors.tenant_id("nscale.onmicrosoft.com") == "nscale.onmicrosoft.com"
     with pytest.raises(ValueError):
         connectors.tenant_id("../evil")
+
+
+def test_old_team_tags_become_divisions(tmp_path):
+    import sqlite3 as sq
+    path = str(tmp_path / "old.db")
+    db = sq.connect(path)
+    db.execute("CREATE TABLE users (email TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', team TEXT DEFAULT '', manager TEXT DEFAULT '', "
+               "user_type TEXT DEFAULT 'Standard', primary_device TEXT DEFAULT '', title TEXT DEFAULT '', department TEXT DEFAULT '', "
+               "created_at TEXT, updated_at TEXT, updated_by TEXT DEFAULT '')")
+    db.execute("INSERT INTO users (email, name, team) VALUES ('a@nscale.com', 'A', 'Platform')")
+    db.commit()
+    db.close()
+    s = store_mod.Store(path, "s" * 40)
+    assert s.user("a@nscale.com")["division"] == "Platform"
+    store_mod.Store(path, "s" * 40)   # a second start doesn't run it again
+    assert s.user("a@nscale.com")["division"] == "Platform"

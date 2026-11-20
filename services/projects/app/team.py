@@ -3,8 +3,10 @@
 It runs in the Projects service (same database), so each person's projects, tasks and recent
 activity come from there.
 
-Each team member has a role (job title), team, manager, start date, location and a short "about",
-plus a list of responsibilities. Their record also holds:
+Each team member has a role (job title), department and sub team (their Division), manager, start
+date, location and a short "about", plus a list of responsibilities. The departments and divisions to
+pick from come from Users (the inventory service, read inside the stack at INVENTORY_URL), and adding
+someone who's in Users fills in their name, role, department and division. Their record also holds:
 
     one_to_one    1-2-1s: date, what was discussed, how they're doing (1-5), actions, next 1-2-1
     well          what's going well
@@ -20,12 +22,16 @@ Manager notes are never shown to the person they're about. Only admins add peopl
 or remove them; a manager can add someone who reports to them.
 """
 import json
+import os
 import re
+import time
 import uuid
 from datetime import date, timedelta
 from html import escape
 from html.parser import HTMLParser
+from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
@@ -39,6 +45,7 @@ KINDS = {"one_to_one": "1-2-1", "well": "What's going well", "improve": "Needs i
 PERSONAL = ("one_to_one", "well", "improve")      # the person can read these
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+INVENTORY_URL = os.environ.get("INVENTORY_URL", "http://inventory:8080").rstrip("/")
 
 router = APIRouter()
 _store: Store | None = None
@@ -57,7 +64,8 @@ def db():
 # ---------- People ----------
 
 def _member(r) -> dict:
-    return {"email": r["email"], "name": r["name"], "title": r["title"], "team": r["team"], "manager": r["manager"],
+    return {"email": r["email"], "name": r["name"], "title": r["title"], "department": r["department"] or "", "team": r["team"],
+            "manager": r["manager"],
             "startDate": r["start_date"], "location": r["location"], "about": r["about"],
             "updatedAt": r["updated_at"], "updatedBy": r["updated_by"]}
 
@@ -158,7 +166,8 @@ class MemberIn(BaseModel):
     email: str | None = Field(default=None, max_length=254)
     name: str | None = Field(default=None, max_length=100)
     title: str | None = Field(default=None, max_length=120)
-    team: str | None = Field(default=None, max_length=80)
+    department: str | None = Field(default=None, max_length=200)
+    team: str | None = Field(default=None, max_length=200)   # their sub team: the Division
     manager: str | None = Field(default=None, max_length=254)
     startDate: str | None = None
     location: str | None = Field(default=None, max_length=80)
@@ -222,11 +231,64 @@ def list_members(user: User = Depends(require_team_user)):
                     "projects": proj.get(m["email"], 0), "openTasks": open_t.get(m["email"], 0),
                     "responsibilities": resp.get(m["email"], 0),
                     "lastOneToOne": last121.get(m["email"]) if r["personal"] else None, "rights": r})
-    return {"members": out, "teams": sorted({m["team"] for m in members if m["team"]})}
+    return {"members": out, "departments": departments(members)}
+
+
+# ----- Departments and divisions, from Users -----
+
+_cache: dict = {"at": 0.0, "departments": None}
+
+
+def _inventory(path: str):
+    """GET from the inventory service inside the stack, or None if it can't be reached."""
+    try:
+        r = httpx.get(INVENTORY_URL + path, timeout=3)
+    except httpx.HTTPError:
+        return None
+    if r.status_code != 200:
+        return None
+    try:
+        return r.json()
+    except ValueError:
+        return None
+
+
+def user_departments() -> list[dict]:
+    """Departments and their divisions on the Users page (kept a minute), or [] if Users isn't there."""
+    if _cache["departments"] is None or time.time() - _cache["at"] > 60:
+        data = _inventory("/internal/teams")
+        _cache["departments"] = [{"name": d["name"], "divisions": [v["name"] for v in d.get("divisions") or []]}
+                                 for d in (data or {}).get("departments") or [] if d.get("name")]
+        _cache["at"] = time.time()
+    return _cache["departments"]
+
+
+def departments(members: list[dict]) -> list[dict]:
+    """Every department and its sub teams: from Users, plus any the team uses that Users doesn't have.
+    [{name, divisions: [..]}], sorted; "" holds sub teams with no department."""
+    tree: dict[str, set] = {}
+    for d in user_departments():
+        tree.setdefault(d["name"], set()).update(d["divisions"])
+    for m in members:
+        if m["department"] or m["team"]:
+            divs = tree.setdefault(m["department"], set())
+            if m["team"]:
+                divs.add(m["team"])
+    return [{"name": k, "divisions": sorted(tree[k], key=str.lower)} for k in sorted(tree, key=lambda x: (x == "", x.lower()))]
+
+
+@router.get("/api/lookup")
+def lookup(email: str, user: User = Depends(require_team_user)):
+    """Someone's name, role, department and division from Users, to fill in when adding them."""
+    email = email.strip().lower()
+    if not EMAIL.match(email):
+        return {}
+    data = _inventory("/internal/users/" + quote(email, safe="@")) or {}
+    return {k: data.get(k, "") for k in ("name", "title", "department", "division")} if data else {}
 
 
 def _apply(m: dict, body: MemberIn) -> dict:
-    for k in ("name", "title", "team", "location", "about"):
+    for k in ("name", "title", "department", "team", "location", "about"):
         v = getattr(body, k)
         if v is not None:
             m[k] = v.strip()
@@ -250,14 +312,14 @@ def _save(m: dict, user: User, new: bool) -> None:
     t = now()
     with _store.lock, db() as d:
         if new:
-            d.execute("INSERT INTO team_members (email, name, title, team, manager, start_date, location, about, created_at, updated_at, updated_by) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      (m["email"], m["name"], m.get("title", ""), m.get("team", ""), m.get("manager", ""), m.get("startDate", ""),
+            d.execute("INSERT INTO team_members (email, name, title, department, team, manager, start_date, location, about, created_at, updated_at, updated_by) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (m["email"], m["name"], m.get("title", ""), m.get("department", ""), m.get("team", ""), m.get("manager", ""), m.get("startDate", ""),
                        m.get("location", ""), m.get("about", ""), t, t, user.email))
         else:
-            d.execute("UPDATE team_members SET name = ?, title = ?, team = ?, manager = ?, start_date = ?, location = ?, about = ?, "
+            d.execute("UPDATE team_members SET name = ?, title = ?, department = ?, team = ?, manager = ?, start_date = ?, location = ?, about = ?, "
                       "updated_at = ?, updated_by = ? WHERE email = ?",
-                      (m["name"], m["title"], m["team"], m["manager"], m["startDate"], m["location"], m["about"], t, user.email, m["email"]))
+                      (m["name"], m["title"], m["department"], m["team"], m["manager"], m["startDate"], m["location"], m["about"], t, user.email, m["email"]))
 
 
 @router.post("/api/members")

@@ -4,7 +4,7 @@ import os
 import tempfile
 
 SECRET = "p" * 40
-os.environ.update(BASE_PATH="/projects", AUTH_MODE="local", AUTH_SECRET=SECRET, DEV_USER="",
+os.environ.update(BASE_PATH="/projects", AUTH_MODE="local", AUTH_SECRET=SECRET, DEV_USER="", INVENTORY_URL="http://127.0.0.1:9",
                   DATABASE_PATH=os.path.join(tempfile.mkdtemp(), "p.db"))
 
 import pytest  # noqa: E402

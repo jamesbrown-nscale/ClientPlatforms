@@ -104,6 +104,7 @@ class Store:
                 author TEXT, author_name TEXT, body TEXT DEFAULT '', step INTEGER, mentions TEXT DEFAULT '[]', data TEXT, created_at TEXT);
             CREATE INDEX IF NOT EXISTS change_activity_change ON change_activity(change_id, created_at);
             """)
+            self._add_columns(db, "team_members", {"department": "TEXT DEFAULT ''"})   # team is their sub team (Division) within it
 
     @staticmethod
     def _add_columns(db, table: str, cols: dict) -> None:

@@ -27,6 +27,7 @@ def c(tmp_path, monkeypatch):
     tasks.setup(s, main.STATIC)
     team.setup(s, main.STATIC)
     main.inbox.setup(s, main.STATIC)
+    monkeypatch.setitem(team._cache, "departments", None)
     with TestClient(main.app) as client:
         # Admin sets up James; James adds Amy (who then reports to him); admin adds Bob.
         assert client.post(BASE, headers=ADMIN, json={"email": "james.brown@nscale.com", "title": "Client Platforms Lead"}).status_code == 200
@@ -153,3 +154,29 @@ def test_formatted_notes_are_kept_safe(c):
     r = c.put(f"{BASE}/amy.chen@nscale.com/entries/{one['id']}", headers=MGR, json={"data": {**one["data"], "actions": [{"text": "Book it"}]}}).json()
     assert r["entries"]["one_to_one"][0]["data"]["html"] == one["data"]["html"]
     assert c.post(f"{BASE}/amy.chen@nscale.com/entries", headers=MGR, json={"kind": "one_to_one", "data": {"html": "<p><br></p>"}}).status_code == 422
+
+
+def test_departments_and_sub_teams_come_from_users(c, monkeypatch):
+    # Users isn't reachable: just what the team itself uses.
+    assert c.get(BASE, headers=BOB).json()["departments"] == [{"name": "", "divisions": ["Client Platforms"]}]
+    answers = {"/internal/teams": {"departments": [
+                   {"name": "Technology", "count": 40, "divisions": [{"name": "Client Platforms", "count": 6}, {"name": "Network", "count": 9}]},
+                   {"name": "Finance", "count": 12, "divisions": []}]},
+               "/internal/users/cj@nscale.com": {"email": "cj@nscale.com", "name": "CJ Ng", "title": "Engineer",
+                                                 "department": "Technology", "division": "Network", "manager": "", "managerName": ""}}
+    asked = []
+    monkeypatch.setattr(team, "_inventory", lambda path: asked.append(path) or answers.get(path))
+    monkeypatch.setitem(team._cache, "departments", None)
+    c.patch(f"{BASE}/amy.chen@nscale.com", headers=MGR, json={"department": "Technology"})
+    c.patch(f"{BASE}/bob.smith@nscale.com", headers=ADMIN, json={"department": "Operations", "team": "Facilities"})
+    got = c.get(BASE, headers=BOB).json()
+    assert got["departments"] == [{"name": "Finance", "divisions": []}, {"name": "Operations", "divisions": ["Facilities"]},
+                                  {"name": "Technology", "divisions": ["Client Platforms", "Network"]}]
+    amy = next(m for m in got["members"] if m["email"] == "amy.chen@nscale.com")
+    assert (amy["department"], amy["team"]) == ("Technology", "Client Platforms")
+    c.get(BASE, headers=BOB)
+    assert asked.count("/internal/teams") == 1   # kept a minute
+    # Adding someone who's in Users fills them in.
+    assert c.get("/team/api/lookup?email=CJ@nscale.com", headers=ADMIN).json() == {"name": "CJ Ng", "title": "Engineer", "department": "Technology", "division": "Network"}
+    assert c.get("/team/api/lookup?email=ghost@nscale.com", headers=ADMIN).json() == {}
+    assert c.get("/team/api/lookup?email=x/../y", headers=ADMIN).json() == {}

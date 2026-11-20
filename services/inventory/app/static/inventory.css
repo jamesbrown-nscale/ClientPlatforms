@@ -61,6 +61,11 @@ tbody tr { cursor: pointer; }
 tbody tr:hover { background: #F7F9FE; }
 tbody tr:last-child td { border-bottom: 0; }
 td b { font-weight: 600; }
+table.fit { table-layout: fixed; }
+table.fit th { white-space: normal; }
+table.fit td { overflow: hidden; }
+.cut { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (max-width: 700px) { table.fit col.hide-sm { display: none; } table.fit { table-layout: auto; } }
 .muted { color: var(--text2); font-size: 12.5px; }
 .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
 .when { white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -72,6 +77,16 @@ td b { font-weight: 600; }
 .b-std { background: var(--grey-fill); color: var(--text2); }
 .b-gone { background: var(--err-fill); color: var(--err); }
 .b-team { background: var(--surface); color: var(--text); font-weight: 500; }
+.grpby { display: inline-flex; gap: 6px; align-items: center; color: var(--text2); font-size: 13px; cursor: pointer; white-space: nowrap; }
+tr.gh td, tr.gh2 td { padding: 0; background: var(--page); cursor: default; }
+tr.gh2 td { background: #F8FAFE; }
+tr.gh:hover, tr.gh2:hover { background: none; }
+tr.gh button, tr.gh2 button { all: unset; box-sizing: border-box; display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 9px 14px; cursor: pointer; font-weight: 700; }
+tr.gh2 button { padding: 7px 14px 7px 34px; font-weight: 600; font-size: 13px; }
+tr.gh button:focus-visible, tr.gh2 button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+tr.gh .muted, tr.gh2 .muted { font-weight: 400; }
+.chev { display: inline-block; transition: transform .15s; color: var(--text2); }
+[aria-expanded="false"] > .chev { transform: rotate(-90deg); }
 .empty { color: var(--text2); text-align: center; padding: 48px 16px; }
 .empty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
 .notice { border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; background: var(--err-fill); color: var(--err); }
