@@ -88,7 +88,8 @@ def test_section_rules(c):
     b = c.post(url(pid, "/items/budget"), headers=AMY, json={"category": "Hardware", "description": "Laptops",
                                                             "quantity": "250", "unitCost": "£1,000", "actual": "200000"}).json()
     assert b["data"]["planned"] == 250000 and b["data"]["variance"] == 50000
-    assert c.post(url(pid, "/items/documents"), headers=AMY, json={"title": "Design", "link": "javascript:alert(1)"}).status_code == 422
+    assert c.post(url(pid, "/items/documents"), headers=AMY, json={"title": "Design", "url": "javascript:alert(1)"}).status_code == 422
+    assert c.post(url(pid, "/items/documents"), headers=AMY, json={"title": "Design"}).status_code == 200   # a file can be uploaded instead
     assert c.post(url(pid, "/items/nope"), headers=AMY, json={}).status_code == 404
     # Updates log, newest first; quick action.
     r = c.post(url(pid, "/items/issues"), headers=AMY, json={"title": "Imaging fails", "updates": [

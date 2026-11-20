@@ -14,20 +14,22 @@ owner. Client Platforms admins can open every project as an owner.
 People:   /                          the page (signed in at the front door, see auth.py)
           /api/meta                  the section definitions the page draws from
           /api/projects[/{id}]       projects; /summary, /status-draft, /members, /items/{section}
+          …/items/{section}/{id}/file   a record's file: upload, download, versions, edit (files.py)
 
 All of it sits under BASE_PATH (/projects).
 Settings: DATABASE_PATH, AUTH_MODE, AUTH_SECRET, PORTAL_URL, BASE_PATH.
 """
 import os
 import re
+from urllib.parse import quote, unquote
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, changes, inbox, modules, tasks, team
+from . import access, auth, changes, files, inbox, modules, tasks, team
 from .auth import User, require_user
 from .modules import BY_KEY, ValidationError
 from .store import Store
@@ -349,6 +351,147 @@ def delete_item(pid: str, key: str, iid: str, user: User = Depends(require_user)
         raise HTTPException(404, "Record not found.")
     store.delete_item(pid, iid)
     return {"ok": True}
+
+
+# ---------- Files kept with a record (see files.py) ----------
+
+def _record_with_file(pid: str, key: str, iid: str) -> dict:
+    mod = section(key)
+    old = store.item(pid, iid)
+    if not old or old["module"] != key or not any(f["type"] == "file" for f in mod["fields"]):
+        raise HTTPException(404, "Record not found.")
+    return old
+
+
+def _keep_file(pid: str, item: dict, name: str, data: bytes, user: User, note: str = "") -> dict:
+    """Store the next version and note it on the record."""
+    try:
+        files.check(name, data)
+    except files.FileError as e:
+        raise HTTPException(422, str(e))
+    v = store.add_file(item["id"], name, data, user.email, note, files.MAX_VERSIONS)
+    info = {"name": name, "size": len(data), "kind": files.kind_of(name), "version": v["version"],
+            "updatedAt": v["createdAt"], "updatedBy": user.email}
+    return store.update_item(pid, item["id"], {**item["data"], "file": info}, user.email)
+
+
+@app.post("/api/projects/{pid}/items/{key}/{iid}/file")
+async def upload_file(pid: str, key: str, iid: str, request: Request, user: User = Depends(require_user)):
+    """The file is the request body; its name is in X-Filename (URL-encoded). A new version each time."""
+    need(pid, user, "Owner", "Editor")
+    item = _record_with_file(pid, key, iid)
+    if int(request.headers.get("content-length") or 0) > files.MAX_BYTES:
+        raise HTTPException(413, f"Files can be at most {files.MAX_BYTES // (1024 * 1024)} MB.")
+    base = request.headers.get("x-base-version")   # sent when saving an edit made in the page
+    latest = (item["data"].get("file") or {}).get("version")
+    if base and latest and str(latest) != base:
+        raise HTTPException(409, f"Someone saved a newer version (version {latest}) while you were editing. "
+                                 "Copy your changes, then open it again.")
+    name = files.clean_name(unquote(request.headers.get("x-filename", "")))
+    data = await request.body()
+    return _keep_file(pid, item, name, data, user, unquote(request.headers.get("x-note", ""))[:200])
+
+
+@app.get("/api/projects/{pid}/items/{key}/{iid}/file")
+def download_file(pid: str, key: str, iid: str, v: int | None = None, view: bool = False, user: User = Depends(require_user)):
+    """The file (or version v). view=1 shows PDFs, pictures and plain text in the page; everything else downloads."""
+    need(pid, user, *ROLES)
+    _record_with_file(pid, key, iid)
+    got = store.file_data(iid, v)
+    if not got:
+        raise HTTPException(404, "No file.")
+    info, data = got
+    e = files.ext_of(info["name"])
+    inline = view and e in files.INLINE
+    headers = {"Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(info['name'])}",
+               "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
+    if inline and e != "pdf":
+        headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+    return Response(data, media_type=files.INLINE[e] if inline else files.type_of(info["name"]), headers=headers)
+
+
+@app.get("/api/projects/{pid}/items/{key}/{iid}/file/versions")
+def file_versions(pid: str, key: str, iid: str, user: User = Depends(require_user)):
+    need(pid, user, *ROLES)
+    _record_with_file(pid, key, iid)
+    return {"versions": store.files(iid), "keep": files.MAX_VERSIONS}
+
+
+class RestoreIn(BaseModel):
+    version: int
+
+
+@app.post("/api/projects/{pid}/items/{key}/{iid}/file/restore")
+def restore_file(pid: str, key: str, iid: str, body: RestoreIn, user: User = Depends(require_user)):
+    """An older version becomes the newest (nothing is lost: the one it replaces stays a version)."""
+    need(pid, user, "Owner", "Editor")
+    item = _record_with_file(pid, key, iid)
+    got = store.file_data(iid, body.version)
+    if not got:
+        raise HTTPException(404, "No such version.")
+    info, data = got
+    return _keep_file(pid, item, info["name"], data, user, f"Restored version {body.version}")
+
+
+def _office(pid: str, key: str, iid: str, user: User, kind: str, *roles: str) -> tuple[dict, dict, bytes]:
+    need(pid, user, *roles)
+    item = _record_with_file(pid, key, iid)
+    got = store.file_data(iid)
+    if not got or files.kind_of(got[0]["name"]) != kind:
+        raise HTTPException(404, f"No {kind} file.")
+    return item, got[0], got[1]
+
+
+class EditIn(BaseModel):
+    version: int                                   # the version the page opened, so a newer save isn't overwritten
+    blocks: list = Field(default_factory=list)     # Word
+    edits: list = Field(default_factory=list)      # Excel
+
+
+def _same_version(info: dict, body: EditIn) -> None:
+    if info["version"] != body.version:
+        raise HTTPException(409, f"Someone saved a newer version (version {info['version']}) while you were editing. "
+                                 "Copy your changes, then open it again.")
+
+
+@app.get("/api/projects/{pid}/items/{key}/{iid}/file/docx")
+def read_docx(pid: str, key: str, iid: str, user: User = Depends(require_user)):
+    _, info, data = _office(pid, key, iid, user, "docx", *ROLES)
+    try:
+        return {**files.docx_blocks(data), "version": info["version"], "name": info["name"]}
+    except Exception:
+        raise HTTPException(422, "This Word document can't be opened here. Download it to open it in Word.")
+
+
+@app.put("/api/projects/{pid}/items/{key}/{iid}/file/docx")
+def save_docx(pid: str, key: str, iid: str, body: EditIn, user: User = Depends(require_user)):
+    item, info, data = _office(pid, key, iid, user, "docx", "Owner", "Editor")
+    _same_version(info, body)
+    try:
+        out = files.docx_save(data, body.blocks)
+    except files.FileError as e:
+        raise HTTPException(422, str(e))
+    return _keep_file(pid, item, info["name"], out, user, "Edited in the page")
+
+
+@app.get("/api/projects/{pid}/items/{key}/{iid}/file/xlsx")
+def read_xlsx(pid: str, key: str, iid: str, user: User = Depends(require_user)):
+    _, info, data = _office(pid, key, iid, user, "xlsx", *ROLES)
+    try:
+        return {**files.xlsx_sheets(data), "version": info["version"], "name": info["name"]}
+    except Exception:
+        raise HTTPException(422, "This workbook can't be opened here. Download it to open it in Excel.")
+
+
+@app.put("/api/projects/{pid}/items/{key}/{iid}/file/xlsx")
+def save_xlsx(pid: str, key: str, iid: str, body: EditIn, user: User = Depends(require_user)):
+    item, info, data = _office(pid, key, iid, user, "xlsx", "Owner", "Editor")
+    _same_version(info, body)
+    try:
+        out = files.xlsx_save(data, body.edits)
+    except files.FileError as e:
+        raise HTTPException(422, str(e))
+    return _keep_file(pid, item, info["name"], out, user, "Edited in the page")
 
 
 class TemplateIn(BaseModel):

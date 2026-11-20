@@ -140,6 +140,19 @@ Small project workspaces with the sections of TechOps' Project Management worksp
 | **Closure** | Lessons Learned · Closure & Handover checklist (standard set in one click) |
 | **Access** | Members |
 
+**Document Library files.** A document can hold the file itself, not just a link: drop it on the form or choose it (up to 25 MB). Click the file's name to open it in the page:
+
+| File | In the page |
+|---|---|
+| Word (`.docx`) | Edit paragraphs and tables: headings, lists, bold, italic and underline. Only what you change is rewritten, so pictures, page layout, headers and footers stay as they were. |
+| Excel (`.xlsx`) | Edit cells on each sheet; formulas are kept and Excel works them out when the workbook is next opened. Workbooks with charts, pictures or pivot tables open view only, since saving them here would drop those. |
+| CSV, TSV | Edit as a grid (or as text); paste cells straight from Excel. |
+| Text, Markdown, JSON … | Edit as text. |
+| PDF, pictures | View. |
+| Anything else (PowerPoint, `.doc`, `.xls` …) | Download, change it, then **Upload a new version**. |
+
+Each upload or save is a new version: **Versions** lists the newest 20, to download or restore. Viewers can open and download; owners and editors upload and edit. If someone else saves while you're editing, your save is refused rather than overwriting theirs. The files are kept in the projects database (`/data/projects.db`).
+
 **Who sees what.** Give people the **Projects** tool under Settings → People. Anyone with it can create a project and becomes its owner. Each project's **Members** list decides who else sees it: *Owners* change everything, including members and the project's details; *Editors* add and change records; *Viewers* only look. A project always keeps at least one owner. Client Platforms admins can open every project as an owner.
 
 ## Team Planning

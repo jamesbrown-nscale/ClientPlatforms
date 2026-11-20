@@ -3,6 +3,7 @@
     projects  one row per project (name, description, status, currency, approved budget)
     members   who can see each project, and as what: Owner, Editor or Viewer
     items     every record in every section, as JSON, with its reference number (RSK-001 …)
+    item_files   files kept with a record, every version (files.py; the Document Library)
     tasks, task_activity, pipeline_jobs   Team Planning (tasks.py; once called Tasks)
     team_*    the Team tool (team.py): people, responsibilities, 1-2-1s, feedback, manager notes
     notifications   each person's own notifications (inbox.py)
@@ -37,6 +38,11 @@ class Store:
                     module TEXT NOT NULL, ref TEXT, data TEXT NOT NULL, source TEXT,
                     created_at TEXT, created_by TEXT, updated_at TEXT, updated_by TEXT);
                 CREATE INDEX IF NOT EXISTS items_project ON items(project_id, module);
+                CREATE TABLE IF NOT EXISTS item_files (
+                    id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+                    version INTEGER NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, data BLOB NOT NULL,
+                    note TEXT DEFAULT '', created_at TEXT, created_by TEXT);
+                CREATE INDEX IF NOT EXISTS item_files_item ON item_files(item_id, version);
             """)
             # Team Planning (see tasks.py), in the same database so a plan can belong to a project.
             db.executescript("""
@@ -204,6 +210,37 @@ class Store:
     def delete_item(self, pid: str, iid: str) -> bool:
         with self.lock, self.db() as db:
             return db.execute("DELETE FROM items WHERE project_id = ? AND id = ?", (pid, iid)).rowcount > 0
+
+    # ----- files kept with a record (each save a new version) -----
+
+    @staticmethod
+    def _file(r) -> dict:
+        return {"id": r["id"], "version": r["version"], "name": r["name"], "size": r["size"], "note": r["note"] or "",
+                "createdAt": r["created_at"], "createdBy": r["created_by"]}
+
+    def add_file(self, iid: str, name: str, data: bytes, by: str, note: str = "", keep: int = 20) -> dict:
+        with self.lock, self.db() as db:
+            v = (db.execute("SELECT MAX(version) FROM item_files WHERE item_id = ?", (iid,)).fetchone()[0] or 0) + 1
+            fid = uuid.uuid4().hex
+            db.execute("INSERT INTO item_files (id, item_id, version, name, size, data, note, created_at, created_by) "
+                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (fid, iid, v, name, len(data), data, note, now(), by))
+            db.execute("DELETE FROM item_files WHERE item_id = ? AND version <= ?", (iid, v - keep))
+            return self._file(db.execute("SELECT * FROM item_files WHERE id = ?", (fid,)).fetchone())
+
+    def files(self, iid: str) -> list[dict]:
+        with self.db() as db:
+            return [self._file(r) for r in db.execute("SELECT id, item_id, version, name, size, note, created_at, created_by "
+                                                      "FROM item_files WHERE item_id = ? ORDER BY version DESC", (iid,))]
+
+    def file_data(self, iid: str, version: int | None = None) -> tuple[dict, bytes] | None:
+        with self.db() as db:
+            r = db.execute("SELECT * FROM item_files WHERE item_id = ? AND version = ?", (iid, version)).fetchone() if version else \
+                db.execute("SELECT * FROM item_files WHERE item_id = ? ORDER BY version DESC LIMIT 1", (iid,)).fetchone()
+            return (self._file(r), bytes(r["data"])) if r else None
+
+    def drop_files(self, iid: str) -> None:
+        with self.lock, self.db() as db:
+            db.execute("DELETE FROM item_files WHERE item_id = ?", (iid,))
 
     def items_from(self, pid: str, meeting_id: str) -> list[dict]:
         """Action Log records made from a meeting's actions."""

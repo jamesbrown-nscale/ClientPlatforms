@@ -1446,10 +1446,11 @@
    "label": "Document Library",
    "singular": "Document",
    "icon": "documents",
-   "description": "Links to the business case, designs, SOWs, approvals and other key documents.",
+   "description": "The business case, designs, SOWs, approvals and other key documents: upload them, or link to where they live.",
    "titleField": "title",
    "columns": [
     "title",
+    "file",
     "type",
     "version",
     "owner",
@@ -1466,12 +1467,19 @@
      "placeholder": "e.g. Intune migration business case"
     },
     {
+     "key": "file",
+     "label": "File",
+     "type": "file",
+     "width": "full"
+    },
+    {
      "key": "url",
      "label": "Link",
      "type": "url",
-     "required": true,
+     "required": false,
      "width": "full",
-     "placeholder": "https://contoso.sharepoint.com/…"
+     "placeholder": "https://contoso.sharepoint.com/…",
+     "hint": "Or link to where it lives, such as SharePoint."
     },
     {
      "key": "type",

@@ -6,7 +6,8 @@ draws its lists and forms from these definitions; this module checks what comes 
 the computed fields, and builds the dashboard and the draft status report.
 
 Field types: text, textarea, date, select, scale (1-5), rag, number, currency, url,
-user (one person), users (several), updates (dated progress log), actions (meeting actions), computed.
+user (one person), users (several), updates (dated progress log), actions (meeting actions), computed,
+file (an uploaded file with its versions; see files.py).
 People are kept as plain names or emails.
 """
 import json
@@ -59,6 +60,9 @@ def sanitize(mod: dict, raw: dict, existing: dict | None = None) -> dict:
     for f in mod["fields"]:
         k, t, label = f["key"], f["type"], f["label"]
         if t == "computed":
+            continue
+        if t == "file":   # set only by uploading (main.py's file routes), never from the form
+            data[k] = (existing or {}).get(k) or None
             continue
         v = raw.get(k)
         if f.get("hidden") and v is None and existing:

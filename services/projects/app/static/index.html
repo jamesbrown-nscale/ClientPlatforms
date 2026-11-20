@@ -155,6 +155,65 @@
   .x { width: 32px; height: 38px; border: 0; background: transparent; cursor: pointer; color: var(--text2); font-size: 18px; border-radius: 8px; }
   .x:hover { background: var(--err-fill); color: var(--err); }
   .add-row { padding: 8px 10px; }
+  /* A document's file (docs.js) */
+  .fdrop { display: flex; align-items: center; gap: 12px; border: 1.5px dashed var(--border); border-radius: 10px; padding: 16px 18px; background: #fff; cursor: pointer; }
+  .fdrop:hover, .fdrop.over { border-color: var(--primary); background: var(--soft); }
+  .fdrop u { color: var(--primary); }
+  .fcard { display: flex; align-items: center; gap: 12px; border: 1px solid var(--surface); border-radius: 10px; padding: 12px 14px; background: #fff; }
+  .fmeta { display: flex; flex-direction: column; min-width: 0; }
+  .fmeta b { overflow-wrap: anywhere; } .fmeta span { font-size: 12.5px; color: var(--text2); }
+  .facts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
+  .fext { display: inline-grid; place-items: center; min-width: 36px; height: 22px; padding: 0 5px; border-radius: 5px; color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .03em; flex-shrink: 0; }
+  .fchip { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 2px 4px; margin: -2px -4px; border-radius: 6px; cursor: pointer; text-align: left; max-width: 280px; }
+  .fchip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary); }
+  .fchip:hover { background: var(--surface); }
+  .vtable { margin-top: 10px; border: 1px solid var(--surface); border-radius: 8px; }
+  .vtable td { font-size: 13px; vertical-align: middle; }
+  .ed { position: fixed; inset: 0; z-index: 30; background: var(--page); display: flex; flex-direction: column; }
+  .ed[hidden] { display: none; }
+  .edhd { display: flex; align-items: center; gap: 12px; padding: 10px 18px; background: var(--bg); border-bottom: 1px solid var(--surface); flex-wrap: wrap; }
+  .edt { display: flex; align-items: baseline; gap: 4px; min-width: 0; } .edt b { overflow-wrap: anywhere; }
+  .edtools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .edtools .fmt { width: 30px; padding: 0; justify-content: center; }
+  .ed .notice { margin: 10px 18px 0; } .ed .notice:not(.ok) { }
+  .edbody { flex: 1; overflow: auto; position: relative; display: flex; flex-direction: column; }
+  .edframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  .edimg { padding: 24px; text-align: center; } .edimg img { max-width: 100%; box-shadow: 0 4px 20px rgba(4,14,39,.15); background: #fff; }
+  .edtext { flex: 1; margin: 16px 18px; border: 1px solid var(--border); border-radius: 8px; padding: 14px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: none; outline: none; background: #fff; }
+  .gridwrap, .xgrid { flex: 1; overflow: auto; background: #fff; }
+  .xgrid .gridwrap { overflow: visible; }
+  table.sheet { border-collapse: separate; border-spacing: 0; width: auto; font-size: 13px; }
+  table.sheet th { position: sticky; top: 0; z-index: 2; background: #F1F3F8; color: var(--text2); font-weight: 600; text-align: center; padding: 3px 8px; border: 0; border-right: 1px solid #DDE2EC; border-bottom: 1px solid #DDE2EC; text-transform: none; letter-spacing: 0; font-size: 11.5px; }
+  table.sheet th.rn { position: sticky; left: 0; z-index: 1; min-width: 44px; }
+  table.sheet thead th.rn { z-index: 3; }
+  table.sheet td { min-width: 110px; max-width: 360px; padding: 4px 7px; border: 0; border-right: 1px solid #E6E9F0; border-bottom: 1px solid #E6E9F0; white-space: pre-wrap; vertical-align: top; outline: none; }
+  table.sheet td:focus { box-shadow: inset 0 0 0 2px var(--primary); background: #F5F8FF; }
+  table.sheet td.fx { color: #006B4A; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .ed .tabs { display: flex; gap: 4px; padding: 6px 12px; background: var(--bg); border-top: 1px solid var(--surface); align-items: center; flex-wrap: wrap; }
+  .ed .tabs button { border: 1px solid transparent; background: transparent; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .ed .tabs button[aria-pressed="true"] { background: #fff; border-color: var(--border); font-weight: 600; color: var(--primary); }
+  .page { width: min(816px, calc(100% - 32px)); margin: 24px auto 60px; background: #fff; box-shadow: 0 4px 24px rgba(4,14,39,.12); padding: 64px 72px; min-height: 900px;
+          font: 15px/1.55 Calibri, "Segoe UI", system-ui, sans-serif; color: #111; }
+  .page .blk { outline: none; border-radius: 3px; }
+  .page .blk.p { min-height: 1.55em; margin: 0 0 8px; padding: 1px 4px; white-space: pre-wrap; }
+  .page .blk.p:focus { background: #F7F9FE; box-shadow: -3px 0 0 var(--primary); }
+  .page .blk.title { font-size: 30px; font-weight: 300; line-height: 1.2; margin-bottom: 14px; }
+  .page .blk.h1 { font-size: 22px; font-weight: 600; color: #1F3864; margin-top: 18px; }
+  .page .blk.h2 { font-size: 18px; font-weight: 600; color: #2F5496; margin-top: 12px; }
+  .page .blk.h3 { font-size: 16px; font-weight: 600; color: #2F5496; }
+  .page .blk.quote { font-style: italic; color: #404040; border-left: 3px solid #C9CED9; padding-left: 12px; }
+  .page .blk.list { padding-left: 26px; position: relative; }
+  .page .blk.list::before { content: "•"; position: absolute; left: 10px; }
+  .page .blk.locked { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 8px 12px; background: #F3F5FB; border: 1px dashed #C1CFF7; color: var(--text2); font-size: 13px; }
+  .page .blk.locked span { flex: 1; }
+  .page .blk.tbl { margin: 4px 0 12px; padding: 1px; overflow-x: auto; }
+  .dtable { border-collapse: collapse; width: 100%; }
+  .dtable td { border: 1px solid #BFC5D2; padding: 5px 8px; vertical-align: top; min-width: 60px; white-space: pre-wrap; outline: none; }
+  .dtable td:focus { box-shadow: inset 0 0 0 2px var(--primary); }
+  .dtable tr:last-child td { border-bottom: 1px solid #BFC5D2; }
+  table.sheet tr:last-child td { border-bottom: 1px solid #E6E9F0; }
+  @media (max-width: 800px) { .page { padding: 28px 22px; } }
   dl.meta { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px; margin: 18px 0 0; font-size: 12.5px; color: var(--text2); }
   dl.meta dd { margin: 0; }
 
@@ -254,6 +313,7 @@ function cell(mod, key, item) {
     case 'computed': return key === 'score' ? `<b style="color:${v >= 20 ? 'var(--err)' : v >= 12 ? 'var(--warn)' : 'inherit'}">${esc(v)}</b>` : money(v, P?.currency);
     case 'select': return /status|priority/i.test(key) ? chip(v) : esc(v);
     case 'url': return `<a href="${esc(v)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open link</a>`;
+    case 'file': return fileChip(v, item);
     case 'textarea': return `<div>${esc(String(v).split('\n')[0])}</div>`;
     default: return esc(v);
   }
@@ -524,6 +584,8 @@ function gantt(mod, rows) {
 
 /* ---------- Record form ---------- */
 let OPEN = null;   // { mod, item }
+let PENDING = null;   // a file picked for a new document, uploaded once it's saved (docs.js)
+let ED = null;        // the file open in the editor (docs.js)
 async function openRecord(mod, item) {
   OPEN = { mod, item };
   let data = item ? structuredClone(item.data) : {};
@@ -537,6 +599,7 @@ async function openRecord(mod, item) {
   const ro = !canEdit();
   $('dForm').innerHTML = mod.fields.filter(f => !f.hidden && !(f.editOnly && !item)).map(f => field(f, data[f.key], ro)).join('');
   wireFields(mod, ro);
+  PENDING = null; drawFileBox();
   $('dMeta').innerHTML = item ? `<dt>Created</dt><dd>${esc(fmtWhen(item.createdAt))} by ${esc(item.createdBy)}</dd><dt>Last changed</dt><dd>${esc(fmtWhen(item.updatedAt))} by ${esc(item.updatedBy)}</dd>`
     + (item.source?.meeting ? `<dt>From</dt><dd>the meeting ${esc(item.source.meetingTitle || '')}</dd>` : '') : '';
   $('dSave').hidden = ro; $('dDelete').hidden = ro || !item; $('dCancel').textContent = ro ? 'Close' : 'Cancel';
@@ -572,6 +635,7 @@ function field(f, v, ro) {
       const val = f.key === 'score' ? (it.score ?? '') : money(it[f.key], P.currency);
       input = `<input id="${id}" value="${esc(val)}" readonly><div class="hint">Worked out when you save.</div>`; break;
     }
+    case 'file': input = '<div data-filebox></div>'; break;
     case 'updates': input = rowsBox(f, v || [], 'upd', ro); break;
     case 'actions': input = rowsBox(f, v || [], 'act', ro); break;
     default: input = `<input id="${id}" data-k="${f.key}" value="${esc(v)}" maxlength="${f.type === 'url' ? 2000 : 500}" ${ph} ${dis}>`;
@@ -624,22 +688,22 @@ async function save() {
   try {
     const body = JSON.stringify(collect(mod));
     if (item) await api(`projects/${P.id}/items/${mod.key}/${item.id}`, { method: 'PUT', body });
-    else await api(`projects/${P.id}/items/${mod.key}`, { method: 'POST', body });
+    else await uploadPending(mod, await api(`projects/${P.id}/items/${mod.key}`, { method: 'POST', body }));   // then its file, if one was picked
     closeDrawer(true); renderProject(mod.key);
   } catch (e) { $('dNotice').hidden = false; $('dNotice').textContent = e.message; $('dNotice').scrollIntoView({ block: 'nearest' }); }
   finally { $('dSave').disabled = false; }
 }
 
 async function closeDrawer(force) {
-  const dirty = OPEN && canEdit() && JSON.stringify(collect(OPEN.mod)) !== OPEN.initial;
+  const dirty = OPEN && canEdit() && (JSON.stringify(collect(OPEN.mod)) !== OPEN.initial || PENDING);
   if (!force && dirty && !(await cp.confirm({ title: 'Discard your changes?', message: "You've changed this record but not saved it.", confirm: 'Discard', cancel: 'Keep editing', danger: true }))) return;
-  OPEN = null; $('drawer').classList.remove('open'); $('scrim').classList.remove('open');
+  OPEN = null; PENDING = null; $('drawer').classList.remove('open'); $('scrim').classList.remove('open');
 }
 $('dSave').onclick = save;
 $('dCancel').onclick = () => closeDrawer(!canEdit());
 $('dClose').onclick = () => closeDrawer(!canEdit());
 $('scrim').onclick = () => closeDrawer(!canEdit());
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN) closeDrawer(!canEdit()); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN && !ED) closeDrawer(!canEdit()); });
 $('dDelete').onclick = async () => {
   const { mod, item } = OPEN;
   if (!(await cp.confirm({ title: `Delete ${item.ref || 'this ' + (mod.singular || 'record').toLowerCase()}?`, message: `“${titleOf(mod, item) || mod.singular}” is deleted. This can't be undone.`, confirm: 'Delete', danger: true }))) return;
@@ -693,5 +757,6 @@ function loadPeople() {   // names to suggest in person fields
   await route();
 })().catch(e => { $('view').innerHTML = `<main class="full"><div class="notice">${esc(e.message)}</div></main>`; });
 </script>
+<script src="static/docs.js"></script>
 </body>
 </html>
