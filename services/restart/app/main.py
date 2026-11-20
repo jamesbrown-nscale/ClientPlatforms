@@ -72,7 +72,7 @@ log.propagate = False
 
 auth.check_settings()
 store = Store(os.environ.get("DATABASE_PATH", "/data/restart.db"))
-# Ingest keys: INGEST_KEYS from .env, plus those made on the site (Settings → Site → Device settings).
+# Ingest keys: INGEST_KEYS from .env, plus those made on the site (Settings → Applications).
 KEYS = devicekeys.DeviceKeys(os.environ.get("DATABASE_PATH", "/data/restart.db"), INGEST_KEYS, "cpr_")
 app = FastAPI(title="Nscale Restart Reminder", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

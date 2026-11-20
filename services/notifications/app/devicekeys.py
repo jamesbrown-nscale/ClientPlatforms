@@ -1,4 +1,4 @@
-"""The keys devices send: made, expired and deleted on the site (Settings → Site → Device settings).
+"""The keys devices send: made, expired and deleted on the site (Settings → Applications).
 
 The same file is in every service that takes device reports (notifications, elevation, restart); a
 test checks the copies match. Each service keeps its own keys in its own database, in a

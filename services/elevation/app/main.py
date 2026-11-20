@@ -67,7 +67,7 @@ log.propagate = False
 
 auth.check_settings()
 store = make_store()
-# Ingest keys: INGEST_KEYS from .env, plus those made on the site (Settings → Site → Device settings).
+# Ingest keys: INGEST_KEYS from .env, plus those made on the site (Settings → Applications).
 KEYS = devicekeys.DeviceKeys(os.environ.get("DATABASE_PATH", "elevation.db"), INGEST_KEYS, "cpe_")
 app = FastAPI(title="Nscale Elevation Log", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

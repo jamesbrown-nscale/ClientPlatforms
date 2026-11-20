@@ -162,6 +162,7 @@
   <div class="stabs" id="stabs" role="tablist" hidden>
     <button role="tab" data-stab="account" aria-controls="accountTab" hidden>Your account</button>
     <button role="tab" data-stab="site" aria-controls="siteTab" hidden>Site</button>
+    <button role="tab" data-stab="apps" aria-controls="appsTab" hidden>Applications</button>
     <button role="tab" data-stab="people" aria-controls="peopleTab" hidden>People</button>
     <button role="tab" data-stab="permissions" aria-controls="permissionsTab" hidden>Permissions</button>
     <button role="tab" data-stab="changes" aria-controls="changesTab" hidden>Change management</button>
@@ -206,9 +207,12 @@
     </form>
   </section>
 
+  </div>
+
+  <div id="appsTab" role="tabpanel" data-panel hidden>
   <section class="card">
-    <h2>Device settings</h2>
-    <p class="sub">What to put in each app's installer, and the keys devices use. Create a key for each group of devices: it's shown once, so copy it into the installer then. A key never expires unless you give it a date, and you can expire it at any time to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
+    <h2>Applications</h2>
+    <p class="sub">The apps on Windows and Mac devices that report to this site: what to put in each one's installer, how to install it, and the keys devices use. Create a key for each group of devices: it's shown once, so copy it into the installer then. A key never expires unless you give it a date, and you can expire it at any time to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
     <div class="dapp">
       <div class="dhead"><h3>IT Notifications: Windows MSI and Mac profile</h3>
         <div class="dbtns"><button class="btn small howbtn" type="button" data-howto="notifications" aria-expanded="false" aria-controls="howto-notifications">Install instructions <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -383,7 +387,13 @@ function renderSettings(s) {
     on.setAttribute('aria-label', 'Show ' + t.name + ' on the home page');
     tb.append(el('tr', {}, el('td', {}, el('b', { textContent: t.name })), el('td', {}, url), el('td', {}, on)));
   }
-  DEVURLS = s.devices;
+  if (APPS_LOADED) { DEVURLS = s.devices; drawSnippets(); }   // the device address may have just changed
+}
+
+let APPS_LOADED = false;
+async function loadApps() {
+  APPS_LOADED = true;
+  DEVURLS = await api('/api/device-config');
   drawSnippets();
   Object.keys(KEYAPPS).forEach(loadKeys);
 }
@@ -919,6 +929,7 @@ function setupTabs(available) {
     history.replaceState(null, '', '#' + tab);
     if (tab === 'permissions' && !$('roleList').children.length) loadRoles();
     if (tab === 'bin') loadBin();
+    if (tab === 'apps' && !APPS_LOADED) loadApps().catch(err => cp.alert(err.message));
     if (tab === 'changes' && !$('changesTab').dataset.loaded) {
       $('changesTab').dataset.loaded = '1';
       // The flow builder lives with Change management (projects service) and draws itself here.
@@ -959,6 +970,7 @@ function setupTabs(available) {
   BIN_SOURCES = [...(can('people') && me.accounts ? [''] : []), ...(adminOf('projects') ? ['/projects'] : []), ...(adminOf('users') ? ['/users'] : [])];   // '' is this portal
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
                      can('people') && me.accounts && 'permissions', changesAdmin && 'changes', devicesAdmin && 'connections',
+                     (can('settings') || ['notifications', 'elevation', 'restart'].some(adminOf)) && 'apps',
                      BIN_SOURCES.length && 'bin'].filter(Boolean);
   if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
   if (me.oidc) $('peopleSub').textContent += ` People sign in with ${me.provider}: only people on this list get in. Add them with the email they sign in with${me.directory ? `, or find them in ${me.directory}` : ''}.`;

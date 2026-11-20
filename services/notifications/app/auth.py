@@ -7,7 +7,7 @@ pages, not here. ADMIN_EMAILS, if set, narrows who can send to that list.
 BASE_PATH (e.g. /notifications) is where the app is served on a shared host. Redirects and pages use it.
 
 Devices send an enrollment key in the X-Nscale-Key header: ENROLLMENT_KEY from .env, or one made on
-the site (Settings → Site → Device settings; see devicekeys.py).
+the site (Settings → Applications; see devicekeys.py).
 """
 import os
 from dataclasses import dataclass
