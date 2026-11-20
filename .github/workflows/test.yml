@@ -16,3 +16,13 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q tests
+  # The same build the VM does: each image on its own, with its tests run inside it. Catches a test
+  # that passes beside the other services but fails when a service is built alone.
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [portal, notifications, elevation, restart, projects, inventory]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target test services/${{ matrix.service }}

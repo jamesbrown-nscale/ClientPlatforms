@@ -237,7 +237,10 @@ def test_access_module_is_the_same_everywhere():
 
 
 def test_devicekeys_module_is_the_same_everywhere():
+    """The device key code (notifications, elevation, restart) is one file, copied."""
     copies = list((Path(__file__).resolve().parents[2]).glob("*/app/devicekeys.py"))
+    if not copies:
+        pytest.skip("the device apps aren't here (Docker build)")
     assert len(copies) == 3
     assert len({c.read_text() for c in copies}) == 1
 

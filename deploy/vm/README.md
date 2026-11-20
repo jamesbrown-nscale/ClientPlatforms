@@ -104,7 +104,9 @@ cd /opt/client-platforms && sudo docker compose logs elevation | grep bad_device
 **It updates itself.** Every 2 minutes the VM checks GitHub. When `main` has a new commit, it pulls,
 rebuilds and restarts, so a push reaches the site within about 2 minutes plus the build (several minutes on this small VM). Images run
 their tests while building: if a test fails, the new version doesn't start, the running one carries
-on, and the failure is in the log. Fix it and push again.
+on, and the failure is in the log. The VM tries that commit again every 30 minutes (it remembers what
+is actually running in `.cp-deployed`, not just what it pulled), and a newer push is tried at once.
+GitHub's checks build each image the same way, so a failure like this usually shows there first.
 
 ```bash
 journalctl -u cp-update                       # what it did (add -f to watch)
