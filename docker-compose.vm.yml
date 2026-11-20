@@ -1,0 +1,68 @@
+# Client Platforms on the Google Cloud VM: added on top of docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+#
+# (deploy/vm/update.sh runs exactly that.) Settings come from .env next to this file: copy
+# deploy/vm/env.example. What this adds:
+#   - Caddy answers on 80 and 443 for DOMAIN and gets its own HTTPS certificate (Let's Encrypt),
+#     kept in the caddy-data volume so a restart doesn't ask for a new one. 80 only redirects.
+#   - Caddy trusts no one's X-Forwarded-For: it faces the internet itself.
+#   - The portal signs people in with OIDC (Google now, Okta later) and searches the directory.
+#   - Container logs are capped so they can't fill the disk.
+# Backups: the VM disk's daily snapshot schedule (deploy/vm/README.md). Nothing to set up here.
+
+x-logs: &logs
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  proxy:
+    <<: *logs
+    environment:
+      SITE_ADDRESS: ${DOMAIN:?Set DOMAIN, e.g. clientplatforms.nscale.com}
+      TRUSTED_PROXIES: 127.0.0.1/32
+    ports: !override
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+  portal:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
+      PUBLIC_URL: https://${DOMAIN}
+      BREAK_GLASS_EMAILS: ${BREAK_GLASS_EMAILS:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://accounts.google.com}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID from the Google OAuth client (or Okta app)}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-nscale.com}
+      DIRECTORY: ${DIRECTORY:-}
+      DIRECTORY_GOOGLE_ADMIN: ${DIRECTORY_GOOGLE_ADMIN:-}
+      OKTA_ORG_URL: ${OKTA_ORG_URL:-}
+      OKTA_API_TOKEN: ${OKTA_API_TOKEN:-}
+
+  notifications:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
+  elevation:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
+  restart:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
+  projects:
+    <<: *logs
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-oidc}
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -6,7 +6,7 @@ Admins sign in with Google (OpenID Connect), handled by the app itself:
   /logout
 If ADMIN_EMAILS is set, only those addresses get in. If it's empty, anyone in ALLOWED_DOMAIN does.
 
-On Client Platforms (AUTH_MODE=local, cloudflare or iap) people sign in at the front door before a
+On Client Platforms (AUTH_MODE=local, cloudflare, oidc or iap) people sign in at the front door before a
 request reaches us, and access.py checks who it vouches for on every request. There is no session
 cookie or OAuth client here then; ADMIN_EMAILS still narrows who can send, if set. AUTH_MODE=google
 is the standalone setup above.
@@ -24,7 +24,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import access
+from . import access, keyguard
 
 ENROLLMENT_KEY = os.environ.get("ENROLLMENT_KEY", "")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -36,8 +36,8 @@ SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
 SESSION_HOURS = 12
 # Local development only: pretend this person is signed in. Never set in production.
 DEV_ADMIN_USER = os.environ.get("DEV_ADMIN_USER", "")
-AUTH_MODE = os.environ.get("AUTH_MODE", "local").lower()     # local | cloudflare | iap: Client Platforms; google: standalone
-FRONT_DOOR = AUTH_MODE in ("local", "cloudflare", "iap")
+AUTH_MODE = os.environ.get("AUTH_MODE", "local").lower()     # local | cloudflare | oidc | iap: Client Platforms; google: standalone
+FRONT_DOOR = AUTH_MODE in ("local", "cloudflare", "oidc", "iap")
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")      # e.g. /notifications
 
 
@@ -170,6 +170,13 @@ def require_admin(request: Request) -> Admin:
     return admin
 
 
-def require_device(x_nscale_key: str = Header(default="")) -> None:
+guard = keyguard.KeyGuard("notifications")
+
+
+def require_device(request: Request, x_nscale_key: str = Header(default="")) -> None:
+    ip = keyguard.client_ip(request)
+    if guard.blocked(ip):
+        raise HTTPException(429, "Too many wrong enrollment keys from this address. Try again later.")
     if not ENROLLMENT_KEY or not hmac.compare_digest(x_nscale_key.encode(), ENROLLMENT_KEY.encode()):
+        guard.failed(ip, "unknown key" if x_nscale_key else "no key")
         raise HTTPException(401, "Bad enrollment key.")

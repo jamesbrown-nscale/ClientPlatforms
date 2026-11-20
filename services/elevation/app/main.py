@@ -28,7 +28,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, auth, records
+from . import access, auth, keyguard, records
 from .auth import User, require_user
 from .records import iso, merge, status, utc_now, validate
 from .store import make_store
@@ -74,7 +74,13 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 # ---------- Devices ----------
 
+guard = keyguard.KeyGuard("elevation")
+
+
 def key_label(request: Request) -> str:
+    ip = keyguard.client_ip(request)
+    if guard.blocked(ip):
+        raise HTTPException(429, "Too many wrong ingest keys from this address. Try again later.")
     auth = request.headers.get("authorization", "")
     scheme, _, token = auth.partition(" ")
     token = token.strip()
@@ -82,6 +88,7 @@ def key_label(request: Request) -> str:
         for label, key in INGEST_KEYS:   # compare against every key, so timing says nothing
             if hmac.compare_digest(token.encode(), key.encode()):
                 return label
+    guard.failed(ip, "unknown key" if token else "no key")
     raise HTTPException(401, "Missing or unknown ingest key.")
 
 

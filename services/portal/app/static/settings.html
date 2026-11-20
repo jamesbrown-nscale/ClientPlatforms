@@ -94,6 +94,14 @@
   .copy { display: block; background: var(--page); border: 1px solid var(--surface); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; margin-top: 6px; }
   .checks { display: flex; gap: 14px; flex-wrap: wrap; }
   .checks label { display: flex; gap: 6px; align-items: center; font-weight: 400; margin: 0; }
+  .find { position: relative; }
+  .hits { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; background: #fff;
+          border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(4,14,39,.12); max-height: 280px; overflow: auto; }
+  .hits li { padding: 8px 10px; border-radius: 7px; cursor: pointer; display: flex; flex-direction: column; }
+  .hits li[aria-selected="true"], .hits li:hover { background: var(--surface); }
+  .hits li.added { cursor: default; opacity: .6; }
+  .hits li .muted { font-size: 12.5px; }
+  .hits li.none { cursor: default; color: var(--text2); font-style: italic; }
   dialog { border: 1px solid var(--surface); border-radius: 14px; padding: 24px; width: min(480px, calc(100vw - 32px)); background: var(--bg); color: var(--text); }
   dialog::backdrop { background: rgba(4,14,39,.35); }
   dialog h2 { margin-bottom: 8px; }
@@ -198,6 +206,12 @@
 <dialog id="userDlg">
   <form id="userForm" method="dialog">
     <h2 id="udTitle">Add person</h2>
+    <div id="udFindWrap" hidden>
+      <label for="udFind">Find them in <span id="udDir"></span></label>
+      <div class="find"><input id="udFind" type="search" placeholder="Start typing a name or email" autocomplete="off"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="udHits"><ul id="udHits" class="hits" role="listbox" hidden></ul></div>
+      <div class="hint">Picking someone fills in their email and name. Only people you add here can sign in.</div>
+    </div>
     <label for="udEmail">Email</label><input id="udEmail" type="email" required autocomplete="off">
     <label for="udName">Name</label><input id="udName" type="text" placeholder="From the email if empty" autocomplete="off">
     <div id="udPwWrap"><label for="udPw">Password</label><input id="udPw" type="password" autocomplete="new-password">
@@ -314,7 +328,7 @@ function renderUsers() {
     const btn = (text, fn, cls = '') => { const b = el('button', { type: 'button', className: 'btn small ' + cls, textContent: text }); b.onclick = fn; acts.append(b); };
     btn('Edit', () => openUser(u));
     if (u.email !== me.email) {
-      if (me.passwords) btn('Password', () => openReset(u));
+      if (me.passwords && !me.oidc) btn('Password', () => openReset(u));
       btn(u.disabled ? 'Turn on' : 'Turn off', () => change(u, { disabled: !u.disabled }));
       btn('Delete', () => removeUser(u), 'danger');
     }
@@ -342,7 +356,8 @@ function openUser(u) {
   $('udTitle').textContent = u ? 'Edit ' + u.email : 'Add person';
   $('udEmail').value = u ? u.email : ''; $('udEmail').disabled = !!u;
   $('udName').value = u ? u.name : '';
-  $('udPwWrap').hidden = !!u || !me.passwords; $('udPw').required = !u && me.passwords && !me.cloudflare; $('udPw').value = '';
+  $('udPwWrap').hidden = !!u || !me.passwords || me.oidc; $('udPw').required = !u && me.passwords && !me.cloudflare && !me.oidc; $('udPw').value = '';
+  $('udFindWrap').hidden = !!u || !me.directory; $('udFind').value = ''; hideHits();
   const box = $('udRoles'); box.replaceChildren();
   for (const r of roles) {
     const c = el('input', { type: 'checkbox', value: r.id, checked: u ? u.roles.includes(r.id) : false });
@@ -352,6 +367,48 @@ function openUser(u) {
   showSummary();
   notice($('udNotice'), ''); $('userDlg').showModal();
 }
+/* Add person: search the company directory and pick someone. */
+let FIND_T = null, FIND_SEQ = 0, HITS = [], HIT = -1;
+function hideHits() { $('udHits').hidden = true; $('udFind').setAttribute('aria-expanded', 'false'); HITS = []; HIT = -1; }
+function drawHits(list, msg) {
+  const ul = $('udHits'); ul.replaceChildren();
+  HITS = list; HIT = list.findIndex(p => !p.added);
+  if (!list.length) ul.append(el('li', { className: 'none', textContent: msg || 'Nobody found.' }));
+  list.forEach((p, i) => {
+    const li = el('li', { role: 'option', className: p.added ? 'added' : '', id: 'hit' + i },
+      el('b', { textContent: p.name || p.email }),
+      el('span', { className: 'muted', textContent: [p.email, p.title, p.added ? 'already added' : ''].filter(Boolean).join(' · ') }));
+    li.setAttribute('aria-selected', String(i === HIT));
+    li.onmousedown = e => { e.preventDefault(); if (!p.added) pickHit(p); };
+    ul.append(li);
+  });
+  ul.hidden = false; $('udFind').setAttribute('aria-expanded', 'true');
+}
+function markHit() { $('udHits').querySelectorAll('li[role=option]').forEach((li, i) => li.setAttribute('aria-selected', String(i === HIT)));
+  $('udHits').querySelector(`#hit${HIT}`)?.scrollIntoView({ block: 'nearest' }); }
+function pickHit(p) { $('udEmail').value = p.email; $('udName').value = p.name || ''; $('udFind').value = p.name || p.email; hideHits(); $('udRoles').querySelector('input')?.focus(); }
+$('udFind').oninput = () => {
+  clearTimeout(FIND_T);
+  const q = $('udFind').value.trim();
+  if (q.length < 2) { hideHits(); return; }
+  FIND_T = setTimeout(async () => {
+    const seq = ++FIND_SEQ;
+    try { const r = await api('/api/directory?q=' + encodeURIComponent(q)); if (seq === FIND_SEQ) drawHits(r.people); }
+    catch (err) { if (seq === FIND_SEQ) drawHits([], err.message); }
+  }, 250);
+};
+$('udFind').onkeydown = e => {
+  if ($('udHits').hidden) return;
+  const ok = HITS.map((p, i) => p.added ? -1 : i).filter(i => i >= 0);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!ok.length) return;
+    const at = ok.indexOf(HIT), next = e.key === 'ArrowDown' ? ok[(at + 1) % ok.length] : ok[(at - 1 + ok.length) % ok.length];
+    HIT = next; markHit();
+  } else if (e.key === 'Enter') { e.preventDefault(); if (HIT >= 0 && !HITS[HIT].added) pickHit(HITS[HIT]); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideHits(); }
+};
+$('udFind').onblur = () => setTimeout(hideHits, 150);
+
 function picked() { return [...$('udRoles').querySelectorAll('input:checked')].map(c => c.value); }
 function showSummary() { $('udSummary').textContent = 'Can use: ' + summary(picked()); }
 
@@ -502,7 +559,9 @@ function setupTabs(available) {
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
                      can('people') && me.accounts && 'permissions', changesAdmin && 'changes'].filter(Boolean);
   if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
-  if (!me.passwords) $('peopleSub').textContent += ' Cloudflare Access does the signing in, so there are no passwords here: add the same email Cloudflare signs them in with.';
+  if (me.oidc) $('peopleSub').textContent += ` People sign in with ${me.provider}: only people on this list get in. Add them with the email they sign in with${me.directory ? `, or find them in ${me.directory}` : ''}.`;
+  else if (!me.passwords) $('peopleSub').textContent += ' Cloudflare Access does the signing in, so there are no passwords here: add the same email Cloudflare signs them in with.';
+  if (me.directory) $('udDir').textContent = me.directory;
   if (can('settings')) renderSettings(await api('/api/settings'));
   if (can('people') && me.accounts) await loadUsers();
   if (available.length) setupTabs(available);

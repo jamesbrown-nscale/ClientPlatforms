@@ -1,4 +1,4 @@
-# Client Platforms front door (Docker / Portainer).
+# Client Platforms front door (Docker: Portainer, or the Google Cloud VM).
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
 #   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
@@ -12,7 +12,8 @@
 	admin off
 	servers {
 		# Behind Cloudflare Tunnel, cloudflared is the peer and Cf-Connecting-Ip holds the real address.
-		trusted_proxies static private_ranges
+		# Facing the internet itself (the VM), trust nobody's headers: TRUSTED_PROXIES=127.0.0.1/32.
+		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
 		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
 	}
 }
@@ -43,14 +44,24 @@
 		-Server
 	}
 
-	# Devices: no sign-in, their own keys.
+	# Devices: no sign-in, their own keys (each app slows down wrong keys). Reports are small, so
+	# anything bigger is turned away before it reaches the app.
 	handle /notifications/api/v1/checkin {
+		request_body {
+			max_size 2MB
+		}
 		import to notifications
 	}
 	handle /elevation/api/elevations/ingest {
+		request_body {
+			max_size 2MB
+		}
 		import to elevation
 	}
 	handle /restart/api/reports {
+		request_body {
+			max_size 2MB
+		}
 		import to restart
 	}
 	handle /restart/api/policy {

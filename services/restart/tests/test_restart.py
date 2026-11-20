@@ -147,3 +147,13 @@ def test_front_door_sign_in_is_checked(stack):
     assert stack.get("/restart/api/devices", headers=h("elevation")).status_code == 401
     assert stack.get("/restart/").status_code == 403
     assert send(stack, rep()).status_code == 200   # devices use the ingest key
+
+
+def test_guessing_keys_is_slowed_down(client):
+    main.guard.clear()
+    bad, ip = {"Authorization": "Bearer " + "x" * 32}, {"X-Forwarded-For": "203.0.113.9"}
+    for _ in range(main.keyguard.LIMIT):
+        assert send(client, headers={**bad, **ip}).status_code == 401
+    assert send(client, headers={**KEY, **ip}).status_code == 429
+    assert send(client, headers={**KEY, "X-Forwarded-For": "198.51.100.4"}).status_code != 429
+    main.guard.clear()

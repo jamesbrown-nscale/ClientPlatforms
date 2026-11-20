@@ -16,6 +16,10 @@ AUTH_MODE=cloudflare
     to the tools with X-CP-User exactly as above. The portal's people list still says who may
     use which tool.
 
+AUTH_MODE=oidc
+    As local, but the portal signs people in with the company identity provider (OpenID Connect:
+    Google, later Okta) instead of a password. The tools see no difference: X-CP-User as above.
+
 AUTH_MODE=iap (Google Cloud)
     Google's Identity-Aware Proxy signs people in at the load balancer and adds
     X-Goog-IAP-JWT-Assertion; the tool checks Google's signature, issuer, IAP_AUDIENCE and the

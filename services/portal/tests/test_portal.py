@@ -204,6 +204,15 @@ def test_access_module_is_the_same_everywhere():
         assert other.read_text() == here.read_text(), f"{other} differs from {here}"
 
 
+def test_keyguard_module_is_the_same_everywhere():
+    """The device apps' wrong-key limiter (elevation, restart, notifications) is one file, copied."""
+    copies = list((Path(__file__).resolve().parents[2]).glob("*/app/keyguard.py"))
+    if len(copies) < 2:
+        pytest.skip("the device apps aren't here (Docker build)")
+    for other in copies[1:]:
+        assert other.read_text() == copies[0].read_text(), f"{other} differs from {copies[0]}"
+
+
 def test_people_list_for_assigning(c):
     sign_in(c)
     add(c, "ann@nscale.com", tools=["tasks"])

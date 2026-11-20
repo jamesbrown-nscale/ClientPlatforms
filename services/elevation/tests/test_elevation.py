@@ -236,3 +236,22 @@ def test_front_door_sign_in_is_checked(local_client):
     assert c.get("/elevation/").status_code == 403
     assert c.get("/elevation/", headers=h()).status_code == 200
     assert send(c, record()).status_code == 200
+
+
+def test_guessing_keys_is_slowed_down(client, capsys):
+    """Wrong keys are logged, and an address sending too many is turned away for a while; others aren't."""
+    import sys
+    main.guard.clear()
+    main.keyguard.log.handlers[0].setStream(sys.stdout)   # write where the test can see it
+    bad = {"Authorization": "Bearer " + "x" * 32}
+    attacker, device = {"X-Forwarded-For": "203.0.113.9"}, {"X-Forwarded-For": "198.51.100.4"}
+    for _ in range(main.keyguard.LIMIT):
+        assert client.post("/elevation/api/elevations/ingest", json={"events": []}, headers={**bad, **attacker}).status_code == 401
+    assert '"event": "bad_device_key", "app": "elevation", "ip": "203.0.113.9"' in capsys.readouterr().out
+    # Now even the right key from that address waits; a device elsewhere carries on.
+    assert client.post("/elevation/api/elevations/ingest", json={"events": []}, headers={**KEY, **attacker}).status_code == 429
+    assert client.post("/elevation/api/elevations/ingest", json={"events": []}, headers={**KEY, **device}).status_code == 200
+    # It wears off once the tries are old enough.
+    main.guard._tries["203.0.113.9"] = [time.time() - main.keyguard.WINDOW - 1] * main.keyguard.LIMIT
+    assert client.post("/elevation/api/elevations/ingest", json={"events": []}, headers={**KEY, **attacker}).status_code == 200
+    main.guard.clear()

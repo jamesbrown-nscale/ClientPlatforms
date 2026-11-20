@@ -12,11 +12,17 @@ AUTH_MODE=cloudflare: as local, but only Cloudflare Access signs people in (see 
 are no passwords here. Admins still list who may use which tool; someone Cloudflare lets in who isn't
 on that list gets nothing.
 
+AUTH_MODE=oidc: people sign in with the company's identity provider over OpenID Connect (Google now,
+Okta later: see oidc.py). Only people on the people list get in, whatever the provider says; admins
+add them under Settings, searching the directory (see directory.py). Passwords are kept only for the
+break-glass admins in BREAK_GLASS_EMAILS (default: ADMIN_EMAIL), for when the provider is down.
+
 AUTH_MODE=iap: Google IAP signs people in at the load balancer (Google Cloud). The home page lists
 every tool; ADMIN_EMAILS can change the settings. There are no local accounts.
 
 Settings (environment): AUTH_SECRET, DATABASE_PATH, ADMIN_EMAIL + ADMIN_PASSWORD (first admin, only
-used while there are no accounts), SESSION_HOURS, PUBLIC_URL / DEVICE_URL (defaults for the settings).
+used while there are no accounts), SESSION_HOURS, PUBLIC_URL / DEVICE_URL (defaults for the settings),
+BREAK_GLASS_EMAILS and the OIDC_* and DIRECTORY_* settings (AUTH_MODE=oidc).
 """
 import os
 import re
@@ -31,7 +37,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import access, cloudflare
+from . import access, cloudflare, directory, oidc
 from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, iso, now
 
 STATIC = Path(__file__).parent / "static"
@@ -42,22 +48,35 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD = 10
 
 MODE = "dev" if access.DEV_USER else access.AUTH_MODE
-ACCOUNTS = MODE in ("local", "cloudflare")     # the people list is kept here
-PASSWORDS = MODE == "local"
+ACCOUNTS = MODE in ("local", "cloudflare", "oidc")     # the people list is kept here
+PASSWORDS = MODE == "local"                            # everyone signs in with a password
+OIDC = MODE == "oidc"
+SESSIONS = PASSWORDS or OIDC                           # the portal keeps its own sign-in sessions
 CLOUDFLARE = MODE == "cloudflare" or (MODE == "local" and bool(cloudflare.TEAM and cloudflare.AUD))
+# With OIDC, only these accounts can use a password: a way in when the identity provider is down.
+BREAK_GLASS = {e.strip().lower() for e in (os.environ.get("BREAK_GLASS_EMAILS") or os.environ.get("ADMIN_EMAIL", "")).split(",") if e.strip()}
 
 access.check_settings()
 if MODE == "cloudflare":
     cloudflare.check_settings()
+if OIDC:
+    oidc.check_settings()
 db = DB(os.environ.get("DATABASE_PATH", "/data/portal.db"))
 
 
 def bootstrap() -> None:
     """The first admin, from ADMIN_EMAIL and ADMIN_PASSWORD, while there are no accounts at all."""
     email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
-    password = os.environ.get("ADMIN_PASSWORD", "") if PASSWORDS else secrets.token_urlsafe(32)
+    password = os.environ.get("ADMIN_PASSWORD", "") if uses_password(email) else ""
+    password = password or ("" if PASSWORDS else secrets.token_urlsafe(32))
     if ACCOUNTS and email and password and db.count_users() == 0:
         db.create_user(email, access.display_name(email), password, roles=[ADMIN_ROLE])
+
+
+def uses_password(email: str) -> bool:
+    """Whether this account signs in with a password: everyone with AUTH_MODE=local, only the
+    break-glass admins with OIDC."""
+    return PASSWORDS or (OIDC and (email or "").lower() in BREAK_GLASS)
 
 
 bootstrap()
@@ -87,7 +106,7 @@ def current(request: Request) -> dict | None:
         admin = who["email"] in ADMIN_EMAILS
         return {**who, "admin": admin, "tools": TOOL_IDS, "levels": {t: "admin" if admin else "edit" for t in TOOL_IDS},
                 "perms": list(SITE_PERMS) if admin else [], "roles": []}
-    user = db.session_user(request.cookies.get(COOKIE, "")) if PASSWORDS else None
+    user = db.session_user(request.cookies.get(COOKIE, "")) if SESSIONS else None
     if not user and CLOUDFLARE:
         email = cloudflare.email(request)
         user = db.get_user(email) if email else None
@@ -106,7 +125,7 @@ def not_signed_in(request: Request, nxt: str = "/") -> Response:
         if email:
             return message_page(f"{email} doesn't have an account on Client Platforms yet, or it's turned off. "
                                 "Ask a Client Platforms admin.", 403, "Sign out", "/logout")
-    if PASSWORDS:
+    if SESSIONS:
         nxt = safe_next(nxt)
         return RedirectResponse("/login" if nxt == "/" else "/login?next=" + quote(nxt, safe="/"))
     return message_page(access.sign_in_message(), 403)
@@ -157,8 +176,8 @@ def require_accounts():
 
 
 def require_passwords():
-    if not PASSWORDS:
-        raise HTTPException(400, "Passwords are only used with AUTH_MODE=local.")
+    if not SESSIONS:
+        raise HTTPException(400, "Passwords are only used with AUTH_MODE=local, or by break-glass admins with oidc.")
 
 
 def safe_next(n: str | None) -> str:
@@ -189,12 +208,12 @@ def _failed(*keys: str) -> None:
 
 
 @app.get("/login")
-def login_page(request: Request, next: str = "/"):
-    if not PASSWORDS:
+def login_page(request: Request, next: str = "/", out: str = "", password: str = ""):
+    if not SESSIONS:
         return RedirectResponse("/")
     if current(request):
         return RedirectResponse(safe_next(next))
-    return login_html(next)
+    return login_html(next, notice="You're signed out." if out else "", show_password=bool(password))
 
 
 @app.post("/login")
@@ -208,15 +227,72 @@ async def login(request: Request):
     if _too_many(*keys):
         return login_html(nxt, email, "Too many tries. Wait 15 minutes and try again.", 429)
     user = db.get_user(email) if email else None
-    ok = PASSWORDS and db.check(password, user)
+    ok = SESSIONS and uses_password(email) and db.check(password, user)
     if not ok:
         _failed(*keys)
-        return login_html(nxt, email, "That email and password don't match an account.", 401)
+        msg = ("That email and password don't match an account." if PASSWORDS else
+               "That email and password don't match a break-glass account. Everyone else signs in with " + oidc.PROVIDER + ".")
+        return login_html(nxt, email, msg, 401, show_password=True)
     _failures.pop(keys[0], None)
+    return _signed_in(request, email, nxt)
+
+
+def _signed_in(request: Request, email: str, nxt: str) -> Response:
+    """Starts their session here and sends them on."""
     db.signed_in(email)
     r = RedirectResponse(nxt, status_code=303)
     r.set_cookie(COOKIE, db.start_session(email, SESSION_HOURS), max_age=int(SESSION_HOURS * 3600), path="/",
                  httponly=True, samesite="lax", secure=secure(request))
+    return r
+
+
+def _redirect_uri(request: Request) -> str:
+    if oidc.REDIRECT_URL:
+        return oidc.REDIRECT_URL
+    return (db.settings()["publicUrl"] or base_url(request)).rstrip("/") + "/auth/callback"
+
+
+@app.get("/login/oidc")
+def login_oidc(request: Request, next: str = "/"):
+    """Off to the identity provider to sign in."""
+    if not OIDC:
+        return RedirectResponse("/login")
+    try:
+        where, flow = oidc.start(access.AUTH_SECRET, _redirect_uri(request), safe_next(next))
+    except Exception:
+        return message_page(f"{oidc.PROVIDER} sign-in isn't reachable just now. Try again in a minute.", 502, "Try again", "/login")
+    r = RedirectResponse(where, status_code=303)
+    r.set_cookie(oidc.COOKIE, flow, max_age=oidc.FLOW_SECONDS, path="/auth/callback", httponly=True, samesite="lax", secure=secure(request))
+    return r
+
+
+@app.get("/auth/callback")
+def oidc_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+    """Back from the identity provider: check who it says this is, then whether they're on the list."""
+    if not OIDC:
+        return RedirectResponse("/login")
+    try:
+        if error:
+            raise oidc.SignInError("The sign-in was cancelled." if error == "access_denied" else "The sign-in provider didn't sign you in.")
+        email, name, nxt = oidc.finish(access.AUTH_SECRET, request.cookies.get(oidc.COOKIE, ""), state, code)
+    except oidc.SignInError as e:
+        r = message_page(str(e), 400, "Try again", "/login")
+        r.delete_cookie(oidc.COOKIE, path="/auth/callback")
+        return r
+    except Exception:
+        r = message_page(f"{oidc.PROVIDER} sign-in isn't reachable just now. Try again in a minute.", 502, "Try again", "/login")
+        r.delete_cookie(oidc.COOKIE, path="/auth/callback")
+        return r
+    user = db.get_user(email)
+    if not user or user["disabled"]:
+        r = message_page(f"{email} isn't on the Client Platforms list, or the account is turned off. "
+                         "Ask a Client Platforms admin to add you.", 403, "Back to sign-in", "/login?out=1")
+        r.delete_cookie(oidc.COOKIE, path="/auth/callback")
+        return r
+    if name and user["name"] == access.display_name(email) and name != user["name"]:
+        db.update_user(email, name=name[:100])   # the provider's proper name beats one guessed from the email
+    r = _signed_in(request, email, safe_next(nxt))
+    r.delete_cookie(oidc.COOKIE, path="/auth/callback")
     return r
 
 
@@ -235,7 +311,9 @@ def logout(request: Request):
     token = request.cookies.get(COOKIE)
     if token:
         db.end_session(token)
-    r = RedirectResponse("/login")
+    # With OIDC, a page that says you're signed out (not straight back to the provider, which would
+    # sign you in again at once).
+    r = RedirectResponse("/login?out=1" if OIDC else "/login")
     r.delete_cookie(COOKIE, path="/")
     return r
 
@@ -284,7 +362,7 @@ def index(request: Request):
         <b>{escape(t['name'])}</b><span>{escape(t['about'])}</span><i>Open →</i>
       </a>""" for t in tools) or "<p class='sub'>No tools have been given to your account yet. Ask a Client Platforms admin.</p>"
     links = ('<a href="/settings">Settings</a> · ' if user.get("perms") else
-             '<a href="/settings">Account</a> · ' if PASSWORDS else "")
+             '<a href="/settings">Account</a> · ' if uses_password(user["email"]) else "")
     return HTMLResponse(PAGE.replace("{{TILES}}", tiles).replace("{{EMAIL}}", escape(user["email"]))
                         .replace("{{LINKS}}", links).replace("{{FIRST}}", escape(user["name"].split(" ")[0])),
                         headers={"Cache-Control": "no-store"})
@@ -303,7 +381,9 @@ def settings_page(request: Request):
 def me(user: dict = Depends(require_user)):
     tools = [{**t, "level": level(user, t["id"])} for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "perms": user.get("perms", []), "tools": tools,
-            "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": PASSWORDS, "cloudflare": CLOUDFLARE, "minPassword": MIN_PASSWORD}
+            "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": uses_password(user["email"]),
+            "cloudflare": CLOUDFLARE, "oidc": OIDC, "provider": oidc.PROVIDER if OIDC else "", "directory": directory.name() if OIDC else "",
+            "minPassword": MIN_PASSWORD}
 
 
 class PasswordChange(BaseModel):
@@ -313,6 +393,8 @@ class PasswordChange(BaseModel):
 
 @app.post("/api/me/password", dependencies=[Depends(require_passwords)])
 def change_password(body: PasswordChange, request: Request, user: dict = Depends(require_user)):
+    if not uses_password(user["email"]):
+        raise HTTPException(400, f"You sign in with {oidc.PROVIDER}, so there's no password here.")
     if not db.check(body.current, db.get_user(user["email"])):
         raise HTTPException(400, "Your current password isn't right.")
     db.set_password(user["email"], body.new, keep_session=db.session_id(request.cookies.get(COOKIE, "")))
@@ -469,7 +551,7 @@ def create_user(body: NewUser, user: dict = Depends(require_people)):
         raise HTTPException(422, "Give them a password.")
     if PASSWORDS and body.password and len(body.password) < MIN_PASSWORD:
         raise HTTPException(422, f"The password needs at least {MIN_PASSWORD} characters.")
-    # Without a password (Cloudflare only) they get a random one nobody knows.
+    # Without a password (Cloudflare or OIDC) they get a random one nobody knows.
     password = body.password if PASSWORDS and body.password else secrets.token_urlsafe(32)
     u = db.create_user(body.email, body.name.strip() or access.display_name(body.email), password, body.roles)
     return db.public(u)
@@ -504,6 +586,8 @@ def reset_password(email: str, body: NewPassword, user: dict = Depends(require_p
     u = _target(email)
     if u["email"] == user["email"]:
         raise HTTPException(400, "Change your own password under Your account.")
+    if not uses_password(u["email"]):
+        raise HTTPException(400, f"{u['email']} signs in with {oidc.PROVIDER}: only break-glass admins have passwords.")
     db.set_password(u["email"], body.password)   # also signs them out everywhere
     return {"ok": True}
 
@@ -517,6 +601,23 @@ def delete_user(email: str, user: dict = Depends(require_people)):
         raise HTTPException(400, "Someone must always be able to manage people and roles.")
     db.delete_user(u["email"])
     return {"ok": True}
+
+
+@app.get("/api/directory", dependencies=[Depends(require_accounts)])
+def search_directory(q: str = "", user: dict = Depends(require_people)):
+    """People in the company directory matching q, for adding someone: name and email, and whether
+    they're already on the list here."""
+    if not directory.name():
+        return {"directory": "", "people": []}
+    q = q.strip()[:100]
+    if len(q) < 2:
+        return {"directory": directory.name(), "people": []}
+    try:
+        found = directory.search(q)
+    except directory.DirectoryError as e:
+        raise HTTPException(502, str(e))
+    have = {u["email"] for u in db.list_users()}
+    return {"directory": directory.name(), "people": [{**p, "added": p["email"] in have} for p in found]}
 
 
 # ---------- API: roles ----------
@@ -637,21 +738,39 @@ CARD = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name=
            border-radius:8px; padding:11px 22px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; }
   button:hover, a.btn:hover { background:var(--primary-hover); }
   .err { background:#FDECEC; color:var(--bad); border-radius:8px; padding:10px 12px; margin:0 0 4px; }
+  .ok { background:var(--surface); color:var(--text); border-radius:8px; padding:10px 12px; margin:0 0 4px; }
+  .c > a.btn { margin-top:8px; }
+  details.bg { margin-top:22px; border-top:1px solid var(--surface); padding-top:14px; }
+  details.bg summary { cursor:pointer; color:var(--text2); font-size:13px; }
+  details.bg .hint { font-size:12.5px; margin-top:8px; }
+  button.alt { background:#fff; color:var(--primary); border:1px solid var(--border); }
+  button.alt:hover { background:var(--surface); }
   p { color:var(--text2); margin:0; }
 </style></head><body><div class="c"><img src="/static/nscale-wordmark.svg" alt="Nscale"><p class="app">Client Platforms</p>{{BODY}}</div></body></html>"""
 
 
-def login_html(nxt: str, email: str = "", error: str = "", status: int = 200) -> HTMLResponse:
+def login_html(nxt: str, email: str = "", error: str = "", status: int = 200, notice: str = "", show_password: bool = False) -> HTMLResponse:
     if PASSWORDS and db.count_users() == 0:
         return message_page("No accounts yet. Set ADMIN_EMAIL and ADMIN_PASSWORD on the portal service and "
                             "restart it to create the first admin.", 503)
-    body = (f'<p class="err" role="alert">{escape(error)}</p>' if error else "") + f"""
+    nxt = safe_next(nxt)
+    form = f"""
 <form method="post" action="/login">
-  <input type="hidden" name="next" value="{escape(safe_next(nxt))}">
-  <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required value="{escape(email)}" {'' if email else 'autofocus'}>
+  <input type="hidden" name="next" value="{escape(nxt)}">
+  <label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required value="{escape(email)}" {'' if email or OIDC else 'autofocus'}>
   <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required {'autofocus' if email else ''}>
-  <button type="submit">Sign in</button>
+  <button type="submit" class="{'alt' if OIDC else ''}">Sign in{' with a password' if OIDC else ''}</button>
 </form>"""
+    body = (f'<p class="err" role="alert">{escape(error)}</p>' if error else "") + \
+           (f'<p class="ok" role="status">{escape(notice)}</p>' if notice else "")
+    if OIDC:
+        # Everyone signs in with the identity provider; the password form is only for break-glass admins.
+        go = "/login/oidc" + ("" if nxt == "/" else "?next=" + quote(nxt, safe="/"))
+        body += f'''<a class="btn" href="{escape(go)}" {'' if show_password else 'autofocus'}>Sign in with {escape(oidc.PROVIDER)}</a>
+<details class="bg" {'open' if show_password or error else ''}><summary>Admin break-glass sign-in</summary>
+<p class="hint">Only for named admins, when {escape(oidc.PROVIDER)} sign-in isn't working.</p>{form}</details>'''
+    else:
+        body += form
     return HTMLResponse(CARD.replace("{{BODY}}", body), status_code=status, headers={"Cache-Control": "no-store"})
 
 

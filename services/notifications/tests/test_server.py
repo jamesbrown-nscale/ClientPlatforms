@@ -57,6 +57,17 @@ def test_rejects_bad_key(client):
     assert client.post("/api/v1/checkin", headers={"X-Nscale-Key": "nope"}, json={}).status_code == 401
 
 
+def test_guessing_keys_is_slowed_down(client):
+    from app import auth
+    auth.guard.clear()
+    ip = {"X-Forwarded-For": "203.0.113.9"}
+    for _ in range(auth.keyguard.LIMIT):
+        assert client.post("/api/v1/checkin", headers={"X-Nscale-Key": "nope", **ip}, json={}).status_code == 401
+    assert client.post("/api/v1/checkin", headers={**K, **ip}, json={}).status_code == 429
+    assert client.post("/api/v1/checkin", headers={**K, "X-Forwarded-For": "198.51.100.4"}, json={}).status_code != 429
+    auth.guard.clear()
+
+
 def test_admin_post_needs_header(client):
     assert client.post("/api/admin/messages", json={"subject": "x"}).status_code == 403
 
