@@ -1,22 +1,19 @@
-# Client Platforms on Docker / Portainer.
+# Client Platforms on Docker.
 #
-# In Portainer: Stacks → Add stack → Repository, point it at this repo (compose path
-# docker-compose.yml), and set the environment variables from .env.example. Every image runs its
-# tests while it builds, so a stack with failing tests doesn't deploy. pull_policy: build makes
-# Portainer rebuild the images from the repo on every redeploy.
+# On the Google Cloud VM, docker-compose.vm.yml goes on top (HTTPS, OIDC sign-in): see deploy/vm/.
+# On your own machine, this alone with a .env from .env.example: http://localhost:${HTTP_PORT:-8080},
+# signing in with a password. Every image runs its tests while it builds, so a version with failing
+# tests doesn't start.
 #
 #   proxy          Caddy: routes paths, asks the portal about every request to a tool
-#   portal         home page, sign-in (Cloudflare Access or passwords), people, settings
+#   portal         home page, sign-in (OIDC, or passwords locally), people, settings
 #   notifications  IT Notifications            /notifications/
 #   elevation      admin elevation log         /elevation/
 #   restart        Restart Reminder report     /restart/
 #   projects       Projects, Tasks, Team, Change management and everyone's notifications:
 #                  /projects/, /tasks/, /team/, /changes/, /inbox/
 #
-# Open it at http://<host>:${HTTP_PORT:-8080}. For Cloudflare Tunnel as well, add
-# docker-compose.cloudflare.yml under "Additional paths" in Portainer.
-#
-# Data is kept in one Docker volume per service (SQLite). Back them up.
+# Data is kept in one Docker volume per service (SQLite). On the VM, the disk's snapshots back them up.
 name: client-platforms
 
 x-service: &service
@@ -41,7 +38,7 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
-      # http://<host>:8080 on your network (sign in with a password).
+      # Locally: http://localhost:8080. On the VM, docker-compose.vm.yml swaps this for 80 and 443.
       - "${HTTP_PORT:-8080}:80"
     depends_on: [portal, notifications, elevation, restart, projects]
 
@@ -53,8 +50,6 @@ services:
       <<: *auth
       ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL to the first admin email}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
-      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
       DEVICE_URL: ${DEVICE_URL:-}
       SESSION_HOURS: ${SESSION_HOURS:-12}

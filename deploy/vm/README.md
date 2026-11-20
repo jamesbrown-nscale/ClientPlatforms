@@ -1,6 +1,6 @@
 # Client Platforms on a Google Cloud VM
 
-One small VM runs the whole site with Docker Compose, the same containers as on Portainer. Caddy
+One small VM runs the whole site with Docker Compose. Caddy
 handles HTTPS for the site's name itself. People sign in with **OpenID Connect**: Google now, Okta
 later, and switching is a settings change. Only people an admin has added under **Settings, People**
 get in. Admins find them in the company directory when adding them. Devices keep using their keys.
@@ -10,7 +10,7 @@ get in. Admins find them in the company directory when adding them. Devices keep
 | VM | `cp-vm`: e2-small, Debian 12, 20 GB disk, europe-west2 (London) |
 | Cost | roughly $15–25 a month: VM, disk, fixed IP and snapshots. Google sign-in and the directory search are free. |
 | Backups | the disk's daily snapshot schedule `cp-daily`, kept 14 days |
-| Data | Docker volumes on the VM disk (SQLite and uploaded files). Starts empty: nothing is copied from Portainer. |
+| Data | Docker volumes on the VM disk (SQLite and uploaded files). |
 
 ## 1. Create it (once)
 
@@ -165,8 +165,3 @@ If Google or Okta sign-in is down: on the sign-in page, open **Admin break-glass
 
 Someone turned off in Okta can't sign in. An admin can also turn someone off under People, which
 takes effect straight away.
-
-## Once it's confirmed working
-
-Remove the old ways of running it: `infra/`, `deploy.sh`, `cloudbuild.yaml`, the IAP code, and the
-Cloudflare files (`docker-compose.cloudflare.yml`, `cloudflare.py`).

@@ -1,14 +1,12 @@
-"""End-to-end tests of the server against both stores.
+"""End-to-end tests of the server.
 
     pip install -r requirements.txt -r requirements-dev.txt
     pytest -q
-
-The Firestore store runs against mock-firestore, an in-memory stand-in for the Firestore client.
 """
 import os
 import tempfile
 
-os.environ.setdefault("AUTH_MODE", "google")   # the standalone setup; test_platform covers Client Platforms
+os.environ.setdefault("AUTH_MODE", "local")   # signed in at the front door; DEV_ADMIN_USER stands in for it here
 os.environ.setdefault("ENROLLMENT_KEY", "test-key")
 os.environ.setdefault("DEV_ADMIN_USER", "admin@nscale.com")
 os.environ.setdefault("DATABASE_PATH", os.path.join(tempfile.mkdtemp(), "t.db"))
@@ -17,20 +15,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.store import FirestoreStore, SqliteStore
+from app.store import SqliteStore
 
 K = {"X-Nscale-Key": "test-key"}
 A = {"X-Requested-With": "nscale-admin"}
 
 
-@pytest.fixture(params=["sqlite", "firestore"])
-def client(request, tmp_path, monkeypatch):
-    if request.param == "sqlite":
-        s = SqliteStore(str(tmp_path / "t.db"))
-    else:
-        from mockfirestore import MockFirestore
-        s = FirestoreStore(MockFirestore())
-    monkeypatch.setattr(main, "store", s)
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "store", SqliteStore(str(tmp_path / "t.db")))
     with TestClient(main.app) as c:
         yield c
 

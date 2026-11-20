@@ -1,24 +1,17 @@
 """Nscale Client Platforms: the home page, sign-in and settings.
 
-AUTH_MODE=local (default): people sign in here with an email and password (see db.py). The front
-door (Caddy, see /Caddyfile) asks /auth/check before every request to a tool, and passes on the
-signed X-CP-User token this answers with (see access.py). Admins manage people, which tools each
-can use, the tool links and the site and device addresses on /settings.
+AUTH_MODE=oidc (the Google Cloud VM): people sign in with the company's identity provider over OpenID
+Connect (Google now, Okta later: see oidc.py). Only people on the people list get in, whatever the
+provider says; admins add them under Settings, searching the directory (see directory.py). Passwords
+are kept only for the break-glass admins in BREAK_GLASS_EMAILS (default: ADMIN_EMAIL), for when the
+provider is down.
 
-If CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are also set, people coming in through Cloudflare Access
-are signed in by it as well, so the same site works by IP (password) and through Cloudflare (SSO).
+AUTH_MODE=local (the default, for running it on your own machine): everyone signs in here with an
+email and password (see db.py).
 
-AUTH_MODE=cloudflare: as local, but only Cloudflare Access signs people in (see cloudflare.py), so there
-are no passwords here. Admins still list who may use which tool; someone Cloudflare lets in who isn't
-on that list gets nothing.
-
-AUTH_MODE=oidc: people sign in with the company's identity provider over OpenID Connect (Google now,
-Okta later: see oidc.py). Only people on the people list get in, whatever the provider says; admins
-add them under Settings, searching the directory (see directory.py). Passwords are kept only for the
-break-glass admins in BREAK_GLASS_EMAILS (default: ADMIN_EMAIL), for when the provider is down.
-
-AUTH_MODE=iap: Google IAP signs people in at the load balancer (Google Cloud). The home page lists
-every tool; ADMIN_EMAILS can change the settings. There are no local accounts.
+Either way the front door (Caddy, see /Caddyfile) asks /auth/check before every request to a tool,
+and passes on the signed X-CP-User token this answers with (see access.py). Admins manage people,
+which tools each can use, the tool links and the site and device addresses on /settings.
 
 Settings (environment): AUTH_SECRET, DATABASE_PATH, ADMIN_EMAIL + ADMIN_PASSWORD (first admin, only
 used while there are no accounts), SESSION_HOURS, PUBLIC_URL / DEVICE_URL (defaults for the settings),
@@ -37,28 +30,26 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import access, cloudflare, directory, oidc
-from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, iso, now
+from . import access, directory, oidc
+from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "cp_session"
 SESSION_HOURS = float(os.environ.get("SESSION_HOURS", "12"))
-ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD = 10
 
 MODE = "dev" if access.DEV_USER else access.AUTH_MODE
-ACCOUNTS = MODE in ("local", "cloudflare", "oidc")     # the people list is kept here
+if MODE not in ("local", "oidc", "dev"):
+    raise RuntimeError(f"AUTH_MODE must be oidc or local, not {MODE!r}.")
+ACCOUNTS = MODE in ("local", "oidc")                   # the people list is kept here
 PASSWORDS = MODE == "local"                            # everyone signs in with a password
 OIDC = MODE == "oidc"
 SESSIONS = PASSWORDS or OIDC                           # the portal keeps its own sign-in sessions
-CLOUDFLARE = MODE == "cloudflare" or (MODE == "local" and bool(cloudflare.TEAM and cloudflare.AUD))
 # With OIDC, only these accounts can use a password: a way in when the identity provider is down.
 BREAK_GLASS = {e.strip().lower() for e in (os.environ.get("BREAK_GLASS_EMAILS") or os.environ.get("ADMIN_EMAIL", "")).split(",") if e.strip()}
 
 access.check_settings()
-if MODE == "cloudflare":
-    cloudflare.check_settings()
 if OIDC:
     oidc.check_settings()
 db = DB(os.environ.get("DATABASE_PATH", "/data/portal.db"))
@@ -99,32 +90,11 @@ def current(request: Request) -> dict | None:
     if access.DEV_USER:
         return {"email": access.DEV_USER, "name": access.display_name(access.DEV_USER), "admin": True,
                 "tools": TOOL_IDS, "levels": {t: "admin" for t in TOOL_IDS}, "perms": list(SITE_PERMS), "roles": [ADMIN_ROLE]}
-    if MODE == "iap":
-        who = access.identity(request, "portal")
-        if not who:
-            return None
-        admin = who["email"] in ADMIN_EMAILS
-        return {**who, "admin": admin, "tools": TOOL_IDS, "levels": {t: "admin" if admin else "edit" for t in TOOL_IDS},
-                "perms": list(SITE_PERMS) if admin else [], "roles": []}
-    user = db.session_user(request.cookies.get(COOKIE, "")) if SESSIONS else None
-    if not user and CLOUDFLARE:
-        email = cloudflare.email(request)
-        user = db.get_user(email) if email else None
-        if not user or user["disabled"]:
-            return None
-        if (user["lastSignIn"] or "")[:13] != iso(now())[:13]:
-            db.signed_in(email)   # "last seen", to the hour
-            user["lastSignIn"] = iso(now())
-    return user
+    return db.session_user(request.cookies.get(COOKIE, "")) if SESSIONS else None
 
 
 def not_signed_in(request: Request, nxt: str = "/") -> Response:
     """The page for someone with no (usable) sign-in."""
-    if CLOUDFLARE:
-        email = cloudflare.email(request)
-        if email:
-            return message_page(f"{email} doesn't have an account on Client Platforms yet, or it's turned off. "
-                                "Ask a Client Platforms admin.", 403, "Sign out", "/logout")
     if SESSIONS:
         nxt = safe_next(nxt)
         return RedirectResponse("/login" if nxt == "/" else "/login?next=" + quote(nxt, safe="/"))
@@ -172,7 +142,7 @@ def require_settings(user: dict = Depends(require_user)) -> dict:
 
 def require_accounts():
     if not ACCOUNTS:
-        raise HTTPException(400, "The people list is only kept here with AUTH_MODE=local or cloudflare.")
+        raise HTTPException(400, "The people list is only kept here with AUTH_MODE=oidc or local.")
 
 
 def require_passwords():
@@ -299,15 +269,6 @@ def oidc_callback(request: Request, state: str = "", code: str = "", error: str 
 @app.get("/logout")
 @app.get("/signout")
 def logout(request: Request):
-    if MODE == "iap":
-        return RedirectResponse("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE")
-    if MODE == "cloudflare" or (CLOUDFLARE and request.headers.get(cloudflare.HEADER)):
-        token = request.cookies.get(COOKIE)
-        if token:
-            db.end_session(token)
-        r = RedirectResponse("/cdn-cgi/access/logout")   # Cloudflare's own sign-out
-        r.delete_cookie(COOKIE, path="/")
-        return r
     token = request.cookies.get(COOKIE)
     if token:
         db.end_session(token)
@@ -382,7 +343,7 @@ def me(user: dict = Depends(require_user)):
     tools = [{**t, "level": level(user, t["id"])} for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
     return {"email": user["email"], "name": user["name"], "admin": user["admin"], "perms": user.get("perms", []), "tools": tools,
             "inbox": ACCOUNTS or MODE == "dev", "authMode": MODE, "accounts": ACCOUNTS, "passwords": uses_password(user["email"]),
-            "cloudflare": CLOUDFLARE, "oidc": OIDC, "provider": oidc.PROVIDER if OIDC else "", "directory": directory.name() if OIDC else "",
+            "oidc": OIDC, "provider": oidc.PROVIDER if OIDC else "", "directory": directory.name() if OIDC else "",
             "minPassword": MIN_PASSWORD}
 
 
@@ -504,7 +465,7 @@ def _roles(v: list[str]) -> list[str]:
 class NewUser(BaseModel):
     email: str
     name: str = Field(default="", max_length=100)
-    password: str = Field(default="", max_length=200)   # not used with Cloudflare Access
+    password: str = Field(default="", max_length=200)   # AUTH_MODE=local only
     roles: list[str] = Field(default_factory=list)
 
     @field_validator("email")
@@ -547,11 +508,11 @@ def list_users(user: dict = Depends(require_people)):
 def create_user(body: NewUser, user: dict = Depends(require_people)):
     if db.get_user(body.email):
         raise HTTPException(409, f"{body.email} already has an account.")
-    if PASSWORDS and not (body.password or CLOUDFLARE):
+    if PASSWORDS and not body.password:
         raise HTTPException(422, "Give them a password.")
     if PASSWORDS and body.password and len(body.password) < MIN_PASSWORD:
         raise HTTPException(422, f"The password needs at least {MIN_PASSWORD} characters.")
-    # Without a password (Cloudflare or OIDC) they get a random one nobody knows.
+    # With OIDC they get a random password nobody knows (only break-glass admins use one).
     password = body.password if PASSWORDS and body.password else secrets.token_urlsafe(32)
     u = db.create_user(body.email, body.name.strip() or access.display_name(body.email), password, body.roles)
     return db.public(u)

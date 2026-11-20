@@ -1,29 +1,14 @@
 """Who is signed in, as vouched for by the Client Platforms front door.
 
-The same file is in every service (portal, notifications, elevation, restart); a test checks the
-copies match. Two ways to run:
+The same file is in every service (portal, notifications, elevation, restart, projects); a test
+checks the copies match.
 
-AUTH_MODE=local (default, Portainer / Docker)
-    People sign in on the portal with an email and password. Caddy asks the portal about every
-    request to a tool (forward_auth to /auth/check). If the person is signed in and allowed that
-    tool, the portal answers with X-CP-User: a short-lived token, signed with AUTH_SECRET, naming
-    the person and the tool it was issued for. Caddy adds it to the request; the tool checks the
-    signature, the tool name and the expiry. With no valid token, the request is nobody's.
-
-AUTH_MODE=cloudflare
-    As local, but Cloudflare Access signs people in instead of a password: the portal checks
-    Cloudflare's signed Cf-Access-Jwt-Assertion header to see who it is, then vouches for them
-    to the tools with X-CP-User exactly as above. The portal's people list still says who may
-    use which tool.
-
-AUTH_MODE=oidc
-    As local, but the portal signs people in with the company identity provider (OpenID Connect:
-    Google, later Okta) instead of a password. The tools see no difference: X-CP-User as above.
-
-AUTH_MODE=iap (Google Cloud)
-    Google's Identity-Aware Proxy signs people in at the load balancer and adds
-    X-Goog-IAP-JWT-Assertion; the tool checks Google's signature, issuer, IAP_AUDIENCE and the
-    Workspace domain.
+People sign in on the portal: AUTH_MODE=oidc (the company identity provider, on the Google Cloud VM)
+or AUTH_MODE=local (an email and password, for running it on your own machine). Either way Caddy asks
+the portal about every request to a tool (forward_auth to /auth/check). If the person is signed in
+and allowed that tool, the portal answers with X-CP-User: a short-lived token, signed with
+AUTH_SECRET, naming the person and the tool it was issued for. Caddy adds it to the request; the tool
+checks the signature, the tool name and the expiry. With no valid token, the request is nobody's.
 
 DEV_USER (local development only) pretends this person is signed in. Never set it on a server.
 """
@@ -32,26 +17,19 @@ import hashlib
 import hmac
 import json
 import os
-import threading
 import time
 
 AUTH_MODE = os.environ.get("AUTH_MODE", "local").lower()
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
-IAP_AUDIENCE = os.environ.get("IAP_AUDIENCE", "")
-ALLOWED_DOMAIN = os.environ.get("ALLOWED_DOMAIN", "nscale.com").lower()
 DEV_USER = os.environ.get("DEV_USER", "").lower()
 HEADER = "x-cp-user"
 TOKEN_SECONDS = 120
-IAP_HEADER = "x-goog-iap-jwt-assertion"
-IAP_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key"
 
 
 def check_settings() -> None:
     if DEV_USER:
         return
-    if AUTH_MODE == "iap" and not IAP_AUDIENCE:
-        raise RuntimeError("Set IAP_AUDIENCE (the load balancer backend service this app sits behind).")
-    if AUTH_MODE != "iap" and len(AUTH_SECRET) < 32:
+    if len(AUTH_SECRET) < 32:
         raise RuntimeError("Set AUTH_SECRET to the same long random string (32+ characters) on every service.")
 
 
@@ -97,47 +75,10 @@ def verify(token: str, tool: str, secret: str | None = None) -> dict | None:
     return claims
 
 
-class _IapKeys:
-    """Google's IAP signing keys, fetched at most once an hour."""
-    def __init__(self):
-        self._certs: dict = {}
-        self._at = 0.0
-        self._lock = threading.Lock()
-
-    def get(self) -> dict:
-        with self._lock:
-            if not self._certs or time.time() - self._at > 3600:
-                import httpx
-                r = httpx.get(IAP_CERTS_URL, timeout=10)
-                r.raise_for_status()
-                self._certs, self._at = r.json(), time.time()
-            return self._certs
-
-
-iap_keys = _IapKeys()
-
-
-def _iap(request) -> dict | None:
-    token = request.headers.get(IAP_HEADER)
-    if not token:
-        return None
-    from google.auth import jwt
-    try:
-        claims = jwt.decode(token, certs=iap_keys.get(), audience=IAP_AUDIENCE)
-    except Exception:
-        return None
-    email = (claims.get("email") or "").lower()
-    if claims.get("iss") != "https://cloud.google.com/iap" or (claims.get("hd") or "").lower() != ALLOWED_DOMAIN:
-        return None
-    return {"email": email, "name": display_name(email), "admin": False, "level": "edit"} if email else None
-
-
 def identity(request, tool: str) -> dict | None:
     """{email, name, admin, level} for whoever made this request to `tool`, or None."""
     if DEV_USER:
         return {"email": DEV_USER, "name": display_name(DEV_USER), "admin": True, "level": "admin"}
-    if AUTH_MODE == "iap":
-        return _iap(request)
     claims = verify(request.headers.get(HEADER, ""), tool)
     if not claims:
         return None
@@ -146,8 +87,4 @@ def identity(request, tool: str) -> dict | None:
 
 
 def sign_in_message() -> str:
-    if AUTH_MODE == "iap":
-        return f"Sign in with your {ALLOWED_DOMAIN} Google account at the Client Platforms address."
-    if AUTH_MODE == "cloudflare":
-        return "Open this through the Client Platforms address, where Cloudflare Access signs you in."
     return "Sign in at the Client Platforms home page."

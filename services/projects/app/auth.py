@@ -1,6 +1,6 @@
 """Who is signed in to Projects, Tasks, Team and the personal inbox (one service, four tools on the site).
 
-The front door does the signing in (the portal's accounts, Cloudflare Access, or Google IAP) and
+The front door does the signing in (the portal: the company identity provider, or passwords) and
 vouches for the person on every request; access.py checks that. Which projects they can see is
 each project's own Members list (see main.py).
 """

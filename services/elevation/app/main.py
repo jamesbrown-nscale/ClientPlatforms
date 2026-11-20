@@ -11,8 +11,8 @@ People:   /                             the log (signed in at the front door, se
 All of it sits under BASE_PATH (/elevation), so the worker's TechOps-style address is
 https://clientplatforms.nscale.com/elevation.
 
-Settings: INGEST_KEYS (label:key, one per line or comma separated; a secret), STORE, FIRESTORE_DATABASE,
-AUTH_MODE, AUTH_SECRET (or IAP_AUDIENCE), VIEWER_EMAILS, PORTAL_URL, BASE_PATH.
+Settings: INGEST_KEYS (label:key, one per line or comma separated; a secret), DATABASE_PATH,
+AUTH_MODE, AUTH_SECRET, VIEWER_EMAILS, PORTAL_URL, BASE_PATH.
 """
 import csv
 import hmac
@@ -93,13 +93,8 @@ def key_label(request: Request) -> str:
 
 
 def client_ip(request: Request) -> str:
-    # The Google load balancer appends "<client>, <load balancer>" to X-Forwarded-For; anything
-    # before those came from the client and can't be trusted. Caddy replaces the header with the
-    # client's address alone.
-    parts = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
-    if access.AUTH_MODE == "iap" and len(parts) >= 2:
-        return parts[-2]
-    return parts[-1] if parts else (request.client.host if request.client else "")
+    # Caddy replaces X-Forwarded-For with the address it saw.
+    return keyguard.client_ip(request)
 
 
 @app.post("/api/elevations/ingest")

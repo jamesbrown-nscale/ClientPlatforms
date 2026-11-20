@@ -1,6 +1,6 @@
 """Who is signed in to the elevation log.
 
-The front door does the signing in (the portal's accounts, or Google IAP on Google Cloud) and
+The front door does the signing in (the portal: the company identity provider, or passwords) and
 vouches for the person on every request; access.py checks that. VIEWER_EMAILS optionally narrows it
 further to a fixed list.
 """

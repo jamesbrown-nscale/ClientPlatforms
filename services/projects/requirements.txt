@@ -1,7 +1,5 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
-google-auth>=2.30
-cryptography>=43
 httpx==0.28.1
 python-docx==1.1.2
 openpyxl==3.1.5

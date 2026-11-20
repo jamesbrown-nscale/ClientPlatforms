@@ -1,4 +1,4 @@
-# Client Platforms front door (Docker: Portainer, or the Google Cloud VM).
+# Client Platforms front door (Docker: the Google Cloud VM, or your own machine).
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
 #   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
@@ -11,10 +11,9 @@
 {
 	admin off
 	servers {
-		# Behind Cloudflare Tunnel, cloudflared is the peer and Cf-Connecting-Ip holds the real address.
 		# Facing the internet itself (the VM), trust nobody's headers: TRUSTED_PROXIES=127.0.0.1/32.
 		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
-		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
+		client_ip_headers X-Forwarded-For
 	}
 }
 

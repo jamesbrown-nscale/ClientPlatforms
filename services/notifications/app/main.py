@@ -2,7 +2,7 @@
 
 Devices:  POST /api/v1/checkin   (X-Nscale-Key)  -> new messages for this device; uploads receipts
 Admins:   /                       branded page to send messages and see who has read them
-          /api/admin/...          JSON API behind Google sign-in (see auth.py)
+          /api/admin/...          JSON API, signed in at the front door (see auth.py)
 
 With BASE_PATH=/notifications every path above sits under it (as on clientplatforms.nscale.com), and
 devices use https://clientplatforms.nscale.com/notifications as their server address.

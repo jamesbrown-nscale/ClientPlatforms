@@ -1,11 +1,7 @@
-"""Where elevation records are kept.
+"""Where elevation records are kept: SQLite, at DATABASE_PATH (the service's Docker volume).
 
-    STORE=firestore   Google Cloud Firestore (Cloud Run). Database: FIRESTORE_DATABASE (elevation).
-    STORE=sqlite      a local file, for development and tests (DATABASE_PATH).
-
-Firestore layout:
-    elevations/{eventId}                     the current record, merged from every send
-    elevations/{eventId}/history/{autoId}    every snapshot exactly as received, never changed
+    elevations   the current record for each event, merged from every send
+    history      every snapshot exactly as received, never changed
 
 Each upsert reads the record, merges the new snapshot (see merge.py) and writes the record and a
 history entry together, in one transaction.
@@ -27,9 +23,6 @@ class Store:
 
 
 def make_store() -> Store:
-    kind = os.environ.get("STORE", "sqlite").lower()
-    if kind == "firestore":
-        return FirestoreStore()
     return SqliteStore(os.environ.get("DATABASE_PATH", "elevation.db"))
 
 
@@ -77,43 +70,3 @@ class SqliteStore(Store):
             rows = db.execute("SELECT doc FROM elevations WHERE requested_at >= ? ORDER BY requested_at DESC LIMIT ?",
                               (since, limit)).fetchall()
             return [json.loads(r["doc"]) for r in rows]
-
-
-class FirestoreStore(Store):
-    def __init__(self, client=None):
-        if client is None:
-            from google.cloud import firestore
-            client = firestore.Client(database=os.environ.get("FIRESTORE_DATABASE", "elevation"))
-        self.db = client
-        self.col = client.collection("elevations")
-
-    def upsert(self, event_id, merge):
-        from google.cloud import firestore
-        ref = self.col.document(event_id)
-        hist = ref.collection("history").document()
-
-        @firestore.transactional
-        def run(tx):
-            snap = ref.get(transaction=tx)
-            old = snap.to_dict() if snap.exists else None
-            new, entry = merge(old)
-            tx.set(ref, new)
-            tx.set(hist, entry)
-            return old, new
-
-        return run(self.db.transaction())
-
-    def get(self, event_id):
-        snap = self.col.document(event_id).get()
-        return snap.to_dict() if snap.exists else None
-
-    def history(self, event_id):
-        docs = self.col.document(event_id).collection("history").stream()
-        return sorted((d.to_dict() for d in docs), key=lambda h: (h.get("receivedAt") or "", h.get("seq") or 0))
-
-    def list_since(self, since, limit):
-        from google.cloud import firestore
-        from google.cloud.firestore_v1.base_query import FieldFilter
-        q = (self.col.where(filter=FieldFilter("requestedAt", ">=", since))
-             .order_by("requestedAt", direction=firestore.Query.DESCENDING).limit(limit))
-        return [d.to_dict() for d in q.stream()]

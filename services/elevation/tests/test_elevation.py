@@ -5,7 +5,7 @@ import tempfile
 import time
 import uuid
 
-os.environ.update(STORE="sqlite", BASE_PATH="/elevation", DEV_USER="viewer@nscale.com",
+os.environ.update(BASE_PATH="/elevation", DEV_USER="viewer@nscale.com",
                   INGEST_KEYS="laptops:" + "k" * 32 + "\nservers:" + "s" * 32)
 os.environ["DATABASE_PATH"] = os.path.join(tempfile.mkdtemp(), "e.db")
 
@@ -141,67 +141,13 @@ def test_source_ip_is_the_proxys_view(client, monkeypatch):
         client.post("/elevation/api/elevations/ingest", json={"events": [g]}, headers={**KEY, "X-Forwarded-For": xff})
         return client.get(f"/elevation/api/elevations/{g['eventId']}").json()["history"][0]["sourceIp"]
 
-    # Caddy (Docker stack): the last address is the one it saw.
+    # Caddy: the last address is the one it saw.
     assert sent_from("6.6.6.6, 81.2.69.160") == "81.2.69.160"
-    # Google load balancer: "<client>, <load balancer>" is appended.
-    monkeypatch.setattr(access, "AUTH_MODE", "iap")
-    assert sent_from("6.6.6.6, 81.2.69.160, 34.111.1.1") == "81.2.69.160"
-
-
-# ---------- Sign-in through IAP ----------
-
-AUDIENCE = "/projects/123/global/backendServices/789"
-
-
-@pytest.fixture
-def iap_client(tmp_path, monkeypatch):
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from google.auth import crypt, jwt
-
-    monkeypatch.setenv("DEV_USER", "")
-    monkeypatch.setenv("AUTH_MODE", "iap")
-    monkeypatch.setenv("IAP_AUDIENCE", AUDIENCE)
-    reload_app()
-    monkeypatch.setattr(main, "store", store_mod.SqliteStore(str(tmp_path / "t.db")))
-    key = ec.generate_private_key(ec.SECP256R1())
-    pem = key.public_key().public_bytes(serialization.Encoding.PEM,
-                                        serialization.PublicFormat.SubjectPublicKeyInfo).decode()
-    signer = crypt.ES256Signer.from_string(key.private_bytes(
-        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode(), "k")
-    monkeypatch.setattr(access.iap_keys, "get", lambda: {"k": pem})
-
-    def token(**kw):
-        now = int(time.time())
-        claims = {"iss": "https://cloud.google.com/iap", "aud": AUDIENCE, "email": "james.brown@nscale.com",
-                  "hd": "nscale.com", "iat": now, "exp": now + 600, **kw}
-        return {"x-goog-iap-jwt-assertion": jwt.encode(signer, claims).decode()}
-
-    with TestClient(main.app) as c:
-        c.token = token
-        yield c
-    monkeypatch.setenv("DEV_USER", "viewer@nscale.com")
-    monkeypatch.delenv("IAP_AUDIENCE")
-    monkeypatch.delenv("AUTH_MODE")
-    reload_app()
 
 
 def reload_app():
     for m in (access, auth, main):
         importlib.reload(m)
-
-
-def test_iap_sign_in_is_checked(iap_client):
-    c = iap_client
-    assert c.get("/elevation/api/me", headers=c.token()).json()["email"] == "james.brown@nscale.com"
-    assert c.get("/elevation/api/me").status_code == 401
-    assert c.get("/elevation/api/me", headers=c.token(aud="/projects/123/global/backendServices/1")).status_code == 401
-    assert c.get("/elevation/api/me", headers=c.token(hd="example.com")).status_code == 401
-    assert c.get("/elevation/api/me", headers=c.token(exp=int(time.time()) - 60)).status_code == 401
-    assert c.get("/elevation/").status_code == 403
-    assert c.get("/elevation/api/elevations.csv").status_code == 401
-    # Devices don't sign in; they use the ingest key.
-    assert send(c, record()).status_code == 200
 
 
 SECRET = "x" * 40

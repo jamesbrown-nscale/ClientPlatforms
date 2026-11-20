@@ -236,3 +236,15 @@ def test_needs_its_settings(monkeypatch):
         oidc.check_settings()
     monkeypatch.undo()
     importlib.reload(oidc)
+
+
+@pytest.mark.parametrize("mode", ["cloudflare", "iap"])
+def test_old_sign_in_modes_are_refused(monkeypatch, mode):
+    """A leftover AUTH_MODE from an older setup stops the portal starting, rather than letting anyone in."""
+    monkeypatch.setenv("AUTH_MODE", mode)
+    importlib.reload(access)
+    with pytest.raises(RuntimeError, match="must be oidc or local"):
+        importlib.reload(main)
+    monkeypatch.undo()
+    importlib.reload(access)
+    importlib.reload(main)

@@ -1,6 +1,6 @@
 # Nscale Client Platforms
 
-The Client Platforms team's tools, behind one sign-in, as a Docker stack you run in Portainer.
+The Client Platforms team's tools, behind one sign-in, as a Docker stack on a small Google Cloud VM at https://clientplatforms.nscale.com.
 
 | Path | Tool | Code |
 |---|---|---|
@@ -15,8 +15,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
 ```
- people ── http://<host>:8080 (password) ──────────────────────────────────────► proxy (Caddy)
- people ──► Cloudflare Access (optional) ──► Cloudflare Tunnel ──► cloudflared ──►    │
+ people ── https://clientplatforms.nscale.com ── Sign in with Google (OIDC) ───────► proxy (Caddy, HTTPS)
                                                                                      │
        every request to a tool: proxy asks portal /auth/check ──► 200 + X-CP-User ───┤
                                                                                      ├─► /               portal
@@ -28,47 +27,35 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack you run
 
 ## How sign-in works
 
-- **By IP, with a password** (`AUTH_MODE=local`, the default). Open `http://<host>:8080` and sign in with an email and password the portal keeps (scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords).
-- **Through Cloudflare as well, if you set it up.** When `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are set, people coming in through Cloudflare Access are signed in by it, with no password. The portal checks Cloudflare's signed header (`Cf-Access-Jwt-Assertion`) against your team's keys, issuer and the application's AUD tag before it believes the email in it. `AUTH_MODE=cloudflare` turns passwords off, leaving Cloudflare as the only way in (and no sign-in by IP).
-- **With the company's identity provider** (`AUTH_MODE=oidc`, on the Google Cloud VM). **Sign in with Google** now; Okta later, by changing settings (OpenID Connect: authorization code with PKCE). The portal checks the ID token's signature, issuer, audience, expiry and nonce, plus a verified email in an allowed domain, before it believes who it is. Only people already on the People list get in. Anyone else sees "you don't have access", even with a valid nscale.com account. Admins add people by finding them in the directory (Google Workspace now, Okta later; read-only). Passwords are kept only for the break-glass admins in `BREAK_GLASS_EMAILS` (default `ADMIN_EMAIL`), for when sign-in is down. See [`deploy/vm/README.md`](deploy/vm/README.md).
+- **With the company's identity provider** (`AUTH_MODE=oidc`, on the VM). **Sign in with Google** now; Okta later, by changing settings (OpenID Connect: authorization code with PKCE). The portal checks the ID token's signature, issuer, audience, expiry and nonce, plus a verified email in an allowed domain, before it believes who it is. Only people already on the People list get in. Anyone else sees "you don't have access", even with a valid nscale.com account. Admins add people by finding them in the directory (Google Workspace now, Okta later; read-only). Passwords are kept only for the break-glass admins in `BREAK_GLASS_EMAILS` (default `ADMIN_EMAIL`), for when sign-in is down. See [`deploy/vm/README.md`](deploy/vm/README.md).
+- **With a password, on your own machine** (`AUTH_MODE=local`, the default). The portal keeps the passwords (scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords).
 - **The portal decides who gets which tool.** Signing in isn't enough: the person must also be on the portal's **People** list, with **roles** (see *Permissions* below).
 - **The tools trust only the portal.** Before any request reaches a tool, Caddy asks the portal (`forward_auth` to `/auth/check`). If the person may use that tool, the portal answers with `X-CP-User`: a 2-minute token signed with `AUTH_SECRET`, naming the person and the tool. The tool checks the signature, the tool name and the expiry. Caddy removes any `X-CP-User` a client sends, and a token for one tool is refused by the others.
 - **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these. Requests over 2 MB are refused. Each app logs a wrong key (a `bad_device_key` line) and turns away an address after 20 wrong keys in 10 minutes.
 
-## Running it in Portainer
+## Running it
 
-### 1. The stack
+**On Google Cloud** (the live site): one e2-small VM in London runs the stack with [`docker-compose.vm.yml`](docker-compose.vm.yml) on top. Caddy gets its own HTTPS certificate, people sign in with Google (Okta later), and the disk's daily snapshots are the backups. It costs roughly $15–25 a month. Creating it, setting it up, devices, updates, restoring, changing keys, break-glass and the move to Okta are all in [`deploy/vm/README.md`](deploy/vm/README.md):
 
-In Portainer: **Stacks → Add stack → Repository**. Point it at this repo (`refs/heads/main`), with compose path `docker-compose.yml`. Then set the environment variables listed in [`.env.example`](.env.example), or use **Load variables from .env file**:
+```bash
+PROJECT=<project-id> ./deploy/vm/create.sh                   # once: VM, address, firewall, snapshots
+sudo /opt/client-platforms/deploy/vm/update.sh             # on the VM: start, or update to the latest
+```
 
-| Variable | What |
-|---|---|
-| `AUTH_SECRET` | `openssl rand -hex 32`. Shared by every service. |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The first admin. Only used while the portal has no accounts; change the password after signing in. |
-| `ENROLLMENT_KEY` | IT Notifications device key. |
-| `ELEVATION_INGEST_KEYS`, `RESTART_INGEST_KEYS` | `label:key` pairs, comma separated, keys 24+ characters. Each label is shown against what its devices send, so give each group of devices its own key. |
-| `HTTP_PORT` | The port on the host (default 8080). |
+**Every image runs its tests while it builds**, so a version with failing tests doesn't start, and the running one carries on.
 
-Deploy. **Every image runs its tests while it builds**, so if a test fails the stack doesn't deploy. That is the "check" step. To roll out a change, use **Pull and redeploy** on the stack (tick *Re-pull image and redeploy*), or turn on Portainer's GitOps updates to redeploy when `main` changes.
+**On your own machine:** copy [`.env.example`](.env.example) to `.env`, fill it in, run `docker compose up -d --build` and open `http://localhost:8080`. Sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 
-### 2. Cloudflare (optional, any time later)
+### First sign-in
 
-1. **Tunnel.** In Zero Trust → Networks → Tunnels, create a tunnel and copy its token. Add a public hostname, e.g. `clientplatforms.nscale.com`, with service `http://proxy:80`.
-2. **Access application.** In Zero Trust → Access → Applications, add a self-hosted app for that hostname with an *Allow* policy for your people (e.g. emails ending `@nscale.com`). Copy the **Application Audience (AUD) tag** from its overview.
-3. **Let devices through.** Devices can't sign in, so add a second application (or a policy with action **Bypass**) for these paths on the same hostname:
-   `/notifications/api/v1/checkin`, `/elevation/api/elevations/ingest`, `/restart/api/reports`, `/restart/api/policy`, `/api/device-config`.
-4. **The stack.** Add `docker-compose.cloudflare.yml` under **Additional paths**, and set `CLOUDFLARE_TUNNEL_TOKEN`, `CF_ACCESS_TEAM_DOMAIN` (e.g. `nscale.cloudflareaccess.com`) and `CF_ACCESS_AUD`. Redeploy. Sign-in by IP keeps working.
+Sign in as `ADMIN_EMAIL`, then under **Settings**:
 
-### 3. First sign-in
-
-Open `http://<host>:8080` and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Change the password (Settings → Your account), then:
-
-- **People**: add each person and tick their tools. Give them a password for sign-in by IP; with Cloudflare set up, leave it empty for people who only come in through Cloudflare (use the email Cloudflare signs them in with).
+- **People**: add each person (on the VM, find them in the directory), and give them roles. Only people on this list can sign in.
 - **Addresses**: the *site address* (what people open) and the *device server address* (what devices send to, if it's different). Devices and installers can read the current addresses from `/api/device-config`.
 - **Tools**: where each home page tile links to, and whether it's shown. Point one at another server if that tool runs somewhere else.
 - **Device settings**: the exact installer values for each app, built from the device server address.
 
-Data is in four Docker volumes (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`). Back them up.
+Data is in one Docker volume per service (`portal-data`, `notifications-data`, `elevation-data`, `restart-data`, `projects-data`).
 
 ## IT Notifications
 
@@ -264,24 +251,12 @@ DEV_USER=you@nscale.com BASE_PATH=/restart DATABASE_PATH=./dev.db INGEST_KEYS="d
 
 Every service runs the same way. `DEV_USER` skips sign-in, so never set it on a server. GitHub Actions runs every service's tests on each push.
 
-## Google Cloud VM
-
-The site is moving to one small Google Cloud VM running the same Docker stack. Caddy handles HTTPS itself, people sign in with OIDC, and the disk's daily snapshots are the backups. It costs roughly $15–25 a month. It starts with empty databases: nothing is copied from Portainer. Setup, devices, updates, restoring and the later move to Okta are in [`deploy/vm/README.md`](deploy/vm/README.md):
-
-```bash
-PROJECT=<project-id> ./deploy/vm/create.sh                   # once: VM, address, firewall, snapshots
-sudo /opt/client-platforms/deploy/vm/update.sh             # on the VM: start, or update to the latest
-```
-
-`infra/`, `deploy.sh` and `cloudbuild.yaml` are the older Cloud Run and IAP setup. They'll be removed once the VM is confirmed working.
-
 ## Layout
 
 | Folder | What's in it |
 |---|---|
-| `docker-compose.yml`, `.env.example` | The Portainer stack and its settings. `docker-compose.cloudflare.yml` adds the Cloudflare Tunnel. |
+| `docker-compose.yml`, `.env.example` | The stack, and its settings for running it on your own machine. |
 | `docker-compose.vm.yml`, `deploy/vm/` | The Google Cloud VM: HTTPS and OIDC on top of the stack, the scripts to create, set up and update it, its settings (`env.example`) and the runbook. |
 | `proxy/` | Caddy: routing and the sign-in check in front of each tool. |
-| `services/portal/` | Home page, sign-in (`oidc.py`, `cloudflare.py`, passwords in `db.py`), the directory search (`directory.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match (as does `keyguard.py`, the wrong-key limiter in the three device apps). To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
+| `services/portal/` | Home page, sign-in (`oidc.py`, passwords in `db.py`), the directory search (`directory.py`), Settings. `access.py` is shared: the same file is in every service, and a test checks the copies match (as does `keyguard.py`, the wrong-key limiter in the three device apps). To add a tool: add it to `TOOLS` in `app/db.py`, add a service to `docker-compose.yml`, and add its path to `proxy/Caddyfile`. |
 | `services/notifications/`, `services/elevation/`, `services/restart/`, `services/projects/` | The tools, each with its page, API and tests. |
-| `infra/`, `deploy.sh`, `cloudbuild.yaml` | The older Cloud Run setup (to be removed). |
