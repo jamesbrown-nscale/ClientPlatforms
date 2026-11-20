@@ -12,7 +12,7 @@
 #   restart        Restart Reminder report     /restart/
 #   projects       Projects, Tasks, Team, Change management and everyone's notifications:
 #                  /projects/, /tasks/, /team/, /changes/, /inbox/
-#   inventory      Users and Devices (Jamf, Intune)   /users/, /devices/
+#   inventory      Users, Org chart, Departments and Devices (Jamf, Intune)   /users/, /org/, /departments/, /devices/
 #
 # Data is kept in one Docker volume per service (SQLite). On the VM, the disk's snapshots back them up.
 name: client-platforms

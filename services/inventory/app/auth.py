@@ -15,6 +15,8 @@ from . import access
 
 DEVICES = "devices"
 USERS = "users"
+ORG = "org"                  # Org chart: its own access, read only
+DEPARTMENTS = "departments"  # Departments: its own access, read only
 RANK = {"view": 1, "edit": 2, "admin": 3}
 
 
@@ -70,3 +72,11 @@ def users_viewer(request: Request) -> User:
 
 def users_editor(request: Request) -> User:
     return _require(request, USERS, "edit")
+
+
+def org_viewer(request: Request) -> User:
+    return _require(request, ORG)
+
+
+def departments_viewer(request: Request) -> User:
+    return _require(request, DEPARTMENTS)

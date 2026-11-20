@@ -66,7 +66,7 @@
       <h1>Org chart</h1>
       <p class="sub">Who reports to whom, from the line managers on Users. Click anyone to see their team; the people above them lead back to the top.</p>
     </div>
-    <div class="acts"><a class="btn" href="departments">Departments</a><a class="btn" href="./">Users</a></div>
+    <div class="acts"><a class="btn" href="/departments/">Departments</a><a class="btn" href="/users/">Users</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="otools">
@@ -135,7 +135,7 @@ function draw() {
   html += `<div class="chain">${card(FOCUS, 'focus',
     `${dept ? `<span class="muted">${esc(dept)}</span>` : ''}<span class="muted">${esc(u.email)}</span>${u.type === 'VIP' ? '<span class="badge b-vip" style="margin-top:4px">VIP</span>' : ''}`)}
     <div class="focusacts"><span class="muted">${kids.length ? `${kids.length} direct report${kids.length === 1 ? '' : 's'} · ${size(FOCUS)} in all` : 'No one reports to them'}</span>
-      <a class="btn small" href="./#${encodeURIComponent(FOCUS)}">Open in Users</a></div></div>`;
+      <a class="btn small" href="/users/#${encodeURIComponent(FOCUS)}">Open in Users</a></div></div>`;
   if (kids.length) html += `<span class="link"></span><div class="reports">${kids.map(e => card(e)).join('')}</div>`;
   if (!chain.length && TOPS.length > 1) {
     const others = TOPS.filter(e => e !== FOCUS);

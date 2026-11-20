@@ -88,9 +88,9 @@ The laptop agents keep using keys, not sign-in. Give them the new address and th
 
 | Agent | Sends to | Key |
 |---|---|---|
-| IT Notifications | `https://<DOMAIN>/notifications/api/v1/checkin` | `X-Nscale-Key: <ENROLLMENT_KEY>` |
-| Admin elevation | `https://<DOMAIN>/elevation/api/elevations/ingest` | `Authorization: Bearer <a key from ELEVATION_INGEST_KEYS>` |
-| Restart reminder | `https://<DOMAIN>/restart/api/reports` and `/restart/api/policy` | `Authorization: Bearer <a key from RESTART_INGEST_KEYS>` |
+| IT Notifications | `https://<DOMAIN>/notifications/api/v1/checkin` | `X-Nscale-Key: <an enrollment key from Settings → Site, or ENROLLMENT_KEY>` |
+| Admin elevation | `https://<DOMAIN>/elevation/api/elevations/ingest` | `Authorization: Bearer <an ingest key from Settings → Site, or ELEVATION_INGEST_KEYS>` |
+| Restart reminder | `https://<DOMAIN>/restart/api/reports` and `/restart/api/policy` | `Authorization: Bearer <an ingest key from Settings → Site, or RESTART_INGEST_KEYS>` |
 
 Device requests over 2 MB are refused. Each app logs wrong keys, and turns away an address after 20
 wrong keys in 10 minutes until those age out. To see the log:

@@ -73,7 +73,7 @@
 <aside class="panel" id="panel" hidden role="dialog" aria-modal="true" aria-labelledby="p-title">
   <div class="phd">
     <div style="min-width:0"><span id="p-badge"></span><h2 id="p-title"></h2><div class="muted" id="p-sub"></div></div>
-    <a class="btn small x" id="p-org" href="org">Org chart</a>
+    <a class="btn small x" id="p-org" href="/org/">Org chart</a>
     <button class="btn small" id="p-close" type="button" aria-label="Close">Close</button>
   </div>
   <form class="pbody" id="p-form" autocomplete="off">
@@ -371,7 +371,7 @@ async function openUser(email) {
   $('p-title').textContent = u ? u.name : 'Add user';
   $('p-sub').textContent = u ? u.email + (u.updatedAt ? ` · changed ${full(u.updatedAt)}${u.updatedBy ? ' by ' + u.updatedBy : ''}` : '') : 'They can be tagged once added.';
   $('emailWrap').hidden = !!u;
-  $('p-org').hidden = !u; if (u) $('p-org').href = 'org#' + encodeURIComponent(u.email);
+  $('p-org').hidden = !u; if (u) $('p-org').href = '/org/#' + encodeURIComponent(u.email);
   $('f-email').value = u ? u.email : ''; $('f-email').required = !u;
   $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-div').value = u?.division || '';
   $('f-dept').value = u?.department || ''; divisionList(); $('f-manager').value = u?.manager || ''; $('f-devq').value = '';

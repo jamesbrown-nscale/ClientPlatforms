@@ -120,8 +120,14 @@ def test_who_can_do_what(c):
     assert c.get("/devices/api/devices").status_code == 401
     assert c.get("/devices/").status_code == 403
     assert "Devices" in c.get("/devices/", headers=DV).text and "Users" in c.get("/users/", headers=UV).text
-    assert "Org chart" in c.get("/users/org", headers=UV).text and "Departments" in c.get("/users/departments", headers=UV).text
-    assert c.get("/users/org").status_code == 403 and c.get("/users/departments", headers=DV).status_code == 403
+    OV, PV = who("org", "view"), who("departments", "view")
+    assert "Org chart" in c.get("/org/", headers=OV).text and "Departments" in c.get("/departments/", headers=PV).text
+    assert c.get("/org/").status_code == 403 and c.get("/departments/", headers=UV).status_code == 403   # their own access
+    assert c.get("/org/api/users", headers=OV).json()["items"] == [] and c.get("/org/api/users", headers=UV).status_code == 401
+    assert c.get("/departments/api/me", headers=PV).json()["level"] == "view"
+    assert c.post("/org/api/users", headers=OV).status_code == 405   # read only
+    assert c.get("/users/org", headers=UV, follow_redirects=False).headers["location"] == "/org/"
+    assert c.get("/org", follow_redirects=False).headers["location"] == "/org/"
     assert c.get("/devices/api/devices", headers=UV).status_code == 401    # a Users token isn't a Devices one
     assert c.get("/devices/api/devices", headers=DV).status_code == 200
     assert c.get("/devices/api/connections", headers=DE).status_code == 403   # admins only

@@ -10,7 +10,7 @@ os.environ.update(AUTH_MODE="local", AUTH_SECRET=SECRET, DEV_USER="", ADMIN_EMAI
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import access, main  # noqa: E402
+from app import db as db_mod, access, main  # noqa: E402
 
 H = {"X-Requested-With": "nscale-admin"}
 HTML = {"accept": "text/html,application/xhtml+xml"}
@@ -51,7 +51,7 @@ def add(c, email, tools=(), admin=False, password="a-good-password", level="edit
     return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
 
 
-TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "users", "team"]
+TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "users", "org", "departments", "team"]
 
 
 def test_first_admin_and_sign_in(c):
@@ -117,19 +117,32 @@ def test_each_person_only_gets_their_tools(c):
     assert c.get("/settings").status_code == 200   # their own account
 
 
-def test_pages_follow_their_tools_access(c):
-    """Org chart and Departments are pages of Users: no access entry of their own."""
+def test_org_chart_and_departments_have_their_own_access(c):
     sign_in(c)
-    assert "org" not in [t["id"] for t in c.get("/api/roles").json()["tools"]]
-    add(c, "orgview@nscale.com", tools=["users"], level="view")
-    add(c, "noorg@nscale.com", tools=["elevation"])
+    assert {"org", "departments"} <= {t["id"] for t in c.get("/api/roles").json()["tools"]}
+    add(c, "orgview@nscale.com", tools=["org"], level="view")
     sign_in(c, "orgview@nscale.com", "a-good-password")
     me = {t["id"]: t for t in c.get("/api/me").json()["tools"]}
-    assert me["org"]["url"] == "/users/org" and me["org"]["level"] == "view" and "departments" in me and me["users"]["level"] == "view"
-    assert check(c, "/users/org").status_code == 200
-    sign_in(c, "noorg@nscale.com", "a-good-password")
-    assert not {"org", "departments", "users"} & {t["id"] for t in c.get("/api/me").json()["tools"]}
-    assert check(c, "/users/org").status_code == 403
+    assert me["org"]["url"] == "/org/" and me["org"]["level"] == "view" and "departments" not in me and "users" not in me
+    assert check(c, "/org/api/users").status_code == 200 and check(c, "/departments/").status_code == 403
+    assert check(c, "/users/").status_code == 403
+
+
+def test_users_roles_get_the_new_pages_once(tmp_path):
+    import json as j, sqlite3
+    path = str(tmp_path / "p.db")
+    d = db_mod.DB(path)
+    con = sqlite3.connect(path)
+    con.execute("INSERT INTO roles (id, name, levels, perms, system) VALUES ('u', 'Users editor', ?, '[]', 0)", (j.dumps({"users": "edit"}),))
+    con.execute("DELETE FROM settings WHERE key = 'migrated:pages-from-users'")
+    con.commit()
+    db_mod.DB(path)
+    levels = {r["id"]: r["levels"] for r in d.roles()}["u"]
+    assert levels == {"users": "edit", "org": "edit", "departments": "edit"}
+    con.execute("UPDATE roles SET levels = ? WHERE id = 'u'", (j.dumps({"users": "edit"}),))   # someone takes them away
+    con.commit()
+    db_mod.DB(path)
+    assert {r["id"]: r["levels"] for r in d.roles()}["u"] == {"users": "edit"}   # not given back
 
 
 def test_people_admin(c):
@@ -180,7 +193,7 @@ def test_change_own_password(c):
 def test_settings(c):
     sign_in(c)
     s = c.get("/api/settings").json()
-    assert [t["id"] for t in s["tools"] if t["id"] not in ("org", "departments")] == TOOLS
+    assert [t["id"] for t in s["tools"]] == TOOLS
     assert s["devices"]["elevation"] == "http://testserver/elevation"
     body = {"publicUrl": "https://cp.example.com/", "deviceUrl": "", "tools": [
         {"id": "notifications", "url": "https://notify.example.com/", "enabled": True},
@@ -217,6 +230,12 @@ def test_access_module_is_the_same_everywhere():
         pytest.skip("only this service is here (Docker build)")
     for other in others:
         assert other.read_text() == here.read_text(), f"{other} differs from {here}"
+
+
+def test_devicekeys_module_is_the_same_everywhere():
+    copies = list((Path(__file__).resolve().parents[2]).glob("*/app/devicekeys.py"))
+    assert len(copies) == 3
+    assert len({c.read_text() for c in copies}) == 1
 
 
 def test_keyguard_module_is_the_same_everywhere():

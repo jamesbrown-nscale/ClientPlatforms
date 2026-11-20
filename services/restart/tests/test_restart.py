@@ -157,3 +157,43 @@ def test_guessing_keys_is_slowed_down(client):
     assert send(client, headers={**KEY, **ip}).status_code == 429
     assert send(client, headers={**KEY, "X-Forwarded-For": "198.51.100.4"}).status_code != 429
     main.guard.clear()
+
+
+def test_device_keys_made_on_the_site(client, monkeypatch, tmp_path):
+    from datetime import date, timedelta as td
+    H = {"X-Requested-With": "nscale-admin"}
+    items = client.get("/restart/api/device-keys").json()["items"]
+    assert items[0]["source"] == "env" and items[0]["label"] == "laptops" and items[0]["start"] == "kkkkkk"   # never the whole key
+    assert client.delete("/restart/api/device-keys/env-0", headers=H).status_code == 400
+
+    r = client.post("/restart/api/device-keys", headers=H, json={"label": " Windows  laptops ", "expires": ""}).json()
+    key, item = r["key"], r["item"]
+    assert key.startswith("cpr_") and len(key) > 30 and item["label"] == "Windows laptops" and key.startswith(item["start"])
+    assert key not in str(client.get("/restart/api/device-keys").json())   # shown once only
+    assert send(client, rep(), headers={"Authorization": "Bearer " + key}).status_code == 200
+    assert client.get("/restart/api/device-keys").json()["items"][1]["lastUsed"]
+
+    # Expiry: works through its last day, not after.
+    today = date.today().isoformat()
+    assert client.post("/restart/api/device-keys", headers=H, json={"label": "x", "expires": "2001-01-01"}).status_code == 422
+    short = client.post("/restart/api/device-keys", headers=H, json={"label": "Until today", "expires": today}).json()
+    assert send(client, rep(), headers={"Authorization": "Bearer " + short["key"]}).status_code == 200
+    with main.KEYS._db() as db:
+        db.execute("UPDATE device_keys SET expires = ? WHERE id = ?", ((date.today() - td(days=1)).isoformat(), short["item"]["id"]))
+    assert send(client, rep(), headers={"Authorization": "Bearer " + short["key"]}).status_code == 401
+    assert next(k for k in client.get("/restart/api/device-keys").json()["items"] if k["id"] == short["item"]["id"])["expired"]
+
+    # Deleting stops it at once.
+    assert client.delete(f"/restart/api/device-keys/{item['id']}", headers=H).status_code == 200
+    assert send(client, rep(), headers={"Authorization": "Bearer " + key}).status_code == 401
+    assert client.delete(f"/restart/api/device-keys/{item['id']}", headers=H).status_code == 404
+    assert send(client, rep()).status_code == 200   # the .env key still works
+
+    # Only admins of the tool.
+    monkeypatch.setattr(access, "DEV_USER", "")
+    monkeypatch.setattr(access, "AUTH_SECRET", "s" * 40)
+    edit = {**H, "X-CP-User": access.issue("e@nscale.com", "E", "restart", level="edit")}
+    adm = {**H, "X-CP-User": access.issue("a@nscale.com", "A", "restart", admin=True)}
+    assert client.get("/restart/api/device-keys", headers=edit).status_code == 403
+    assert client.get("/restart/api/device-keys", headers=adm).status_code == 200
+    assert client.get("/restart/api/device-keys").status_code == 401

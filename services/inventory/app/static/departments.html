@@ -50,7 +50,7 @@
       <h1>Departments</h1>
       <p class="sub">Every department, its divisions and the people in each, from Users. Click someone to see or tag them.</p>
     </div>
-    <div class="acts"><a class="btn" href="org">Org chart</a><a class="btn" href="./">Users</a></div>
+    <div class="acts"><a class="btn" href="/org/">Org chart</a><a class="btn" href="/users/">Users</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="tiles" style="grid-template-columns:repeat(4,1fr)">
@@ -152,9 +152,9 @@ $('list').addEventListener('click', e => {
   const div = e.target.closest('[data-div]');
   if (div) { const k = div.dataset.div; SHUT.has(k) ? SHUT.delete(k) : SHUT.add(k); draw(); return; }
   const li = e.target.closest('li[data-email]');
-  if (li) location.href = './#' + encodeURIComponent(li.dataset.email);
+  if (li) location.href = '/users/#' + encodeURIComponent(li.dataset.email);
 });
-$('list').addEventListener('keydown', e => { const li = e.target.closest('li[data-email]'); if (li && e.key === 'Enter') location.href = './#' + encodeURIComponent(li.dataset.email); });
+$('list').addEventListener('keydown', e => { const li = e.target.closest('li[data-email]'); if (li && e.key === 'Enter') location.href = '/users/#' + encodeURIComponent(li.dataset.email); });
 $('expandAll').onclick = () => { ALL.forEach(u => OPEN.add(u.department || '')); SHUT.clear(); draw(); };
 $('collapseAll').onclick = () => { OPEN.clear(); SHUT.clear(); draw(); };
 $('q').addEventListener('input', draw);

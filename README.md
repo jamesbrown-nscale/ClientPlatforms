@@ -12,7 +12,8 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
-| `/users/` | Users: the people we look after, imported by CSV, tagged with department and division, line manager, VIP or Standard and primary device. Also `/users/org` (Org chart) and `/users/departments` (Departments) | [`services/inventory`](services/inventory) |
+| `/users/` | Users: the people we look after, imported by CSV, tagged with department and division, line manager, VIP or Standard and primary device. |
+| `/org/`, `/departments/` | Org chart and Departments: who reports to whom, and every department with its divisions and people, from Users | [`services/inventory`](services/inventory) | [`services/inventory`](services/inventory) |
 | `/team/` | Client Platform Team: roles, responsibilities, projects and activity, 1-2-1s, feedback and manager notes | [`services/projects`](services/projects) (`app/team.py`) |
 | `/inbox/` | Notifications: your own, for everyone signed in | [`services/projects`](services/projects) (`app/inbox.py`) |
 
@@ -34,7 +35,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 - **With a password, on your own machine** (`AUTH_MODE=local`, the default). The portal keeps the passwords (scrypt-hashed, 12-hour sessions, a lockout after repeated wrong passwords).
 - **The portal decides who gets which tool.** Signing in isn't enough: the person must also be on the portal's **People** list, with **roles** (see *Permissions* below).
 - **The tools trust only the portal.** Before any request reaches a tool, Caddy asks the portal (`forward_auth` to `/auth/check`). If the person may use that tool, the portal answers with `X-CP-User`: a 2-minute token signed with `AUTH_SECRET`, naming the person and the tool. The tool checks the signature, the tool name and the expiry. Caddy removes any `X-CP-User` a client sends, and a token for one tool is refused by the others.
-- **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these. Requests over 2 MB are refused. Each app logs a wrong key (a `bad_device_key` line) and turns away an address after 20 wrong keys in 10 minutes.
+- **Devices don't sign in.** Three paths skip the check: the notification check-in, the elevation ingest and the restart reports. Devices use their own keys on these: made, given an expiry date and deleted under **Settings → Site → Device settings** (admins of each app; the key is shown once, and only its SHA-256 is kept, in that app's own database, `devicekeys.py`), or set on the server as before (`ENROLLMENT_KEY`, `ELEVATION_INGEST_KEYS`, `RESTART_INGEST_KEYS`, listed there read only). An expired or deleted key stops working at once. Requests over 2 MB are refused. Each app logs a wrong key (a `bad_device_key` line) and turns away an address after 20 wrong keys in 10 minutes.
 
 ## Running it
 
@@ -148,7 +149,7 @@ The people we look after (not who can sign in: that's Settings → People), each
 
 **Departments** (People → Departments) lists every department with how many people, divisions and VIPs it has and who leads it (of the people whose manager isn't in it, the one with the most of it below them). Open one to see its divisions and the people in each, with who they report to and their primary device; **Expand all** and **Collapse all**, and a search. Click someone to open them on Users.
 
-Org chart and Departments are pages of Users: in the sidebar and on the home page they have their own links, but whoever can use Users can use them (they have no permission of their own).
+Org chart and Departments have their own permissions (Settings → Permissions, under People), so someone can see the org chart without seeing everyone's devices on Users. They only read: changing anyone is done on Users. When they got their own permissions, every role with Users was given the same level on both, once.
 
 **Match devices** gives everyone without a primary device one of the devices Jamf or Intune says are theirs: the computer that checked in most recently (or, with no computer, the device that did). Every other device assigned to them in Jamf or Intune is listed with them too: **More (+n)** under their primary device on the list, and *Their other devices* in their panel, each with **Make primary**. *Download CSV* gives every user with their tags, primary device and other devices.
 

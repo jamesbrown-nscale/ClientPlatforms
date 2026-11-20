@@ -38,9 +38,9 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Team plans of scheduled jobs: assign work, plan start dates and durations on a timeline, ask questions and post updates."},
     {"id": "users", "group": "People", "name": "Users", "icon": "users", "url": "/users/",
      "about": "The people we look after, imported from a CSV: department and division, line manager, user type and their primary devices."},
-    {"id": "org", "group": "People", "name": "Org chart", "icon": "org", "url": "/users/org", "uses": "users",
+    {"id": "org", "group": "People", "name": "Org chart", "icon": "org", "url": "/org/",
      "about": "Who reports to whom, from the line managers on Users."},
-    {"id": "departments", "group": "People", "name": "Departments", "icon": "building", "url": "/users/departments", "uses": "users",
+    {"id": "departments", "group": "People", "name": "Departments", "icon": "building", "url": "/departments/",
      "about": "Every department, its divisions and the people in each, from Users."},
     {"id": "team", "group": "People", "name": "Client Platform Team", "icon": "team", "url": "/team/",
      "about": "Who's on the team, their roles and responsibilities, projects and activity, 1-2-1s and feedback."},
@@ -102,11 +102,27 @@ class DB:
                 CREATE TABLE IF NOT EXISTS user_roles (email TEXT NOT NULL, role_id TEXT NOT NULL, PRIMARY KEY (email, role_id));
             """)
         self._migrate()
+        self._copy_levels("users", ["org", "departments"], "pages-from-users")
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         return db
+
+    def _copy_levels(self, source: str, tools: list[str], marker: str) -> None:
+        """Once: every role with `source` gets the same level on new tools that grew out of it, so
+        nobody loses what they could already see (Org chart and Departments began as pages of Users)."""
+        with self._lock, self._db() as db:
+            if db.execute("SELECT 1 FROM settings WHERE key = ?", ("migrated:" + marker,)).fetchone():
+                return
+            for r in db.execute("SELECT id, levels FROM roles WHERE system = 0").fetchall():
+                levels = json.loads(r["levels"] or "{}")
+                lv = levels.get(source)
+                if lv and lv != "none" and any(t not in levels for t in tools):
+                    for t in tools:
+                        levels.setdefault(t, lv)
+                    db.execute("UPDATE roles SET levels = ? WHERE id = ?", (json.dumps(levels), r["id"]))
+            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("migrated:" + marker, json.dumps(iso(now()))))
 
     def _migrate(self) -> None:
         """First run with roles: the Administrator role for admins, and for everyone else an editor role

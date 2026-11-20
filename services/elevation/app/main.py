@@ -15,7 +15,6 @@ Settings: INGEST_KEYS (label:key, one per line or comma separated; a secret), DA
 AUTH_MODE, AUTH_SECRET, VIEWER_EMAILS, PORTAL_URL, BASE_PATH.
 """
 import csv
-import hmac
 import io
 import json
 import logging
@@ -28,7 +27,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import access, auth, keyguard, records
+from . import access, auth, devicekeys, keyguard, records
 from .auth import User, require_user
 from .records import iso, merge, status, utc_now, validate
 from .store import make_store
@@ -68,6 +67,8 @@ log.propagate = False
 
 auth.check_settings()
 store = make_store()
+# Ingest keys: INGEST_KEYS from .env, plus those made on the site (Settings → Site → Device settings).
+KEYS = devicekeys.DeviceKeys(os.environ.get("DATABASE_PATH", "elevation.db"), INGEST_KEYS, "cpe_")
 app = FastAPI(title="Nscale Elevation Log", docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -85,9 +86,9 @@ def key_label(request: Request) -> str:
     scheme, _, token = auth.partition(" ")
     token = token.strip()
     if scheme.lower() == "bearer" and token:
-        for label, key in INGEST_KEYS:   # compare against every key, so timing says nothing
-            if hmac.compare_digest(token.encode(), key.encode()):
-                return label
+        label = KEYS.check(token)
+        if label:
+            return label
     guard.failed(ip, "unknown key" if token else "no key")
     raise HTTPException(401, "Missing or unknown ingest key.")
 
@@ -252,6 +253,9 @@ def get_elevation(event_id: str, user: User = Depends(require_user)):
     out["firstKeyLabel"] = r.get("firstKeyLabel")
     out["history"] = store.history(event_id.lower())
     return out
+
+
+app.include_router(devicekeys.router(KEYS, auth.TOOL, log=lambda m, by: log.info(json.dumps({"severity": "NOTICE", "message": m, "by": by}))))
 
 
 @app.exception_handler(HTTPException)

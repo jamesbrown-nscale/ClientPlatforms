@@ -6,22 +6,24 @@ pages, not here. ADMIN_EMAILS, if set, narrows who can send to that list.
 
 BASE_PATH (e.g. /notifications) is where the app is served on a shared host. Redirects and pages use it.
 
-Devices send a shared enrollment key in the X-Nscale-Key header.
+Devices send an enrollment key in the X-Nscale-Key header: ENROLLMENT_KEY from .env, or one made on
+the site (Settings → Site → Device settings; see devicekeys.py).
 """
-import hmac
 import os
 from dataclasses import dataclass
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from . import access, keyguard
+from . import access, devicekeys, keyguard
 
 ENROLLMENT_KEY = os.environ.get("ENROLLMENT_KEY", "")
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
 # Local development only: pretend this person is signed in. Never set in production.
 DEV_ADMIN_USER = os.environ.get("DEV_ADMIN_USER", "")
 BASE_PATH = os.environ.get("BASE_PATH", "").rstrip("/")      # e.g. /notifications
+KEYS = devicekeys.DeviceKeys(os.environ.get("DATABASE_PATH", "./notify.db"),
+                             [("server", ENROLLMENT_KEY)] if ENROLLMENT_KEY else [], "cpn_")
 
 
 def url(path: str) -> str:
@@ -97,6 +99,6 @@ def require_device(request: Request, x_nscale_key: str = Header(default="")) -> 
     ip = keyguard.client_ip(request)
     if guard.blocked(ip):
         raise HTTPException(429, "Too many wrong enrollment keys from this address. Try again later.")
-    if not ENROLLMENT_KEY or not hmac.compare_digest(x_nscale_key.encode(), ENROLLMENT_KEY.encode()):
+    if not KEYS.check(x_nscale_key):
         guard.failed(ip, "unknown key" if x_nscale_key else "no key")
         raise HTTPException(401, "Bad enrollment key.")

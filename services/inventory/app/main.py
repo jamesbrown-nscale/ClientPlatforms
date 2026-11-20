@@ -40,7 +40,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import access, auth, connectors
-from .auth import DEVICES, USERS, User
+from .auth import DEPARTMENTS, DEVICES, ORG, USERS, User
 from .connectors import PLATFORMS, SyncError
 from .store import Store, now
 
@@ -350,18 +350,11 @@ def users_page(request: Request):
     return FileResponse(STATIC / "users.html", headers={"Cache-Control": "no-store"})
 
 
-@users_app.get("/org")
-def org_page(request: Request):
-    if not auth.current_user(request, USERS):
-        return _page(access.sign_in_message(), 403)
-    return FileResponse(STATIC / "org.html", headers={"Cache-Control": "no-store"})
-
-
-@users_app.get("/departments")
-def departments_page(request: Request):
-    if not auth.current_user(request, USERS):
-        return _page(access.sign_in_message(), 403)
-    return FileResponse(STATIC / "departments.html", headers={"Cache-Control": "no-store"})
+@users_app.get("/org", include_in_schema=False)
+@users_app.get("/departments", include_in_schema=False)
+def _moved(request: Request):
+    """They were here before they had their own access: /org/ and /departments/ now."""
+    return RedirectResponse("/" + request.url.path.rstrip("/").rsplit("/", 1)[-1] + "/")
 
 
 @users_app.get("/api/me")
@@ -417,6 +410,10 @@ def _users() -> list[dict]:
 
 @users_app.get("/api/users")
 def list_users(user: User = Depends(auth.users_viewer)):
+    return users_payload()
+
+
+def users_payload() -> dict:
     items = _users()
     counts: dict[str, int] = {}
     for u in items:
@@ -787,7 +784,35 @@ def match_devices(user: User = Depends(auth.users_editor)):
     return {"matched": updated, "several": several}
 
 
-# ---------- One app, two paths ----------
+# ---------- Org chart and Departments: read-only views of Users, each with its own access ----------
+
+def _view_app(title: str, tool: str, page: str, viewer) -> FastAPI:
+    sub = FastAPI(title=title, docs_url=None, redoc_url=None, openapi_url=None)
+    sub.mount("/static", _Static(directory=STATIC), name="static")
+    sub.add_exception_handler(HTTPException, _http_error)
+
+    @sub.get("/")
+    def _page_(request: Request):
+        if not auth.current_user(request, tool):
+            return _page(access.sign_in_message(), 403)
+        return FileResponse(STATIC / page, headers={"Cache-Control": "no-store"})
+
+    @sub.get("/api/me")
+    def _me(user: User = Depends(viewer)):
+        return {"email": user.email, "name": user.name, "level": user.level}
+
+    @sub.get("/api/users")
+    def _users_(user: User = Depends(viewer)):
+        return users_payload()
+
+    return sub
+
+
+org_app = _view_app("Nscale Org chart", ORG, "org.html", auth.org_viewer)
+departments_app = _view_app("Nscale Departments", DEPARTMENTS, "departments.html", auth.departments_viewer)
+
+
+# ---------- One app, four paths ----------
 
 app = FastAPI(title="Nscale Users and Devices", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
@@ -813,6 +838,6 @@ def _healthz():
     return {"ok": True}
 
 
-for _path, _sub in (("/devices", devices_app), ("/users", users_app)):
+for _path, _sub in (("/devices", devices_app), ("/users", users_app), ("/org", org_app), ("/departments", departments_app)):
     app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
     app.mount(_path, _sub)

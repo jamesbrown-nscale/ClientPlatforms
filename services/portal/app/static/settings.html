@@ -102,6 +102,11 @@
   .hits li.added { cursor: default; opacity: .6; }
   .hits li .muted { font-size: 12.5px; }
   .hits li.none { cursor: default; color: var(--text2); font-style: italic; }
+  .dkeys { margin-top: 8px; }
+  .dkeys table.keys td, .dkeys table.keys th { padding: 8px 10px; }
+  .dkeys code { font-size: 12.5px; }
+  .newkey { background: var(--ok-fill); color: var(--ok-text); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .newkey .copy { background: #fff; color: var(--text); }
   dialog { border: 1px solid var(--surface); border-radius: 14px; padding: 24px; width: min(480px, calc(100vw - 32px)); background: var(--bg); color: var(--text); }
   dialog::backdrop { background: rgba(4,14,39,.35); }
   dialog h2 { margin-bottom: 8px; }
@@ -167,13 +172,16 @@
 
   <section class="card">
     <h2>Device settings</h2>
-    <p class="sub">What to put in each app's installer, from the device server address. The keys are set on the stack (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS).</p>
+    <p class="sub">What to put in each app's installer, from the device server address, and the keys devices use. Add a key for each group of devices (it's shown once, so copy it into the installer then), give it an expiry date if it should stop working, and delete it to cut those devices off at once. Keys set on the server (ENROLLMENT_KEY, ELEVATION_INGEST_KEYS, RESTART_INGEST_KEYS) still work and are listed too.</p>
     <label>IT Notifications: Windows MSI and Mac profile</label>
     <span class="copy" id="dvNotify"></span>
+    <div class="dkeys" data-keys="notifications"></div>
     <label>Admin Elevation: ClientPlatforms.json beside Install.ps1</label>
     <span class="copy" id="dvElevation"></span>
+    <div class="dkeys" data-keys="elevation"></div>
     <label>Restart Reminder: appsettings.json</label>
     <span class="copy" id="dvRestart"></span>
+    <div class="dkeys" data-keys="restart"></div>
   </section>
   </div>
 
@@ -278,10 +286,74 @@ function renderSettings(s) {
     on.setAttribute('aria-label', 'Show ' + t.name + ' on the home page');
     tb.append(el('tr', {}, el('td', {}, el('b', { textContent: t.name })), el('td', {}, url), el('td', {}, on)));
   }
-  const d = s.devices;
-  $('dvNotify').textContent = `SERVERURL=${d.notifications} ENROLLMENTKEY=<enrollment key>`;
-  $('dvElevation').textContent = JSON.stringify({ url: d.elevation, key: '<ingest key>' });
-  $('dvRestart').textContent = `"ReportUrl": "${d.restart}", "ReportKey": "<ingest key>"`;
+  DEVURLS = s.devices;
+  drawSnippets();
+  Object.keys(KEYAPPS).forEach(loadKeys);
+}
+
+/* ---------- Device keys: a table under each app's installer settings ---------- */
+let DEVURLS = {};
+const NEWKEY = {};   // the key just made, per app: shown once, and put in its installer line
+const KEYAPPS = {
+  notifications: { name: 'IT Notifications', word: 'enrollment key', snippet: (u, k) => `SERVERURL=${u} ENROLLMENTKEY=${k || '<enrollment key>'}`, box: 'dvNotify' },
+  elevation: { name: 'Admin elevation log', word: 'ingest key', snippet: (u, k) => JSON.stringify({ url: u, key: k || '<ingest key>' }), box: 'dvElevation' },
+  restart: { name: 'Restart reminder', word: 'ingest key', snippet: (u, k) => `"ReportUrl": "${u}", "ReportKey": "${k || '<ingest key>'}"`, box: 'dvRestart' },
+};
+function drawSnippets() {
+  for (const [id, a] of Object.entries(KEYAPPS)) if (DEVURLS[id]) $(a.box).textContent = a.snippet(DEVURLS[id], NEWKEY[id]);
+}
+const day = s => s ? new Date(s + (s.length === 10 ? 'T00:00:00' : '')).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+async function loadKeys(id) {
+  const box = document.querySelector(`[data-keys="${id}"]`);
+  const a = KEYAPPS[id];
+  const isAdmin = (me.tools || []).some(t => t.id === id && t.level === 'admin');
+  if (!isAdmin) { box.innerHTML = `<p class="muted" style="margin:6px 0 0">Admins of ${esc(a.name)} can see and change its ${a.word}s.</p>`; return; }
+  try { drawKeys(id, (await api(`/${id}/api/device-keys`)).items); }
+  catch (err) { box.innerHTML = `<p class="muted" style="margin:6px 0 0">Couldn't load the ${a.word}s: ${esc(err.message)}</p>`; }
+}
+
+function drawKeys(id, items) {
+  const box = document.querySelector(`[data-keys="${id}"]`);
+  const a = KEYAPPS[id];
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = items.map(k => `<tr>
+      <td><b>${esc(k.label)}</b>${k.source === 'env' ? '<div class="muted">Set on the server (.env)</div>' : k.createdBy ? `<div class="muted">Added ${esc(day(k.createdAt.slice(0, 10)))} by ${esc(k.createdBy)}</div>` : ''}</td>
+      <td><code>${esc(k.start)}…</code></td>
+      <td>${k.expired ? `<span class="badge off">Expired ${esc(day(k.expires))}</span>` : k.expires ? esc(day(k.expires)) : '<span class="muted">Never</span>'}</td>
+      <td>${k.lastUsed ? esc(fmt(k.lastUsed)) : '<span class="muted">' + (k.source === 'env' ? 'Not tracked' : 'Not yet') + '</span>'}</td>
+      <td class="acts">${k.source === 'site' ? `<button class="btn small danger" type="button" data-del="${esc(k.id)}" data-label="${esc(k.label)}">Delete</button>` : ''}</td></tr>`).join('');
+  box.innerHTML = `
+    ${NEWKEY[id] ? `<div class="newkey" role="status"><b>Your new ${a.word}.</b> Copy it now: it won't be shown again. It's in the installer line above too.
+      <div class="row" style="margin-top:8px"><code class="copy" style="margin:0;flex:1">${esc(NEWKEY[id])}</code><button class="btn small" type="button" data-copy>Copy</button><button class="btn small" type="button" data-done>Done</button></div></div>` : ''}
+    <div class="tablewrap"><table class="keys">
+      <thead><tr><th>Name</th><th>Key</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="5" class="muted">No ${a.word}s yet.</td></tr>`}</tbody>
+    </table></div>
+    <form class="row addkey" style="margin-top:10px">
+      <input type="text" name="label" placeholder="Name, e.g. London laptops" maxlength="60" required aria-label="Name of the new ${a.word}" style="max-width:260px">
+      <label class="muted" style="margin:0;font-weight:400;display:flex;gap:6px;align-items:center">Expires <input type="date" name="expires" min="${today}" aria-label="Expiry date (optional)" style="height:38px;border:1px solid var(--border);border-radius:8px;padding:0 8px"></label>
+      <button class="btn" type="submit">Add ${a.word}</button>
+    </form>
+    <div class="notice" hidden></div>`;
+  const note = box.querySelector('.notice');
+  box.querySelector('form').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const r = await api(`/${id}/api/device-keys`, { method: 'POST', body: JSON.stringify({ label: f.label.value, expires: f.expires.value }) });
+      NEWKEY[id] = r.key; drawSnippets(); drawKeys(id, r.items);
+    } catch (err) { notice(note, err.message); }
+  };
+  box.querySelector('[data-copy]')?.addEventListener('click', async ev => {
+    try { await navigator.clipboard.writeText(NEWKEY[id]); ev.target.textContent = 'Copied'; } catch { ev.target.textContent = 'Select and copy it'; }
+  });
+  box.querySelector('[data-done]')?.addEventListener('click', () => { delete NEWKEY[id]; drawSnippets(); drawKeys(id, items); });
+  box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if (!(await cp.confirm({ title: `Delete "${b.dataset.label}"?`, message: `Devices using this ${a.word} stop being accepted straight away. This can't be undone: they'd need a new key.`, confirm: 'Delete', danger: true }))) return;
+    try { drawKeys(id, (await api(`/${id}/api/device-keys/${encodeURIComponent(b.dataset.del)}`, { method: 'DELETE' })).items); }
+    catch (err) { notice(note, err.message); }
+  });
 }
 
 $('siteForm').addEventListener('submit', async e => {

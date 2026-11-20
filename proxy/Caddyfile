@@ -3,7 +3,7 @@
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
 #   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
 #   /inbox/*          your notifications   /changes/*   Change management
-#   /devices/*        Devices (Jamf, Intune) /users/*   Users
+#   /devices/*        Devices (Jamf, Intune) /users/*   Users   /org/*   Org chart   /departments/*   Departments
 #   everything else: the portal (home, sign-in, settings)
 #
 # Before a request reaches a tool, Caddy asks the portal (/auth/check) whether the person is signed
@@ -122,6 +122,17 @@
 	}
 	@users path /users /users/*
 	handle @users {
+		import signed_in
+		import to inventory
+	}
+	# Org chart and Departments: read-only views of Users, each with its own access.
+	@org path /org /org/*
+	handle @org {
+		import signed_in
+		import to inventory
+	}
+	@departments path /departments /departments/*
+	handle @departments {
 		import signed_in
 		import to inventory
 	}

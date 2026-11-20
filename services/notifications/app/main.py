@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, richtext
+from . import auth, devicekeys, richtext
 from .auth import Admin, current_admin, require_admin, require_device
 from .store import device_key, make_store
 
@@ -299,6 +299,8 @@ def _value_error(request: Request, exc: ValueError):
 
 
 # ---------- Serving under a path on a shared host ----------
+app.include_router(devicekeys.router(auth.KEYS, "notifications"))
+
 # The page and its scripts use relative addresses, so the same app works at / and under BASE_PATH.
 if auth.BASE_PATH:
     _app = app
