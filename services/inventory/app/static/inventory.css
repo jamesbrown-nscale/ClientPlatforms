@@ -64,6 +64,9 @@ td b { font-weight: 600; }
 table.fit { table-layout: fixed; }
 table.fit th { white-space: normal; }
 table.fit td { overflow: hidden; }
+button.more { border: 0; background: none; color: var(--primary); font: inherit; font-size: 12.5px; font-weight: 600; padding: 2px 0; cursor: pointer; }
+button.more:hover { text-decoration: underline; }
+.others { margin-top: 4px; border-left: 2px solid var(--surface); padding-left: 10px; display: flex; flex-direction: column; gap: 8px; }
 .cutrow { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .cutrow > .cut { flex: 0 1 auto; }
 .cutrow > .badge { flex-shrink: 0; }

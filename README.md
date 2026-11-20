@@ -150,7 +150,7 @@ The people we look after (not who can sign in: that's Settings → People), each
 
 Org chart and Departments are pages of Users: in the sidebar and on the home page they have their own links, but whoever can use Users can use them (they have no permission of their own).
 
-**Match devices** gives everyone without a primary device the one computer Jamf or Intune says is theirs (or their one device, if they have no computer); anyone with several is left to pick by hand. *Download CSV* gives every user with their tags and primary device.
+**Match devices** gives everyone without a primary device one of the devices Jamf or Intune says are theirs: the computer that checked in most recently (or, with no computer, the device that did). Every other device assigned to them in Jamf or Intune is listed with them too: **More (+n)** under their primary device on the list, and *Their other devices* in their panel, each with **Make primary**. *Download CSV* gives every user with their tags, primary device and other devices.
 
 Users and Devices run in one service (`services/inventory`, one database). The Team tool reads the departments and divisions from it inside the stack (`/internal/teams`, never routed by the front door). View sees everything; Edit imports, tags and syncs; Admin on Devices also manages Connections.
 

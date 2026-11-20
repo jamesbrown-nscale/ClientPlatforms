@@ -164,12 +164,23 @@ const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
 const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
 
 const cut = (text, cls = '') => text ? `<div class="cut ${cls}" title="${esc(text)}">${esc(text)}</div>` : '';
-function deviceCell(d) {
-  if (!d) return '<span class="muted">—</span>';
-  if (d.missing) return '<span class="badge b-gone" title="It isn\'t in Jamf or Intune any more">Device gone</span>';
+const MORE = new Set();   // users whose other devices are showing
+function oneDevice(d) {
   const mm = [d.make, d.model].filter(Boolean).join(' ');
   return `<div class="cutrow"><b class="cut" title="${esc(d.name || d.serial)}">${esc(d.name || d.serial)}</b><span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span></div>
     ${cut(mm, 'muted')}${cut(osText(d), 'muted')}`;
+}
+/** The primary device, then a More button for the other devices Jamf or Intune says are theirs. */
+function deviceCell(u) {
+  const d = u.primaryDevice, others = u.otherDevices || [];
+  let html = !d ? '<span class="muted">—</span>'
+    : d.missing ? '<span class="badge b-gone" title="It isn\'t in Jamf or Intune any more">Device gone</span>' : oneDevice(d);
+  if (others.length) {
+    const open = MORE.has(u.email);
+    html += `<button type="button" class="more" data-more="${esc(u.email)}" aria-expanded="${open}">${open ? 'Less' : `More (+${others.length})`}</button>`;
+    if (open) html += `<div class="others">${others.map(o => `<div class="other">${oneDevice(o)}${o.lastSeen ? cut('Checked in ' + new Date(o.lastSeen).toLocaleDateString(undefined, { dateStyle: 'medium' }), 'muted') : ''}</div>`).join('')}</div>`;
+  }
+  return html;
 }
 
 function matches(u) {
@@ -212,7 +223,7 @@ function draw() {
     <td>${u.department ? cut(u.department) : u.division ? '<span class="muted">No department</span>' : '<span class="muted">—</span>'}${u.division ? `<div class="cut"><span class="badge b-team" title="${esc(u.division)}">${esc(u.division)}</span></div>` : ''}</td>
     <td class="hide-sm">${u.manager ? `${cut(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? cut(u.manager, 'muted') : ''}` : '<span class="muted">—</span>'}</td>
     <td>${typeBadge(u.type)}</td>
-    <td>${deviceCell(u.primaryDevice)}</td>
+    <td>${deviceCell(u)}</td>
   </tr>`;
   $('folds').hidden = !$('group').checked;
   if ($('group').checked) { $('rows').innerHTML = grouped(rows, row); return; }
@@ -315,7 +326,17 @@ function drawPicked() {
       <div class="muted">${esc(osText(d))}${d.serial ? ` · <span class="mono">${esc(d.serial)}</span>` : ''}</div>
       ${d.userEmail && d.userEmail !== DRAFT.email ? `<div class="muted" style="color:var(--warn)">Assigned to ${esc(d.userName || d.userEmail)} in ${esc(d.platform)}</div>` : ''}
     </div>${can ? '<button class="btn small" type="button" data-clear>Clear</button>' : ''}</div>`;
+  // Their other devices in Jamf or Intune, each of which can be made primary instead.
+  const others = (DEVICES || []).filter(x => DRAFT.email && x.userEmail === DRAFT.email && x.id !== id)
+    .sort((a, b) => String(b.lastSeen || '').localeCompare(String(a.lastSeen || '')));
+  if (others.length) $('f-device').insertAdjacentHTML('beforeend', `<h3 style="margin:14px 0 8px">Their other devices</h3>` + others.map(o => `
+    <div class="devcard" style="margin-top:8px"><span class="ic">${ICON[o.kind] || ICON.computer}</span><div>
+      <b>${esc(o.name || o.serial)} <span class="badge b-${esc(o.platform.toLowerCase())}">${esc(o.platform)}</span></b>
+      <div class="muted">${esc([o.make, o.model].filter(Boolean).join(' '))} · ${esc(osText(o))}</div>
+      ${o.lastSeen ? `<div class="muted">Checked in ${esc(new Date(o.lastSeen).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}</div>` : ''}
+    </div>${can ? `<button class="btn small" type="button" data-primary="${esc(o.id)}">Make primary</button>` : ''}</div>`).join(''));
   $('f-device').querySelector('[data-clear]')?.addEventListener('click', () => { DRAFT.primaryDevice = ''; drawPicked(); drawPick(); });
+  $('f-device').querySelectorAll('[data-primary]').forEach(b => b.addEventListener('click', () => { DRAFT.primaryDevice = b.dataset.primary; drawPicked(); drawPick(); }));
 }
 
 function drawPick() {
@@ -485,11 +506,11 @@ $('drop').addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
 /* ---------- Wiring ---------- */
 
 $('matchBtn').onclick = async () => {
-  if (!(await cp.confirm({ title: 'Match primary devices?', message: 'Users without a primary device get the one computer Jamf or Intune says is theirs. Anyone with several is left for you to pick.', confirm: 'Match' }))) return;
+  if (!(await cp.confirm({ title: 'Match primary devices?', message: 'Users without a primary device get one from the devices Jamf or Intune says are theirs: the computer that checked in most recently. Their other devices show under More.', confirm: 'Match' }))) return;
   try {
     const r = await api('api/match-devices', { method: 'POST' });
     await load();
-    showError(`${r.matched} user${r.matched === 1 ? '' : 's'} given a primary device.${r.several ? ` ${r.several} have several devices: pick theirs by hand.` : ''}`, r.matched ? 'ok' : 'info');
+    showError(`${r.matched} user${r.matched === 1 ? '' : 's'} given a primary device.${r.several ? ` ${r.several} of them have more than one: the latest check-in is primary, and the others are under More.` : ''}`, r.matched ? 'ok' : 'info');
   } catch (e) { showError(e.message); }
 };
 $('tiles').addEventListener('click', e => {
@@ -514,7 +535,11 @@ document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListene
 }));
 ['q', 'div', 'type'].forEach(id => $(id).addEventListener('input', draw));
 try { $('group').checked = localStorage.getItem('cp-users-group') === '1'; } catch {}
-$('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-email]'); if (tr) openUser(tr.dataset.email); });
+$('rows').addEventListener('click', e => {
+  const m = e.target.closest('[data-more]');
+  if (m) { e.stopPropagation(); MORE.has(m.dataset.more) ? MORE.delete(m.dataset.more) : MORE.add(m.dataset.more); draw(); return; }
+  const tr = e.target.closest('tr[data-email]'); if (tr) openUser(tr.dataset.email);
+});
 $('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-email]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openUser(tr.dataset.email); } });
 $('seg').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;

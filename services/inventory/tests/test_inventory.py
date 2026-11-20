@@ -387,3 +387,25 @@ def test_two_column_csv_updates_just_that(c):
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     assert set(users) == {"amy@nscale.com", "sam@nscale.com"}
     assert users["amy@nscale.com"]["type"] == "VIP" and users["amy@nscale.com"]["department"] == "Tech" and users["amy@nscale.com"]["name"] == "Amy Chen"
+
+
+def test_several_devices(c, fake):
+    # Amy has a Mac in Jamf (checked in 10:00) and a Windows laptop in Intune (09:00), plus an iPhone.
+    connect_jamf(c)
+    connect_intune(c)
+    fake.mobile_status = 200
+    main.sync("jamf")
+    main.sync("intune")
+    c.post("/users/api/users", headers=UE, json={"email": "amy.chen@nscale.com", "name": "Amy Chen"})
+    m = c.post("/users/api/match-devices", headers=UE).json()
+    assert m == {"matched": 1, "several": 1}
+    amy = c.get("/users/api/users", headers=UV).json()["items"][0]
+    assert amy["primaryDevice"]["serial"] == "C02AAA"                       # the computer that checked in last
+    assert [d["serial"] for d in amy["otherDevices"]] == ["5CG111", "F2LXX"]   # latest check-in first; none last
+    assert amy["devices"] == 3
+    # Make another one primary: it leaves the others, the old one joins them.
+    other = next(d for d in amy["otherDevices"] if d["serial"] == "5CG111")
+    amy = c.patch("/users/api/users/amy.chen@nscale.com", headers=UE, json={"primaryDevice": other["id"]}).json()
+    assert amy["primaryDevice"]["serial"] == "5CG111" and "C02AAA" in [d["serial"] for d in amy["otherDevices"]]
+    assert "Other devices" in c.get("/users/api/users.csv", headers=UV).text
+    assert main.pick_primary([]) is None

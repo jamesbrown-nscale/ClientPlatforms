@@ -378,7 +378,29 @@ def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigne
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
             "type": u["user_type"] or "Standard", "title": u["title"] or "",
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
+            # Everything else Jamf or Intune says is theirs, latest check-in first.
+            "otherDevices": [_device_view(d) for d in by_check_in(assigned.get(u["email"], [])) if d["id"] != pd],
             "devices": len(assigned.get(u["email"], [])), "updatedAt": u["updated_at"], "updatedBy": u["updated_by"]}
+
+
+def _seen(d: dict) -> str:
+    """A device's last check-in as a sortable UTC string ("" if none). Jamf and Graph both send ISO 8601."""
+    v = d.get("last_seen") or ""
+    try:
+        t = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return (t if t.tzinfo else t.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return ""
+
+
+def by_check_in(ds: list[dict]) -> list[dict]:
+    return sorted(ds, key=_seen, reverse=True)
+
+
+def pick_primary(ds: list[dict]) -> dict | None:
+    """Of someone's devices: the computer that checked in most recently (or, with no computer, the device)."""
+    pool = [d for d in ds if d["kind"] == "computer"] or ds
+    return by_check_in(pool)[0] if pool else None
 
 
 def _users() -> list[dict]:
@@ -432,10 +454,11 @@ def departments(users: list[dict]) -> list[dict]:
 def users_csv(user: User = Depends(auth.users_viewer)):
     rows = [{**u, "pd": (u["primaryDevice"] or {}).get("name", ""), "pdSerial": (u["primaryDevice"] or {}).get("serial", ""),
              "pdModel": (u["primaryDevice"] or {}).get("model", ""), "pdOs": " ".join(filter(None, [(u["primaryDevice"] or {}).get("os"), (u["primaryDevice"] or {}).get("osVersion")])),
-             "pdPlatform": (u["primaryDevice"] or {}).get("platform", "")} for u in _users()]
+             "pdPlatform": (u["primaryDevice"] or {}).get("platform", ""),
+             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _users()]
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
             ("manager", "Line manager"), ("type", "User type"), ("pd", "Primary device"), ("pdSerial", "Serial"),
-            ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Platform")]
+            ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Platform"), ("others", "Other devices")]
     return _csv(cols, rows, f"users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 
 
@@ -743,8 +766,9 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
 
 @users_app.post("/api/match-devices")
 def match_devices(user: User = Depends(auth.users_editor)):
-    """For each user without a primary device: the one computer Jamf or Intune says is theirs (or,
-    with no computer, their one device). Users with several are left for someone to pick."""
+    """For each user without a primary device: of the devices Jamf or Intune says are theirs, the
+    computer that checked in most recently (or, with no computer, the device that did). Their other
+    devices are listed with them anyway (see _user_view)."""
     mine: dict[str, list[dict]] = {}
     for d in store.devices():
         if d["user_email"]:
@@ -755,11 +779,10 @@ def match_devices(user: User = Depends(auth.users_editor)):
         if u["primary_device"] and u["primary_device"] in ids:
             continue
         ds = mine.get(u["email"], [])
-        pick = [d for d in ds if d["kind"] == "computer"] or ds
-        if len(pick) == 1:
-            rows.append({"email": u["email"], "primary_device": pick[0]["id"]})
-        elif len(pick) > 1:
-            several += 1
+        pick = pick_primary(ds)
+        if pick:
+            rows.append({"email": u["email"], "primary_device": pick["id"]})
+            several += len(ds) > 1
     _, updated = store.save_users(rows, user.email)
     return {"matched": updated, "several": several}
 
