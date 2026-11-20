@@ -39,8 +39,10 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 
 ```bash
 PROJECT=<project-id> ./deploy/vm/create.sh                   # once: VM, address, firewall, snapshots
-sudo /opt/client-platforms/deploy/vm/update.sh             # on the VM: start, or update to the latest
+sudo /opt/client-platforms/deploy/vm/update.sh             # on the VM: start, or update to the latest now
 ```
+
+After that **it updates itself**: every 5 minutes the VM checks GitHub, and a new commit on `main` is pulled, built and started (`journalctl -u cp-update` shows what it did).
 
 **Every image runs its tests while it builds**, so a version with failing tests doesn't start, and the running one carries on.
 

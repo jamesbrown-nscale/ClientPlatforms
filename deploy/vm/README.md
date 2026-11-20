@@ -101,14 +101,33 @@ cd /opt/client-platforms && sudo docker compose logs elevation | grep bad_device
 
 ## Updating
 
-Push to `main`, then on the VM:
+**It updates itself.** Every 5 minutes the VM checks GitHub. When `main` has a new commit, it pulls,
+rebuilds and restarts, so a push reaches the site within about 5 minutes plus the build. Images run
+their tests while building: if a test fails, the new version doesn't start, the running one carries
+on, and the failure is in the log. Fix it and push again.
+
+```bash
+journalctl -u cp-update                       # what it did (add -f to watch)
+systemctl list-timers cp-update.timer         # when it checks next
+sudo systemctl disable --now cp-update.timer  # pause it
+sudo systemctl enable --now cp-update.timer   # turn it back on
+```
+
+To update straight away instead of waiting:
 
 ```bash
 sudo /opt/client-platforms/deploy/vm/update.sh
 ```
 
-It pulls, rebuilds and restarts. Images run their tests while building, so a version with failing
-tests doesn't start, and the running one carries on.
+`setup.sh` turns automatic updates on. On a VM set up before they existed, turn them on once with
+`git -C /opt/client-platforms pull` and then:
+
+```bash
+sudo /opt/client-platforms/deploy/vm/install-autoupdate.sh
+```
+
+To check every 2 minutes instead, run it with `EVERY=2`. Only one update runs at a time. If the VM's
+copy of the repo has a commit GitHub doesn't, it stops and says so rather than guessing.
 
 ## Backups and restoring
 
