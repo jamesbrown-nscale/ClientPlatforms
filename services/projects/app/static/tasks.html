@@ -459,9 +459,12 @@ function peopleGroups(mine) {
 let EXPANDED = new Set();
 try { EXPANDED = new Set(JSON.parse(localStorage.getItem('cp.tl.open') || '[]')); } catch {}
 const subKey = (email, pid) => `${email}|${pid}`;
-const isOpenSub = (email, p, js) => EXPANDED.has(subKey(email, p.id)) || (OPEN?.id === p.id && js.some(j => j.id === JOBOPEN));
-function toggleSub(key) {
-  EXPANDED.has(key) ? EXPANDED.delete(key) : EXPANDED.add(key);
+const CLOSED = new Set();   // headings you folded yourself, which stay folded even while one of their jobs is open
+const isOpenSub = (email, p, js) => { const k = subKey(email, p.id);
+  return EXPANDED.has(k) || (!CLOSED.has(k) && OPEN?.id === p.id && js.some(j => j.id === JOBOPEN)); };
+function toggleSub(key, el) {
+  const shown = el?.getAttribute('aria-expanded') === 'true';
+  if (shown) { EXPANDED.delete(key); CLOSED.add(key); } else { EXPANDED.add(key); CLOSED.delete(key); }
   try { localStorage.setItem('cp.tl.open', JSON.stringify([...EXPANDED])); } catch {}
   MODE === 'timeline' ? drawCal() : drawPeople();
 }
@@ -515,8 +518,8 @@ function drawPeople() {
     r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.plan, r.dataset.job); };
   });
   $('rows').querySelectorAll('.psub[data-sub]').forEach(r => {
-    r.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(r.dataset.sub); };
-    r.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); toggleSub(r.dataset.sub); } };
+    r.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(r.dataset.sub, r); };
+    r.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); toggleSub(r.dataset.sub, r); } };
   });
   $('rows').querySelectorAll('[data-psub]').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.psub); });
   $('rows').querySelectorAll('[data-pdone]').forEach(b => b.onclick = async e => {
@@ -591,7 +594,7 @@ function drawRows() {
 async function openTask(id, job = null) {
   try {
     if (OPEN?.id !== id) { KIND = 'comment'; ANSWERING = null; }
-    OPEN = await api('tasks/' + id); JOBOPEN = job; NEWSTART = ''; NEWASSIGNEE = '';
+    OPEN = await api('tasks/' + id); if (job && job !== JOBOPEN) CLOSED.clear(); JOBOPEN = job; NEWSTART = ''; NEWASSIGNEE = '';
     showDetail(); drawDetail(); drawRows(); if (MODE === 'timeline') drawCal(); save();
     if (job) document.querySelector(`.job[data-job="${CSS.escape(job)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
@@ -1213,8 +1216,8 @@ function wireTimeline() {
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
-    l.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(l.dataset.sub); };
-    l.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === l) { e.preventDefault(); toggleSub(l.dataset.sub); } };
+    l.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(l.dataset.sub, l); };
+    l.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === l) { e.preventDefault(); toggleSub(l.dataset.sub, l); } };
   });
   g.querySelectorAll('.tllab [data-psub]').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.psub); });
   g.querySelectorAll('.tlsub .tltrack.pick[data-subplan]').forEach(t => t.onclick = e => addJobOn(t.dataset.subplan, dayAt(t, e), t.dataset.person));
