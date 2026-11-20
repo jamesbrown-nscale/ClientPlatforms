@@ -47,6 +47,17 @@
   .filters input, .filters select { height: 34px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; outline: none; min-width: 0; }
   .filters input { flex: 1; }
   .rows { border-top: 1px solid var(--surface); }
+  .filters.all { flex-wrap: wrap; }
+  .filters.all #q { order: -1; flex: 1 1 100%; }
+  .filters.all select { flex: 1 1 0; }
+  .allsum { padding: 8px 16px; font-size: 12.5px; color: var(--text2); border-bottom: 1px solid var(--surface); background: var(--soft); }
+  .trow.ajob { align-items: center; }
+  .trow.ajob .tmain { flex: 1; min-width: 0; }
+  .trow.ajob .aplan { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+  .trow.ajob .aplan .sq { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .trow.ajob .aplan b { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 500; font-size: 11.5px; }
+  .trow.ajob .aplan i { color: var(--muted); }
+  .trow.ajob .aside { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .trow { display: flex; gap: 10px; align-items: flex-start; padding: 11px 16px; border-bottom: 1px solid var(--surface); cursor: pointer; }
   .trow:hover { background: var(--soft); }
   .trow[aria-current="true"] { background: var(--surface); }
@@ -311,13 +322,16 @@
 <main id="main">
   <section class="card list" id="listCard" aria-label="Plans">
     <div class="head"><h1>Team Planning</h1><span style="flex:1"></span><div class="modes" id="modes1" role="group" aria-label="Show as">
+        <button type="button" data-mode="all" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 1.5 1.5L11 8M7 15l1.5 1.5L11 14M14 9.5h4M14 15.5h4"/></svg><span>All Tasks</span></button>
         <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
         <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
       </div><button class="btn primary" id="newBtn">New plan</button></div>
     <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
-    <div class="filters">
+    <div class="filters" id="filters">
       <select id="listGroup" aria-label="Group"><option value="person">By person</option><option value="plan">By plan</option></select>
+      <select id="jobSt" aria-label="Status" hidden><option value="">All statuses</option><option value="open">Not done</option><option value="To do">Not started</option><option value="In progress">In progress</option><option value="Blocked">Blocked</option><option value="Done">Done</option></select>
       <input type="search" id="q" placeholder="Search plans" aria-label="Search">
+      <select id="jobSort" aria-label="Sort" hidden><option value="start">By start date</option><option value="plan">By plan</option><option value="person">By person</option><option value="status">By status</option></select>
       <select id="proj" aria-label="Project"><option value="">All projects</option></select>
     </div>
     <div class="rows" id="rows"><div class="empty">Loading…</div></div>
@@ -330,6 +344,7 @@
       <select id="calWho" aria-label="Whose jobs"><option value="">Everyone's jobs</option><option value="mine">Just my jobs</option></select>
       <select id="calProj" aria-label="Project"><option value="">All projects</option></select>
       <div class="modes" id="modes2" role="group" aria-label="Show as">
+        <button type="button" data-mode="all" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 1.5 1.5L11 8M7 15l1.5 1.5L11 14M14 9.5h4M14 15.5h4"/></svg><span>All Tasks</span></button>
         <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
         <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
       </div>
@@ -369,7 +384,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
 let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
 let JM = {};   // @mention pickers on the job form's description and note
-let MODE = 'list', CAL = null, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
+let MODE = 'list', ALLJOBS = null, CAL = null, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
 let GROUP = (() => { try { return localStorage.getItem('cp.tl.group') === 'plan' ? 'plan' : 'person'; } catch { return 'person'; } })();   // timeline rows: by person or by plan
 let RS = null, RE = null, DW = 34, FIT = false, WEEKS = true;   // timeline: first and last day shown, day width in px; fitted to the plans, or this week and the next two (the default)
 const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
@@ -532,6 +547,54 @@ function drawPeople() {
   $('rows').querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); planMenu(e, b.dataset.addp, ''); });
 }
 
+/* ---------- All Tasks: every job in every plan, in one list ---------- */
+const STATUS_ORDER = { 'In progress': 0, Blocked: 1, 'To do': 2, Done: 3 };
+function drawAllJobs() {
+  if (!ALLJOBS) { $('rows').innerHTML = '<div class="empty">Loading…</div>'; return; }
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), st = $('jobSt').value, by = $('jobSort').value, t0 = today();
+  const everyJob = ALLJOBS.flatMap(p => p.jobs.map(j => ({ p, j })));
+  const list = everyJob.filter(({ p, j }) => (!st || (st === 'open' ? j.status !== 'Done' : j.status === st))
+    && (!words.length || words.every(w => `${j.title} ${p.ref} ${p.title} ${p.project} ${jobNames(j)} ${jobPeople(j).map(x => x.email).join(' ')} ${said(j.status)} ${j.note} ${j.description}`.toLowerCase().includes(w))));
+  const start = j => j.start || '9999', first = j => (jobNames(j) || '\uffff').toLowerCase();
+  const order = {
+    start: (a, b) => start(a.j).localeCompare(start(b.j)) || a.p.ref.localeCompare(b.p.ref),
+    plan: (a, b) => a.p.ref.localeCompare(b.p.ref) || start(a.j).localeCompare(start(b.j)),
+    person: (a, b) => first(a.j).localeCompare(first(b.j)) || start(a.j).localeCompare(start(b.j)),
+    status: (a, b) => STATUS_ORDER[a.j.status] - STATUS_ORDER[b.j.status] || start(a.j).localeCompare(start(b.j)),
+  }[by];
+  // Done jobs go to the bottom, unless sorting by status (where they're last anyway) or showing only them.
+  list.sort((a, b) => (by !== 'status' && st !== 'Done' ? (a.j.status === 'Done') - (b.j.status === 'Done') : 0) || order(a, b));
+  const plans = new Set(list.map(x => x.p.id)).size;
+  if (!list.length) {
+    $('rows').innerHTML = `<div class="empty">${everyJob.length ? 'No jobs match.' : 'No jobs in any plan yet.'}</div>`;
+    return;
+  }
+  $('rows').innerHTML = `<div class="allsum">${list.length} job${list.length === 1 ? '' : 's'} in ${plans} plan${plans === 1 ? '' : 's'}</div>` + list.map(({ p, j }) => {
+    const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id, pct = pctOf(j);
+    const when = j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>`
+                         : '<span style="font-style:italic">Not scheduled</span>';
+    const state = pct != null ? `<span class="jpct" title="In progress · ${pct}% complete"><span class="pbar"><i style="width:${pct}%"></i></span>${pct}%</span>`
+                : j.status !== 'To do' ? statusChip(j.status) : '';
+    return `<div class="trow ajob ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
+      <button type="button" class="check ${done ? 'done' : ''}" data-adone="${esc(j.id)}" data-aplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+      <div class="tmain"><div class="ttitle">${esc(j.title)}</div>
+        <div class="tmeta"><span class="aplan"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><b>${esc(p.ref)}</b> ${esc(p.title)}${p.status === 'Done' ? ' <i>(plan done)</i>' : ''}</span>${when}</div></div>
+      <div class="aside">${state}${avatars(j)}</div></div>`;
+  }).join('');
+  $('rows').querySelectorAll('.ajob').forEach(r => {
+    const open = () => openTask(r.dataset.plan, r.dataset.job);
+    r.onclick = e => { if (!e.target.closest('.check')) open(); };
+    r.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); open(); } };
+  });
+  $('rows').querySelectorAll('[data-adone]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const j = ALLJOBS.find(p => p.id === b.dataset.aplan).jobs.find(x => x.id === b.dataset.adone);
+    try { const r = await send(`tasks/${b.dataset.aplan}/jobs/${j.id}`, { status: j.status === 'Done' ? 'To do' : 'Done' }, 'PATCH');
+      if (OPEN?.id === r.id) { OPEN = r; drawDetail(); } load(); }
+    catch (err) { cp.alert(err.message); }
+  });
+}
+
 /* ---------- List ---------- */
 function drawTabs() {
   $('tabs').innerHTML = TABS.map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${k === VIEW}">${esc(label)}${COUNTS[k] != null && k !== 'done' ? `<span class="n">${COUNTS[k]}</span>` : ''}</button>`).join('');
@@ -544,6 +607,7 @@ async function load() {
     const r = await api('tasks?' + params);
     TASKS = r.tasks; COUNTS = r.counts;
     if (MODE === 'list' && GROUP === 'person') CAL = await api('timeline?' + new URLSearchParams({ project: $('proj').value }));
+    if (MODE === 'all') ALLJOBS = (await api('timeline?' + new URLSearchParams({ project: $('proj').value, done: 'true' }))).plans;
     drawTabs(); drawRows();
     window.cpNavRefreshTasks?.();
   } catch (e) { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
@@ -551,6 +615,9 @@ async function load() {
 }
 
 function drawRows() {
+  const all = MODE === 'all';
+  $('listGroup').hidden = all; $('jobSt').hidden = $('jobSort').hidden = !all; $('filters').classList.toggle('all', all);
+  if (all) { $('tabs').hidden = true; $('q').placeholder = 'Search jobs, plans and people'; return drawAllJobs(); }
   $('tabs').hidden = GROUP === 'person';
   $('q').placeholder = GROUP === 'person' ? 'Search people and jobs' : 'Search plans';
   if (GROUP === 'person') return drawPeople();
@@ -969,6 +1036,7 @@ function save() {
   if ($('proj').value) p.set('project', $('proj').value);
   if (OPEN) p.set('task', OPEN.id);
   if (OPEN && JOBOPEN && JOBOPEN !== 'new') p.set('job', JOBOPEN);
+  if (MODE === 'all') p.set('mode', 'all');
   if (MODE === 'timeline') { p.set('mode', 'timeline'); if (!FIT && !WEEKS && RS) p.set('from', RS), p.set('zoom', DW); if ($('calWho').value) p.set('who', $('calWho').value); }
   p.set('by', GROUP);
   history.replaceState(null, '', '#' + p.toString());
@@ -1305,6 +1373,8 @@ async function addJobOn(pid, day, assignee = '') {
   $('calGroup').onchange = () => setGroup($('calGroup').value);
   $('listGroup').onchange = () => setGroup($('listGroup').value);
   $('q').oninput = drawRows;
+  $('jobSt').onchange = $('jobSort').onchange = () => { drawRows(); try { localStorage.setItem('cp.all', JSON.stringify([$('jobSt').value, $('jobSort').value])); } catch {} };
+  try { const [st, by] = JSON.parse(localStorage.getItem('cp.all') || '[]'); if (st != null) $('jobSt').value = st; if (by) $('jobSort').value = by; } catch {}
   $('actClose').onclick = closeActivity;
   $('actModal').addEventListener('click', e => { if (e.target === $('actModal')) closeActivity(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACT_OPEN && !document.querySelector('.cp-mention:not([hidden]), dialog[open]')) closeActivity(); });
@@ -1319,7 +1389,7 @@ async function addJobOn(pid, day, assignee = '') {
   $('zoomFit').onclick = () => { FIT = true; WEEKS = false; drawCal(); save(); };
   let resizeT; window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(drawCal, 150); });
   document.querySelectorAll('.modes button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
-  setMode(['timeline', 'calendar'].includes(fromHash.get('mode')) ? 'timeline' : 'list');
+  setMode(['timeline', 'calendar'].includes(fromHash.get('mode')) ? 'timeline' : fromHash.get('mode') === 'all' ? 'all' : 'list');
   await load();
   if (fromHash.get('task')) openTask(fromHash.get('task'), fromHash.get('job'));
 })().catch(e => { $('rows').innerHTML = `<div class="notice">${esc(e.message)}</div>`; });

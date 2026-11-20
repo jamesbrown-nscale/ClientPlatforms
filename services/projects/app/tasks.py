@@ -807,10 +807,11 @@ def calendar(start: str, end: str, project: str = "", mine: bool = False, user: 
 
 
 @router.get("/api/timeline")
-def timeline(project: str = "", mine: bool = False, user: User = Depends(require_task_user)):
+def timeline(project: str = "", mine: bool = False, done: bool = False, user: User = Depends(require_task_user)):
     """Open plans with all their jobs (scheduled or not), for the timeline: one group per plan.
-    mine=true keeps plans you own or have a job in, and only your jobs within them."""
-    plans = [t for t in visible_tasks(user) if t["status"] != "Done"
+    mine=true keeps plans you own or have a job in, and only your jobs within them.
+    done=true includes finished plans too (the All Tasks list)."""
+    plans = [t for t in visible_tasks(user) if (done or t["status"] != "Done")
              and (not project or (t["project"] and t["project"]["id"] == project))]
     with store().db() as db:
         rows = db.execute("SELECT * FROM pipeline_jobs ORDER BY position, created_at").fetchall()

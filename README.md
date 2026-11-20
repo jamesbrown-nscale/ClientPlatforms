@@ -164,7 +164,7 @@ A plan's activity is one thread:
 | **Update** | A progress note with an optional percentage. It sets the plan's progress, and starts one that was still *To do*. |
 | *Changes* | Recorded by the app: owner, status, priority, due date, project, and jobs added, scheduled, finished or removed. |
 
-The list can be grouped **By person** (each staff member with their jobs underneath, tick them off or click to open, **+** to add one for them) or **By plan**. By plan, the views are **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter.
+**All Tasks** (first of the three views) lists every job in every plan, finished plans included. Each row shows its plan, dates, progress and people. Search them, filter by status (not done, not started, in progress, blocked, done) and project, and sort by start date, plan, person or status. Tick jobs off there, or click one to open it. The list can be grouped **By person** (each staff member with their jobs underneath, tick them off or click to open, **+** to add one for them) or **By plan**. By plan, the views are **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter.
 
 **Who sees what.** A plan with no project: everyone with the **Team Planning** tool. In a project: that project's members, plus whoever created it, owns it or has a job in it. In a project, viewers can comment but not change it or its jobs. Only its creator, a project owner or an admin can delete it. Team Planning runs inside the projects service (same database).
 

@@ -211,6 +211,8 @@ def test_timeline(c):
     c.patch(f"/tasks/api/tasks/{done['id']}", headers=AMY, json={"status": "Done"})
     plans = c.get("/tasks/api/timeline", headers=AMY).json()["plans"]
     assert [p["title"] for p in plans] == ["Build", "Discovery"]   # by first start; done plans left out
+    with_done = c.get("/tasks/api/timeline", headers=AMY, params={"done": True}).json()["plans"]
+    assert "Old" in [p["title"] for p in with_done]   # All Tasks asks for finished plans too
     d = plans[1]
     assert (d["start"], d["end"], d["due"], d["canChange"]) == ("2026-11-25", "2026-11-26", "2026-12-01", True)
     assert [j["title"] for j in d["jobs"]] == ["Interviews", "Write up"]
