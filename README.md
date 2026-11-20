@@ -153,6 +153,8 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 
 **Jobs.** Each job has a title, description, a note (access, contacts, dependencies…), an expected start date, a duration in working days (which gives its end date; weekends don't count, so five days from a Thursday ends the Wednesday after, and a job always starts on a weekday), the people on it (one or several) and a status; while it's **In progress**, a % complete (shown beside it, and as how much of its bar is filled on the timeline). Add them with **+ Add job**, tick them off, and drag to reorder. Type `@` in a job's note or description to tag someone; they're notified. Everyone given a job is notified, and the plan shows under their **Mine**; a job with several people is under each of them on the timeline and in the list.
 
+**Sub jobs.** A job can be broken into a checklist: open the job (or hover it and choose **+ Sub job**), type each one and press Enter, optionally with who it's for. Tick them off, click one's title to rename it, click its person to change or clear it, or × to remove it. The job shows "2 of 4", and its % complete follows the ticks. Ticking the first one moves a job that hadn't started to *In progress*. Someone given a sub job is notified.
+
 **Three views**, switched at the top:
 
 | View | What it shows |

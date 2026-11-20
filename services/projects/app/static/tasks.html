@@ -55,7 +55,7 @@
   .trow.ajob .tmain { flex: 1; min-width: 0; }
   .trow.ajob .aplan { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
   .trow.ajob .aplan .sq { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-  .trow.ajob .aplan b { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 500; font-size: 11.5px; }
+  .trow.ajob .aplan b { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 500; font-size: 11.5px; white-space: nowrap; }
   .trow.ajob .aplan i { color: var(--muted); }
   .trow.ajob .aside { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .trow { display: flex; gap: 10px; align-items: flex-start; padding: 11px 16px; border-bottom: 1px solid var(--surface); cursor: pointer; }
@@ -180,6 +180,38 @@
   .job.isdone .jt { text-decoration: line-through; color: var(--text2); font-weight: 400; }
   .jw { font-size: 12.5px; color: var(--text2); white-space: nowrap; }
   .jw.unsched { color: var(--muted); font-style: italic; }
+  /* Sub jobs: a checklist inside a job */
+  .jsubn { font-size: 12px; color: var(--text2); white-space: nowrap; background: var(--soft); border-radius: 999px; padding: 1px 8px; }
+  .jsubn.all { background: var(--ok-fill); color: var(--ok-text); }
+  .jsadd { display: none; border: 0; background: none; color: var(--primary); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+  .jh:hover .jsadd, .jsadd:focus-visible { display: inline-block; }
+  .jsadd:hover { background: var(--surface); }
+  .subs { padding: 0 10px 8px 46px; display: flex; flex-direction: column; gap: 1px; }
+  .sub { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 6px; border-radius: 6px; }
+  .sub:hover { background: var(--soft); }
+  .scheck { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--muted); background: #fff; color: transparent; font-size: 11px; line-height: 1;
+            display: grid; place-items: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+  .scheck.done { background: var(--ok, #12B76A); border-color: var(--ok, #12B76A); color: #fff; }
+  .scheck:disabled { cursor: default; }
+  .stitle { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
+  .stitle[data-sedit] { cursor: text; }
+  .sub.done .stitle { text-decoration: line-through; color: var(--text2); }
+  .sname, .swho { font-size: 12px; white-space: nowrap; border-radius: 999px; padding: 1px 8px; border: 0; font-family: inherit; }
+  .sname { background: var(--violet-fill, #ECE8FD); color: var(--violet, #4A3AB0); font-weight: 600; }
+  .sname.me { background: var(--ok-fill); color: var(--ok-text); }
+  button.sname { cursor: pointer; }
+  .swho { display: none; background: none; color: var(--primary); cursor: pointer; font-weight: 600; }
+  .sub:hover .swho, .swho:focus-visible { display: inline-block; }
+  .sx { display: none; border: 0; background: none; color: var(--muted); font-size: 16px; line-height: 1; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; }
+  .sub:hover .sx, .sx:focus-visible { display: inline-grid; place-items: center; }
+  .sx:hover { background: var(--err-fill); color: var(--err); }
+  .sub input, .sadd input { height: 28px; border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; font: inherit; font-size: 13.5px; outline: none; background: #fff; min-width: 0; }
+  .sub input:focus, .sadd input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .sub input.stin { flex: 1; }
+  .sub input.swin { width: 170px; }
+  .sadd { display: flex; gap: 6px; padding: 4px 0 0 30px; }
+  .sadd input[data-snew] { flex: 1; }
+  .sadd input[data-snewwho] { width: 170px; }
   .chip { font-size: 11.5px; border-radius: 999px; padding: 1px 8px; background: var(--grey-fill); color: var(--text2); white-space: nowrap; }
   .chip.s-inprogress { background: var(--surface); color: #0B2A99; }
   .chip.s-blocked { background: var(--err-fill); color: var(--err); }
@@ -518,6 +550,7 @@ function drawPeople() {
       const meta = [
         j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
         j.status !== 'To do' && !done ? `<span>${esc(saidJob(j))}</span>` : '',
+        subCount(j),
         j.note ? '<span title="Has a note">📝 Note</span>' : '',
       ].filter(Boolean).join('');
       return `<div class="trow ind ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
@@ -548,13 +581,15 @@ function drawPeople() {
 }
 
 /* ---------- All Tasks: every job in every plan, in one list ---------- */
+/** "2 of 4" for a job with a checklist, or "". */
+const subCount = j => (j.subs || []).length ? `<span class="jsubn ${j.subsDone === j.subs.length ? 'all' : ''}" title="Sub jobs done">${j.subsDone} of ${j.subs.length}</span>` : '';
 const STATUS_ORDER = { 'In progress': 0, Blocked: 1, 'To do': 2, Done: 3 };
 function drawAllJobs() {
   if (!ALLJOBS) { $('rows').innerHTML = '<div class="empty">Loading…</div>'; return; }
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean), st = $('jobSt').value, by = $('jobSort').value, t0 = today();
   const everyJob = ALLJOBS.flatMap(p => p.jobs.map(j => ({ p, j })));
   const list = everyJob.filter(({ p, j }) => (!st || (st === 'open' ? j.status !== 'Done' : j.status === st))
-    && (!words.length || words.every(w => `${j.title} ${p.ref} ${p.title} ${p.project} ${jobNames(j)} ${jobPeople(j).map(x => x.email).join(' ')} ${said(j.status)} ${j.note} ${j.description}`.toLowerCase().includes(w))));
+    && (!words.length || words.every(w => `${j.title} ${p.ref} ${p.title} ${p.project} ${jobNames(j)} ${jobPeople(j).map(x => x.email).join(' ')} ${said(j.status)} ${j.note} ${j.description} ${(j.subs || []).map(x => `${x.title} ${x.name} ${x.email}`).join(' ')}`.toLowerCase().includes(w))));
   const start = j => j.start || '9999', first = j => (jobNames(j) || '\uffff').toLowerCase();
   const order = {
     start: (a, b) => start(a.j).localeCompare(start(b.j)) || a.p.ref.localeCompare(b.p.ref),
@@ -579,7 +614,7 @@ function drawAllJobs() {
       <button type="button" class="check ${done ? 'done' : ''}" data-adone="${esc(j.id)}" data-aplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
       <div class="tmain"><div class="ttitle">${esc(j.title)}</div>
         <div class="tmeta"><span class="aplan"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><b>${esc(p.ref)}</b> ${esc(p.title)}${p.status === 'Done' ? ' <i>(plan done)</i>' : ''}</span>${when}</div></div>
-      <div class="aside">${state}${avatars(j)}</div></div>`;
+      <div class="aside">${subCount(j)}${state}${avatars(j)}</div></div>`;
   }).join('');
   $('rows').querySelectorAll('.ajob').forEach(r => {
     const open = () => openTask(r.dataset.plan, r.dataset.job);
@@ -764,10 +799,92 @@ function jobRow(t, j) {
     <div class="jh" data-toggle="${esc(j.id)}">
       ${t.canChange ? '<span class="grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>' : ''}
       <button type="button" class="check ${isDone ? 'done' : ''}" data-jdone="${esc(j.id)}" ${t.canChange ? '' : 'disabled'} title="${isDone ? 'Reopen' : 'Mark done'}" aria-label="${isDone ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
-      <span class="jt">${esc(j.title)}</span>${pctOf(j) != null ? `<span class="jpct" title="In progress · ${pctOf(j)}% complete"><span class="pbar"><i style="width:${pctOf(j)}%"></i></span>${pctOf(j)}%</span>` : j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
+      <span class="jt">${esc(j.title)}</span>${t.canChange && !(j.subs || []).length && !open && !SUBADD.has(j.id) ? `<button type="button" class="jsadd" data-sfirst="${esc(j.id)}" title="Break this job into a checklist">+ Sub job</button>` : ''}${(j.subs || []).length ? `<span class="jsubn ${j.subsDone === j.subs.length ? 'all' : ''}" title="Sub jobs done">${j.subsDone} of ${j.subs.length}</span>` : ''}${pctOf(j) != null ? `<span class="jpct" title="In progress · ${pctOf(j)}% complete"><span class="pbar"><i style="width:${pctOf(j)}%"></i></span>${pctOf(j)}%</span>` : j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
     </div>
+    ${subsBlock(t, j, open)}
     ${open ? (t.canChange ? jobForm(t, j) : jobText(j)) : ''}
   </div>`;
+}
+
+/* Sub jobs: a checklist inside a job. Tick, click a title to rename it, give one to someone, × to remove. */
+const SUBADD = new Set();   // jobs whose "add a sub job" line is showing though they have none yet
+let SUBFOCUS = null;        // the job whose add line gets the cursor after the page redraws
+function subsBlock(t, j, open) {
+  const subs = j.subs || [], can = t.canChange;
+  if (!subs.length && !(can && (open || SUBADD.has(j.id)))) return '';
+  return `<div class="subs" data-sjob="${esc(j.id)}">
+    ${subs.map(s => `<div class="sub ${s.done ? 'done' : ''}" data-sub="${esc(s.id)}">
+      <button type="button" class="scheck ${s.done ? 'done' : ''}" data-sdone ${can ? '' : 'disabled'} aria-label="${s.done ? 'Not done' : 'Done'}: ${esc(s.title)}" title="${s.done ? 'Not done' : 'Done'}">✓</button>
+      <span class="stitle" ${can ? 'data-sedit tabindex="0" title="Click to rename"' : ''}>${esc(s.title)}</span>
+      ${s.email ? (can ? `<button type="button" class="sname ${s.email === ME.email ? 'me' : ''}" data-swho title="${esc(s.email)}: click to change">${esc(s.name || s.email)}</button>`
+                       : `<span class="sname ${s.email === ME.email ? 'me' : ''}" title="${esc(s.email)}">${esc(s.name || s.email)}</span>`)
+                : can ? '<button type="button" class="swho" data-swho title="Give it to someone">+ Person</button>' : ''}
+      ${can ? `<button type="button" class="sx" data-sdel aria-label="Remove ${esc(s.title)}" title="Remove">×</button>` : ''}
+    </div>`).join('')}
+    ${can ? `<div class="sadd"><input data-snew maxlength="200" placeholder="+ Add sub job" aria-label="New sub job"><input data-snewwho list="people" placeholder="Who (optional)" aria-label="Who it's for" autocomplete="off"></div>` : ''}
+  </div>`;
+}
+
+async function subSend(t, jid, path, body, method) {
+  try { OPEN = await send(`tasks/${t.id}/jobs/${jid}/subs${path}`, body, method); drawDetail(); load(); return true; }
+  catch (err) { cp.alert(err.message); return false; }
+}
+
+function wireSubs(t, box) {
+  box.querySelectorAll('[data-sfirst]').forEach(b => b.onclick = e => {
+    e.stopPropagation(); SUBADD.add(b.dataset.sfirst); SUBFOCUS = b.dataset.sfirst; drawDetail();
+  });
+  box.querySelectorAll('.subs').forEach(list => {
+    const jid = list.dataset.sjob;
+    list.querySelectorAll('[data-sdone]').forEach(b => b.onclick = () => {
+      const sid = b.closest('[data-sub]').dataset.sub, s = t.jobs.find(x => x.id === jid).subs.find(x => x.id === sid);
+      subSend(t, jid, '/' + sid, { done: !s.done }, 'PATCH');
+    });
+    list.querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => subSend(t, jid, '/' + b.closest('[data-sub]').dataset.sub, null, 'DELETE'));
+    // Rename: the title becomes a box; Enter or leaving it saves, Escape puts it back.
+    list.querySelectorAll('[data-sedit]').forEach(el => {
+      const edit = () => {
+        const sid = el.closest('[data-sub]').dataset.sub, was = el.textContent;
+        const inp = document.createElement('input'); inp.className = 'stin'; inp.value = was; inp.maxLength = 200; inp.setAttribute('aria-label', 'Sub job');
+        el.replaceWith(inp); inp.focus(); inp.select();
+        let done = false;
+        const finish = keep => { if (done) return; done = true; const v = inp.value.trim();
+          if (keep && v && v !== was) subSend(t, jid, '/' + sid, { title: v }, 'PATCH'); else drawDetail(); };
+        inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } };
+        inp.onblur = () => finish(true);
+      };
+      el.onclick = edit; el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); edit(); } };
+    });
+    // Who it's for: a box with the people list; empty takes them off it.
+    list.querySelectorAll('[data-swho]').forEach(b => b.onclick = () => {
+      const sid = b.closest('[data-sub]').dataset.sub, s = t.jobs.find(x => x.id === jid).subs.find(x => x.id === sid);
+      const inp = document.createElement('input'); inp.className = 'swin'; inp.setAttribute('list', 'people'); inp.value = s.name || s.email || '';
+      inp.placeholder = 'Name or email'; inp.setAttribute('aria-label', 'Who it’s for');
+      b.replaceWith(inp); inp.focus(); inp.select();
+      let done = false;
+      const finish = keep => { if (done) return; done = true;
+        if (!keep) return drawDetail();
+        const v = inp.value.trim(), email = v ? findPerson(v).assignee : '';
+        if (email === (s.email || '')) return drawDetail();
+        subSend(t, jid, '/' + sid, { email }, 'PATCH');
+      };
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } };
+      inp.onchange = () => { if (PEOPLE.some(p => p.email === inp.value || p.name === inp.value)) finish(true); };
+      inp.onblur = () => finish(true);
+    });
+    // Add: type, optionally who, Enter. The cursor stays on the add line for the next one.
+    const add = list.querySelector('[data-snew]'), who = list.querySelector('[data-snewwho]');
+    if (!add) return;
+    const go = async () => {
+      const title = add.value.trim(); if (!title) return;
+      const w = who.value.trim(), email = w ? findPerson(w).assignee : '';
+      SUBFOCUS = jid;
+      if (await subSend(t, jid, '', { title, email }, 'POST')) SUBADD.delete(jid);
+    };
+    add.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape' && !add.value) { e.stopPropagation(); SUBADD.delete(jid); drawDetail(); } };
+    who.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+    if (SUBFOCUS === jid) { SUBFOCUS = null; add.focus(); }
+  });
 }
 
 function jobText(j) {
@@ -802,8 +919,9 @@ function wireJobs() {
   const t = OPEN, box = $('jobs');
   if (!box) return;
   if ($('addJob')) $('addJob').onclick = () => { JOBOPEN = 'new'; NEWSTART = ''; NEWASSIGNEE = ''; drawDetail(); $('jTitle')?.focus(); };
+  wireSubs(t, box);
   box.querySelectorAll('[data-toggle]').forEach(h => h.onclick = e => {
-    if (e.target.closest('[data-jdone]')) return;
+    if (e.target.closest('[data-jdone], [data-sfirst]')) return;
     JOBOPEN = JOBOPEN === h.dataset.toggle ? null : h.dataset.toggle; drawDetail(); save();
     if (MODE === 'timeline') drawCal();
   });

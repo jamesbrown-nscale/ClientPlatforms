@@ -573,12 +573,24 @@ def end_of(start: str, duration: int) -> str:
     return d.isoformat()
 
 
+def _subs_of(r) -> list[dict]:
+    try:
+        subs = json.loads(r["subs"] or "[]") if "subs" in r.keys() else []
+    except ValueError:
+        return []
+    return subs if isinstance(subs, list) else []
+
+
 def _job(r) -> dict:
+    subs = _subs_of(r)
+    done = sum(1 for s in subs if s.get("done"))
+    # With a checklist, an unfinished job's % is how much of it is ticked off.
+    progress = 100 if r["status"] == "Done" else round(done * 100 / len(subs)) if subs else (r["progress"] or 0)
     return {"id": r["id"], "pipelineId": r["task_id"], "position": r["position"], "title": r["title"],
             "description": r["description"], "note": r["note"], "start": r["start"], "duration": r["duration"],
             "end": end_of(r["start"], r["duration"]) if r["start"] else "", "assignee": r["assignee"],
             "assigneeName": r["assignee_name"], "people": _people_of(r), "status": r["status"],
-            "progress": 100 if r["status"] == "Done" else (r["progress"] or 0), "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
+            "progress": progress, "subs": subs, "subsDone": done, "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
 
 
 def jobs_of(tid: str) -> list[dict]:
@@ -625,6 +637,16 @@ class JobIn(BaseModel):
 
 class OrderIn(BaseModel):
     ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class SubIn(BaseModel):
+    """A sub job: one line of a job's checklist. email "" takes the person off it."""
+    title: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=254)
+    done: bool | None = None
+
+
+MAX_SUBS = 50
 
 
 def _clean_job(body: JobIn) -> dict:
@@ -763,6 +785,96 @@ def delete_job(tid: str, jid: str, user: User = Depends(require_task_user)):
     with store().lock, store().db() as db:
         db.execute("DELETE FROM pipeline_jobs WHERE id = ?", (jid,))
     _add_activity(tid, "change", user, data={"field": "job", "action": "removed", "to": j["title"]})
+    return read_task(tid, user)
+
+
+# ---------- Sub jobs: a checklist inside a job ----------
+
+def _sub_person(email: str) -> tuple[str, str]:
+    email = (email or "").strip().lower()
+    if not email:
+        return "", ""
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(422, f"“{email}” isn't an email address: pick someone from the list.")
+    known = {p["email"]: p["name"] for p in _people_known()}
+    return email, known.get(email) or access.display_name(email)
+
+
+def _save_subs(tid: str, jid: str, subs: list[dict], status: str | None = None) -> None:
+    with store().lock, store().db() as db:
+        if status:
+            db.execute("UPDATE pipeline_jobs SET subs = ?, status = ?, updated_at = ? WHERE id = ? AND task_id = ?",
+                       (json.dumps(subs), status, now(), jid, tid))
+        else:
+            db.execute("UPDATE pipeline_jobs SET subs = ?, updated_at = ? WHERE id = ? AND task_id = ?",
+                       (json.dumps(subs), now(), jid, tid))
+
+
+def _tell_sub_person(t: dict, j: dict, sub: dict, user: User) -> None:
+    if sub.get("email") and sub["email"] != user.email:
+        notify([sub["email"]], "job_assigned", f"{user.name} gave you part of a job on {t['ref']} {t['title']}: {sub['title']}", user,
+               f"In the job {j['title']}", link(t["id"]) + f"&job={j['id']}")
+
+
+@router.post("/api/tasks/{tid}/jobs/{jid}/subs")
+def add_sub(tid: str, jid: str, body: SubIn, user: User = Depends(require_task_user)):
+    t = _changeable(tid, user)
+    j = _job_row(tid, jid)
+    title = (body.title or "").strip()
+    if not title:
+        raise HTTPException(422, "Give the sub job a title.")
+    if len(j["subs"]) >= MAX_SUBS:
+        raise HTTPException(422, f"A job can have up to {MAX_SUBS} sub jobs.")
+    email, name = _sub_person(body.email or "")
+    sub = {"id": uuid.uuid4().hex[:12], "title": title, "email": email, "name": name, "done": False}
+    _save_subs(tid, jid, j["subs"] + [sub])
+    _tell_sub_person(t, j, sub, user)
+    return read_task(tid, user)
+
+
+@router.patch("/api/tasks/{tid}/jobs/{jid}/subs/{sid}")
+def update_sub(tid: str, jid: str, sid: str, body: SubIn, user: User = Depends(require_task_user)):
+    t = _changeable(tid, user)
+    j = _job_row(tid, jid)
+    subs = j["subs"]
+    sub = next((s for s in subs if s["id"] == sid), None)
+    if not sub:
+        raise HTTPException(404, "Sub job not found.")
+    before = dict(sub)
+    if body.title is not None:
+        if not body.title.strip():
+            raise HTTPException(422, "Give the sub job a title.")
+        sub["title"] = body.title.strip()
+    if body.email is not None:
+        sub["email"], sub["name"] = _sub_person(body.email)
+    if body.done is not None:
+        sub["done"] = body.done
+    # Ticking off the first part of a job that hadn't started means it has.
+    status = "In progress" if sub["done"] and not before["done"] and j["status"] == "To do" else None
+    _save_subs(tid, jid, subs, status)
+    if sub["email"] != before["email"]:
+        _tell_sub_person(t, j, sub, user)
+    return read_task(tid, user)
+
+
+@router.delete("/api/tasks/{tid}/jobs/{jid}/subs/{sid}")
+def delete_sub(tid: str, jid: str, sid: str, user: User = Depends(require_task_user)):
+    _changeable(tid, user)
+    j = _job_row(tid, jid)
+    subs = [s for s in j["subs"] if s["id"] != sid]
+    if len(subs) == len(j["subs"]):
+        raise HTTPException(404, "Sub job not found.")
+    _save_subs(tid, jid, subs)
+    return read_task(tid, user)
+
+
+@router.post("/api/tasks/{tid}/jobs/{jid}/subs/order")
+def order_subs(tid: str, jid: str, body: OrderIn, user: User = Depends(require_task_user)):
+    _changeable(tid, user)
+    j = _job_row(tid, jid)
+    by_id = {s["id"]: s for s in j["subs"]}
+    subs = [by_id.pop(i) for i in body.ids if i in by_id] + list(by_id.values())
+    _save_subs(tid, jid, subs)
     return read_task(tid, user)
 
 

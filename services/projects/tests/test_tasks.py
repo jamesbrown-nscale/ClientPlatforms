@@ -306,3 +306,36 @@ def test_weekends_dont_count(c):
     t = new(c, title="Rollout")
     j = c.post(f"/tasks/api/tasks/{t['id']}/jobs", headers=AMY, json={"title": "Inventory", "start": "2026-11-29", "duration": 3}).json()["jobs"][0]
     assert (j["start"], j["end"]) == ("2026-11-30", "2026-12-02")   # Sunday moves to Monday
+
+
+def test_sub_jobs(c, tmp_path):
+    """A job's checklist: add, tick, give to someone, rename, reorder, remove. Its % follows the ticks."""
+    t = new(c, title="Windows App Standardisation")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    j = c.post(J, headers=AMY, json={"title": "App Standardisation"}).json()["jobs"][0]
+    S = f"{J}/{j['id']}/subs"
+    assert c.post(S, headers=AMY, json={"title": "  "}).status_code == 422
+    assert c.post(S, headers=AMY, json={"title": "Device inventory", "email": "not-an-email"}).status_code == 422
+    c.post(S, headers=AMY, json={"title": "Device inventory", "email": "Bob.Smith@nscale.com"})
+    c.post(S, headers=AMY, json={"title": "Engage security"})
+    c.post(S, headers=AMY, json={"title": "User engagement"})
+    job = c.post(S, headers=AMY, json={"title": "Sign-off"}).json()["jobs"][0]
+    subs = job["subs"]
+    assert [s["title"] for s in subs] == ["Device inventory", "Engage security", "User engagement", "Sign-off"]
+    assert subs[0]["email"] == "bob.smith@nscale.com" and subs[0]["name"] and not subs[0]["done"]
+    assert (job["subsDone"], job["progress"], job["status"]) == (0, 0, "To do")
+    assert "Amy Chen gave you part of a job on" in " ".join(inbox_titles(c, "bob.smith@nscale.com"))
+    # Ticking the first one starts the job; the % follows the ticks.
+    job = c.patch(f"{S}/{subs[0]['id']}", headers=AMY, json={"done": True}).json()["jobs"][0]
+    assert (job["subsDone"], job["progress"], job["status"]) == (1, 25, "In progress")
+    job = c.patch(f"{S}/{subs[1]['id']}", headers=AMY, json={"done": True, "title": "Engage Security", "email": "cat@nscale.com"}).json()["jobs"][0]
+    assert job["progress"] == 50 and job["subs"][1]["title"] == "Engage Security" and job["subs"][1]["email"] == "cat@nscale.com"
+    job = c.patch(f"{S}/{subs[0]['id']}", headers=AMY, json={"email": ""}).json()["jobs"][0]
+    assert job["subs"][0]["email"] == "" and job["subs"][0]["name"] == ""
+    # Reorder, remove; a finished job is 100% whatever's ticked.
+    job = c.post(f"{S}/order", headers=AMY, json={"ids": [subs[3]["id"], subs[0]["id"]]}).json()["jobs"][0]
+    assert [s["title"] for s in job["subs"]] == ["Sign-off", "Device inventory", "Engage Security", "User engagement"]
+    job = c.delete(f"{S}/{subs[3]['id']}", headers=AMY).json()["jobs"][0]
+    assert len(job["subs"]) == 3 and job["progress"] == 67
+    assert c.delete(f"{S}/{subs[3]['id']}", headers=AMY).status_code == 404
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"status": "Done"}).json()["jobs"][0]["progress"] == 100

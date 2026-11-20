@@ -69,7 +69,8 @@ class Store:
             CREATE INDEX IF NOT EXISTS jobs_start ON pipeline_jobs(start);
             """)
             self._add_columns(db, "pipeline_jobs", {"progress": "INTEGER DEFAULT 0",   # % complete, while In progress
-                                                    "people": "TEXT DEFAULT '[]'"})    # everyone on the job: [{email, name}]
+                                                    "people": "TEXT DEFAULT '[]'",     # everyone on the job: [{email, name}]
+                                                    "subs": "TEXT DEFAULT '[]'"})      # its checklist: [{id, title, email, name, done}]
             # Jobs from before a job could have several people: their one assignee becomes the list.
             db.execute("UPDATE pipeline_jobs SET people = json_array(json_object('email', assignee, 'name', assignee_name)) "
                        "WHERE assignee != '' AND (people IS NULL OR people = '[]')")
