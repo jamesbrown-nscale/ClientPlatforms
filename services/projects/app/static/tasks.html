@@ -312,13 +312,17 @@
   .tljob.sel .tllab { background: #F5F8FF; }
   .tljob .tltrack.pick, .tlgroup .tltrack.pick { cursor: copy; }
   .tlspan { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; opacity: .35; }
-  .gbar { position: absolute; top: 50%; height: 24px; margin-top: -12px; border-radius: 6px; background: var(--c); color: #fff; font-size: 12px; line-height: 24px;
-          padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-shadow: 0 1px 2px rgba(4,14,39,.15); user-select: none; touch-action: none; }
-  .gbar.can { cursor: grab; }
-  .gbar.dragging { cursor: grabbing; box-shadow: 0 4px 14px rgba(4,14,39,.25); opacity: .92; }
+  /* A job bar: a frame from its first to its last day, with one .gseg per working stretch inside it, so
+     weekends in between stay empty. Only the pieces take the pointer. */
+  .gbar { position: absolute; top: 50%; height: 24px; margin-top: -12px; pointer-events: none; user-select: none; touch-action: none; }
+  .gseg { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--c); color: #fff; font-size: 12px; line-height: 24px;
+          padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-shadow: 0 1px 2px rgba(4,14,39,.15); pointer-events: auto; }
+  .gbar.can .gseg { cursor: grab; }
+  .gbar.dragging { opacity: .92; }
+  .gbar.dragging .gseg { cursor: grabbing; box-shadow: 0 4px 14px rgba(4,14,39,.25); }
   .gbar.done { opacity: .45; }
-  .gbar.late { box-shadow: 0 0 0 2px #E5484D; }
-  .gbar.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+  .gbar.late .gseg { box-shadow: 0 0 0 2px #E5484D; }
+  .gbar.sel .gseg { outline: 2px solid var(--text); outline-offset: 1px; }
   .gbar .rh { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
   .gbar .rh::after { content: ""; position: absolute; right: 3px; top: 7px; bottom: 7px; width: 2px; border-radius: 1px; background: rgba(255,255,255,.7); }
   .diamond { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; transform: rotate(45deg); border-radius: 2px; background: var(--c); cursor: pointer;
@@ -474,6 +478,16 @@ const isWeekend = s => { const w = new Date(s + 'T00:00:00').getDay(); return w 
 const workday = s => { while (isWeekend(s)) s = addDays(s, 1); return s; };
 const workEnd = (s, n) => { s = workday(s); for (let i = 1; i < Math.max(1, n); i++) s = workday(addDays(s, 1)); return s; };
 const workDays = (a, b) => { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) n += !isWeekend(d); return n; };
+/** The working stretches between two days: [[Mon, Fri], [Mon, Wed], …]. Weekends fall between them. */
+const workRuns = (s, e) => {
+  const out = []; let a = null;
+  for (let d = s; d <= e; d = addDays(d, 1)) {
+    if (isWeekend(d)) { if (a) { out.push([a, addDays(d, -1)]); a = null; } }
+    else if (!a) a = d;
+  }
+  if (a) out.push([a, e]);
+  return out.length ? out : [[s, e]];   // a span that's all weekend still shows
+};
 const shortDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
 const span = (a, b) => !a ? '' : a === b ? fmtDay(a) : `${fmtDay(a)} → ${fmtDay(b)}`;
 const days = n => `${n} day${n === 1 ? '' : 's'}`;
@@ -1264,11 +1278,10 @@ function drawCal() {
     const others = byPerson && jobPeople(j).length > 1 ? ' · with ' + jobPeople(j).length + ' people' : '';
     const sub = byPerson ? `${dates} · ${saidJob(j)}${others}` : `${dates} · ${saidJob(j)}${who ? ' · ' + jobNames(j) : ''}`;
     const pc = pctOf(j);
-    const label = (byPerson ? esc(j.title) : esc(j.title) + (who ? ' · ' + esc(who) : '')) + (pc != null ? ` · ${pc}%` : '');
-    const fill = pc != null ? `background:linear-gradient(to right, var(--c) ${pc}%, color-mix(in srgb, var(--c) 50%, #fff) ${pc}%);` : '';
+    const label = (byPerson ? j.title : j.title + (who ? ' · ' + who : '')) + (pc != null ? ` · ${pc}%` : '');
     const bar = j.start && j.end >= RS && j.start <= end
-      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv};${fill}"
-           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${DW * (between(j.start, j.end) + 1) > 40 ? label : ''}${p.canChange ? '<span class="rh"></span>' : ''}</div>` : '';
+      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv}"
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
@@ -1277,7 +1290,7 @@ function drawCal() {
   let rows = '';
   if (GROUP === 'plan') for (const p of CAL.plans) {
     const cv = colourVars(p.id), canAdd = p.canChange, gsel = OPEN?.id === p.id, ex = isOpenSub('plan', p, p.jobs), left = p.jobs.filter(j => j.status !== 'Done').length;
-    const spanBar = p.start ? `<div class="tlspan" style="left:${x(p.start)}px;width:${(between(p.start, p.end) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
+    const spanBar = p.start ? spanPieces(p.start, p.end, colourOf(p.id)[0], x) : '';
     const late = p.due && p.due < t0;
     const due = p.due ? `<div class="diamond ${late ? 'late' : ''}" style="left:${x(p.due) + DW / 2}px;${cv}" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)} is due ${esc(fmtDay(p.due))}${late ? ' (overdue)' : ''}"></div>` : '';
     rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="min-height:36px">
@@ -1307,7 +1320,7 @@ function drawCal() {
       // Each plan they have jobs in is a sub-heading, with its span of their jobs; their jobs in it underneath.
       for (const { p, jobs: js } of byPlan(g.jobs)) {
         const dated = js.filter(j => j.start), a = dated.map(j => j.start).sort()[0], b = dated.map(j => j.end).sort().pop();
-        const spanBar = a ? `<div class="tlspan" style="left:${x(a)}px;width:${(between(a, b) + 1) * DW}px;background:${colourOf(p.id)[0]}"></div>` : '';
+        const spanBar = a ? spanPieces(a, b, colourOf(p.id)[0], x) : '';
         const can = p.canChange, gsel = OPEN?.id === p.id && !JOBOPEN, ex = isOpenSub(g.email, p, js), left = js.filter(j => j.status !== 'Done').length;
         rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" style="min-height:34px">
           <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`} · ${left} open"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}</div>
@@ -1334,6 +1347,29 @@ function drawCal() {
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 }
+
+/** A job bar's pieces, one per working stretch, placed inside the bar (which starts at s). The name goes in
+ *  the first piece wide enough for it, the resize handle on the last; % done fills the working days in order. */
+function barPieces(s, e, label, pc, handle) {
+  const runs = workRuns(s, e), total = runs.reduce((k, [a, b]) => k + between(a, b) + 1, 0);
+  const done = pc != null && pc !== '' ? Number(pc) / 100 * total : null;
+  let before = 0, named = false;
+  return runs.map(([a, b], i) => {
+    const n = between(a, b) + 1, w = n * DW - 2;
+    let fill = '';
+    if (done != null) {
+      const f = Math.round(Math.max(0, Math.min(1, (done - before) / n)) * 100);
+      fill = `background:linear-gradient(to right, var(--c) ${f}%, color-mix(in srgb, var(--c) 50%, #fff) ${f}%);`;
+    }
+    before += n;
+    const text = !named && w > 40 ? (named = true, esc(label)) : '';
+    return `<span class="gseg" style="left:${between(s, a) * DW}px;width:${w}px;${fill}">${text}${handle && i === runs.length - 1 ? '<span class="rh"></span>' : ''}</span>`;
+  }).join('');
+}
+
+/** A plan's summary line, broken at weekends like its jobs. */
+const spanPieces = (s, e, colour, x) => workRuns(s, e).map(([a, b]) =>
+  `<div class="tlspan" style="left:${x(a)}px;width:${(between(a, b) + 1) * DW}px;background:${colour}"></div>`).join('');
 
 /** Drag the dates (anywhere that isn't a bar or a name) to move earlier or later; a sideways scroll does the same. */
 function wirePanning() {
@@ -1420,7 +1456,7 @@ function wireTimeline() {
       const resize = !!e.target.closest('.rh'), x0 = e.clientX, left0 = bar.offsetLeft, w0 = bar.offsetWidth;
       const len0 = job.duration || 1;
       let dd = 0, moved = false, s = job.start, len = len0;
-      if (plan.canChange) bar.setPointerCapture(e.pointerId);
+      if (plan.canChange) { bar.style.pointerEvents = 'auto'; bar.setPointerCapture(e.pointerId); }   // the frame follows the drag
       bar.onpointermove = ev => {
         if (!plan.canChange) return;
         const dx = ev.clientX - x0;
@@ -1433,12 +1469,14 @@ function wireTimeline() {
         const e = workEnd(s, len);
         bar.style.left = left0 + between(job.start, s) * DW + 'px';
         bar.style.width = (between(s, e) + 1) * DW - 2 + 'px';
+        bar.innerHTML = barPieces(s, e, bar.dataset.label, bar.dataset.pc, true);   // weekends stay empty while dragging too
         bar.title = `${span(s, e)} (${days(len)})`;
         const lab = bar.closest('.tlrow').querySelector('.js');
         if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${said(job.status)}`;
       };
       bar.onpointerup = async () => {
         bar.onpointermove = bar.onpointerup = null;
+        bar.style.pointerEvents = '';
         if (!moved) { openTask(plan.id, job.id); return; }
         bar.classList.remove('dragging');
         if (resize ? len === len0 : s === job.start) return drawCal();
