@@ -179,15 +179,20 @@ $('chart').addEventListener('click', e => { const b = e.target.closest('.pc[data
 $('top').onclick = () => focus(TOPS[0]);
 window.addEventListener('hashchange', () => { const e = decodeURIComponent(location.hash.slice(1)); if (e && e !== FOCUS && BY.has(e)) focus(e, false); });
 
-(async () => {
+async function load(first) {
   try {
-    const me = await api('api/me'); $('who').textContent = me.email;
     const data = await api('api/users');
     build(data.items);
+    $('notice').hidden = true;
     const want = decodeURIComponent(location.hash.slice(1)).toLowerCase();
     if (!BY.size) { draw(); return; }
     focus(BY.has(want) ? want : TOPS[0], false);
   } catch (e) { const n = $('notice'); n.textContent = e.message; n.hidden = false; $('chart').innerHTML = ''; }
+}
+window.cpRefresh = () => load();   // the refresh button in the header: same person stays in focus
+(async () => {
+  try { const me = await api('api/me'); $('who').textContent = me.email; } catch {}
+  await load();
 })();
 </script>
 </body>

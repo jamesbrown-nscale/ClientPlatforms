@@ -359,6 +359,12 @@ async function route() {
   window.scrollTo(0, 0);
 }
 
+// The refresh button in the header: the view you're on again. An open record with unsaved changes asks first.
+window.cpRefresh = async () => {
+  if (OPEN) { await closeDrawer(!canEdit()); if (OPEN) return; }
+  await route();
+};
+
 /* ---------- Project list ---------- */
 async function renderList(my = ROUTE) {
   const { projects } = await api('projects');

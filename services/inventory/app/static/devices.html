@@ -265,6 +265,7 @@ function drawStats() {
   $('csv').href = 'api/devices.csv' + (SHOW_DEP ? '' : '?dep=hide');
 }
 
+window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   try {
     const data = await api('api/devices');

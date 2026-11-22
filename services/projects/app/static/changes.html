@@ -253,6 +253,7 @@ const ICON = { check: '<path d="M20 6 9 17l-5-5"/>', x: '<path d="M18 6 6 18M6 6
 const svg = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
 /* ---------- List ---------- */
+window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   const r = await api('changes?view=' + VIEW);
   LIST = r.changes; COUNTS = r.counts;

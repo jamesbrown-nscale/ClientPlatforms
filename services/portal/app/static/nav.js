@@ -27,6 +27,7 @@
     settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>',
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
     out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   };
   const svg = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name] || ICON.home}</svg>`;
@@ -185,6 +186,53 @@
     } catch { /* no badge */ }
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
-  else build();
+  /**
+   * A refresh button before the signed-in name in the page header: fetches the page's data again
+   * without reloading the page. A page says how with window.cpRefresh = async () => { ... };
+   * a page that doesn't is simply reloaded.
+   */
+  function refreshButton() {
+    const who = document.getElementById('who');
+    if (!who || document.querySelector('.cp-refresh')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+    .cp-refresh { display: inline-grid; place-items: center; width: 26px; height: 26px; margin: -4px 6px -4px 0; padding: 0; vertical-align: middle;
+      border: 0; border-radius: 6px; background: none; color: inherit; cursor: pointer; }
+    .cp-refresh:hover { background: rgba(15,65,243,.08); color: #0F41F3; }
+    .cp-refresh:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(15,65,243,.3); }
+    .cp-refresh svg { width: 15px; height: 15px; }
+    .cp-refresh.spin svg { animation: cp-spin .8s linear infinite; }
+    .cp-refresh.done { color: #0B7A3E; }
+    @keyframes cp-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .cp-refresh.spin svg { animation-duration: 2.4s; } }
+    @media print { .cp-refresh { display: none; } }`;
+    document.head.append(style);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cp-refresh';
+    b.title = 'Refresh';
+    b.setAttribute('aria-label', 'Refresh this page\'s data');
+    b.innerHTML = svg('refresh');
+    b.addEventListener('click', async () => {
+      if (b.classList.contains('spin')) return;
+      if (typeof window.cpRefresh !== 'function') { location.reload(); return; }
+      b.classList.add('spin'); b.classList.remove('done');
+      const started = Date.now();
+      let ok = true;
+      try { await window.cpRefresh(); } catch (e) { ok = false; console.error(e); }
+      window.cpNavRefreshInbox?.();
+      await new Promise(r => setTimeout(r, Math.max(0, 400 - (Date.now() - started))));   // long enough to see it went round
+      b.classList.remove('spin');
+      if (ok) {
+        b.classList.add('done');
+        b.title = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setTimeout(() => b.classList.remove('done'), 1500);
+      } else b.title = 'Refresh (the last try failed)';
+    });
+    who.before(b);
+  }
+
+  function start() { refreshButton(); build(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();

@@ -130,6 +130,7 @@ function dayOf(s) {
   return diff <= 0 ? 'Today' : diff === 1 ? 'Yesterday' : diff < 7 ? 'This week' : 'Older';
 }
 
+window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   DATA = await api('notifications' + (FILTER === 'unread' ? '?unread=true' : ''));
   $('who').textContent = DATA.me.email;

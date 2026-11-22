@@ -388,6 +388,11 @@ function td(text, cls) { const c = document.createElement('td'); c.textContent =
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+// The refresh button in the header: the list you're looking at (the send form keeps what you typed).
+window.cpRefresh = async () => {
+  if (!$('tab-messages').hidden) await loadMessages();
+  if (!$('tab-devices').hidden) await loadDevices();
+};
 function showTab(name) {
   document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
   ['send', 'messages', 'devices'].forEach(t => $('tab-' + t).hidden = t !== name);

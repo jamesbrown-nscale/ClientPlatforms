@@ -280,6 +280,11 @@ function drawList() {
 }
 
 /* ---------- One person ---------- */
+// The refresh button in the header: the list, and the open person unless you're editing them.
+window.cpRefresh = async () => {
+  await loadList();
+  if (CUR && !EDIT) await openPerson(CUR.email, TAB);
+};
 async function openPerson(email, tab) {
   try {
     CUR = await api('members/' + enc(email)); EDIT = null;

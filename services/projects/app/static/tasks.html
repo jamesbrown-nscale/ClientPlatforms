@@ -650,6 +650,7 @@ function drawTabs() {
   $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { VIEW = b.dataset.view; save(); load(); });
 }
 
+window.cpRefresh = () => load();   // the refresh button in the header (load() also redraws the timeline)
 async function load() {
   const params = new URLSearchParams({ view: VIEW, project: $('proj').value });
   try {

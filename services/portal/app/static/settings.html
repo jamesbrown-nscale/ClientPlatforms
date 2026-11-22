@@ -953,6 +953,16 @@ function setupTabs(available) {
   show(location.hash.slice(1) || available[0]);
 }
 
+/* ---------- The refresh button in the header: the tab you're on ---------- */
+window.cpRefresh = async () => {
+  const tab = document.querySelector('[data-stab][aria-selected="true"]')?.dataset.stab;
+  if (tab === 'people') { await loadUsers(); await loadTeamSync().catch(() => {}); }
+  else if (tab === 'permissions' && !ROLE_DIRTY) await loadRoles(ROLE?.id);
+  else if (tab === 'bin') await loadBin();
+  else if (tab === 'apps') await loadApps();
+  else if (tab === 'connections') window.cpConnections?.refresh?.();
+};
+
 /* ---------- Start ---------- */
 (async () => {
   me = await api('/api/me');

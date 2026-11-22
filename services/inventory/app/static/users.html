@@ -282,6 +282,7 @@ function divisionList() {
   $('divs').innerHTML = [...names].sort().map(v => `<option value="${esc(v)}">`).join('');
 }
 
+window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   try {
     const data = await api('api/users');

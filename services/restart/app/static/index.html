@@ -194,6 +194,7 @@ async function api(path, opts = {}) {
 }
 function showError(msg) { const n = $('notice'); n.textContent = msg; n.style.display = msg ? 'block' : 'none'; }
 
+window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   try {
     const data = await api('api/devices?' + params());

@@ -159,17 +159,22 @@ $('expandAll').onclick = () => { ALL.forEach(u => OPEN.add(u.department || ''));
 $('collapseAll').onclick = () => { OPEN.clear(); SHUT.clear(); draw(); };
 $('q').addEventListener('input', draw);
 
-(async () => {
+async function load() {
   try {
-    const me = await api('api/me'); $('who').textContent = me.email;
     const data = await api('api/users');
     ALL = data.items;
     $('s-deps').textContent = data.departments.filter(d => d.name).length.toLocaleString();
     $('s-divs').textContent = data.departments.reduce((s, d) => s + d.divisions.length, 0).toLocaleString();
     $('s-users').textContent = ALL.length.toLocaleString();
     $('s-vip').textContent = ALL.filter(u => u.type === 'VIP').length.toLocaleString();
+    $('notice').hidden = true;
     draw();
   } catch (e) { const n = $('notice'); n.textContent = e.message; n.hidden = false; $('list').innerHTML = ''; }
+}
+window.cpRefresh = load;   // the refresh button in the header
+(async () => {
+  try { const me = await api('api/me'); $('who').textContent = me.email; } catch {}
+  await load();
 })();
 </script>
 </body>
