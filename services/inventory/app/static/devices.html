@@ -36,6 +36,7 @@
     <button class="tile" data-f="computer"><b id="s-computers">–</b><span>Computers</span></button>
     <button class="tile" data-f="mobile"><b id="s-mobiles">–</b><span>Phones and tablets</span></button>
     <button class="tile" data-f="primary" title="Someone's primary device on the Users page"><b id="s-primary">–</b><span>Primary devices</span></button>
+    <button class="tile" data-f="unassigned" title="Nobody is assigned to it in Jamf or Intune"><b id="s-unassigned">–</b><span>Not assigned</span></button>
     <button class="tile warn" data-f="stale" title="No check-in with Jamf or Intune for 30 days, or none at all"><b id="s-stale">–</b><span>Not checked in for 30 days</span></button>
   </div>
 
@@ -94,6 +95,7 @@ const isDep = d => String(d.name || '').startsWith('DEP');
 let SHOW_DEP = true;
 try { SHOW_DEP = localStorage.getItem('devices.showDep') !== 'no'; } catch { /* private window: shown */ }
 const shown = () => SHOW_DEP ? ALL : ALL.filter(d => !isDep(d));
+const unassigned = d => !d.userEmail && !d.userName;   // nobody assigned in Jamf or Intune
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
@@ -182,6 +184,7 @@ function matches(d) {
   if (FILTER === 'Jamf' || FILTER === 'Intune') { if (d.platform !== FILTER) return false; }
   else if (FILTER === 'computer' || FILTER === 'mobile') { if (d.kind !== FILTER) return false; }
   else if (FILTER === 'primary' && !d.primaryFor.length) return false;
+  else if (FILTER === 'unassigned' && !unassigned(d)) return false;
   else if (FILTER === 'stale' && !d.stale) return false;
   if ($('platform').value && d.platform !== $('platform').value) return false;
   if ($('os').value && d.os !== $('os').value) return false;
@@ -256,7 +259,8 @@ function drawStats() {
   const v = shown();
   const stats = { devices: v.length, Jamf: v.filter(d => d.platform === 'Jamf').length, Intune: v.filter(d => d.platform === 'Intune').length,
                   computers: v.filter(d => d.kind === 'computer').length, mobiles: v.filter(d => d.kind === 'mobile').length,
-                  primary: v.filter(d => d.primaryFor.length).length, stale: v.filter(d => d.stale).length };
+                  primary: v.filter(d => d.primaryFor.length).length, unassigned: v.filter(unassigned).length,
+                  stale: v.filter(d => d.stale).length };
   for (const [k, n] of Object.entries(stats)) { const el = $('s-' + k); if (el) el.textContent = n.toLocaleString(); }
   $('csv').href = 'api/devices.csv' + (SHOW_DEP ? '' : '?dep=hide');
 }
