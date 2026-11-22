@@ -339,7 +339,20 @@
   .planmenu .g { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 8px 8px 4px; }
   .planmenu button { display: flex; gap: 8px; align-items: center; width: 100%; border: 0; background: none; text-align: left; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
   .planmenu button:hover, .planmenu button:focus { background: var(--surface); outline: none; }
-  .planmenu .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
+  .planmenu .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); margin-left: auto; flex-shrink: 0; }
+  .planmenu { width: 360px; max-width: calc(100vw - 24px); max-height: min(460px, calc(100vh - 24px)); }
+  .planmenu .pmq { width: calc(100% - 12px); margin: 2px 6px 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
+  .planmenu .pmq:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.15); }
+  .planmenu .pmplan { padding: 2px 0 4px; }
+  .planmenu .pmplan + .pmplan { border-top: 1px solid var(--surface); }
+  .planmenu .pmhead { display: flex; gap: 8px; align-items: center; padding: 8px 8px 4px; font-weight: 600; font-size: 13.5px; }
+  .planmenu .pmt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .planmenu button.pmjob { flex-direction: column; align-items: flex-start; gap: 0; padding: 6px 8px 6px 30px; }
+  .planmenu .pmjob .pmt { max-width: 100%; }
+  .planmenu .pmm { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .planmenu button.pmnew { padding: 5px 8px 5px 30px; font-size: 12.5px; color: var(--primary); font-weight: 600; }
+  .planmenu [hidden] { display: none !important; }
+  .planmenu .pmnone { padding: 10px 12px; color: var(--muted); font-size: 13px; }
   .tlnone { color: var(--muted); font-size: 13px; font-style: italic; }
   .tlempty { padding: 50px 16px; text-align: center; color: var(--text2); }
 
@@ -1403,29 +1416,72 @@ function wirePanning() {
   }, { passive: false });
 }
 
-/** Adding a job for someone: which plan is it part of? (Straight in if there's only one, or one is open.) */
+/**
+ * The + beside a person (or a click on their row): schedule one of the jobs already in a plan for them,
+ * or start a new job in a plan. Each plan lists its open jobs this person isn't on yet; picking one puts
+ * them on it and schedules it (from the day you clicked, else where it already was, else today).
+ */
 function planMenu(e, email, day) {
   document.querySelector('.planmenu')?.remove();
   const plans = CAL.plans.filter(p => p.canChange);
   if (!plans.length) { cp.alert('Create a plan first, then add jobs to it.'); return; }
-  if (plans.length === 1) return addJobOn(plans[0].id, day, email);
   const name = email ? personName(email) : 'nobody yet';
-  const m = document.createElement('div');
-  m.className = 'planmenu'; m.setAttribute('role', 'menu');
+  const open = p => (p.jobs || []).filter(j => j.status !== 'Done' && !(email && (j.people || []).some(x => x.email === email)));
+  if (plans.length === 1 && !open(plans[0]).length) return addJobOn(plans[0].id, day, email);
   const first = OPEN && plans.find(p => p.id === OPEN.id);
   const list = first ? [first, ...plans.filter(p => p !== first)] : plans;
-  m.innerHTML = `<div class="g">Add a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''} to…</div>` +
-    list.map(p => `<button type="button" role="menuitem" data-pick="${esc(p.id)}"><span class="sq" style="background:${colourOf(p.id)[0]}"></span>${esc(p.title)}<span class="ref">${esc(p.ref)}</span></button>`).join('');
+  const total = list.reduce((n, p) => n + open(p).length, 0);
+  const when = j => j.start ? `${shortDay(j.start)}${j.end && j.end !== j.start ? ' – ' + shortDay(j.end) : ''}` : 'Not scheduled';
+  const who = j => (j.people || []).length ? (j.people || []).map(x => x.name || personName(x.email)).join(', ') : 'Unassigned';
+  const m = document.createElement('div');
+  m.className = 'planmenu'; m.setAttribute('role', 'menu');
+  m.innerHTML = `<div class="g">Schedule a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</div>` +
+    (total > 6 ? `<input type="search" class="pmq" placeholder="Find a job or plan" aria-label="Find a job or plan">` : '') +
+    list.map(p => {
+      const jobs = open(p);
+      return `<div class="pmplan" data-plan="${esc(p.id)}">
+        <div class="pmhead"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="pmt" title="${esc(p.title)}">${esc(p.title)}</span><span class="ref">${esc(p.ref)}</span></div>` +
+        jobs.map(j => `<button type="button" role="menuitem" class="pmjob" data-job="${esc(j.id)}" data-find="${esc((p.title + ' ' + p.ref + ' ' + j.title).toLowerCase())}">
+          <span class="pmt">${esc(j.title || 'Untitled job')}</span><span class="pmm">${esc(when(j))} · ${esc(who(j))}</span></button>`).join('') +
+        `<button type="button" role="menuitem" class="pmnew" data-pick="${esc(p.id)}" data-find="${esc((p.title + ' ' + p.ref).toLowerCase())}">+ New job in ${esc(p.title)}</button>
+      </div>`;
+    }).join('') + `<div class="pmnone" hidden>No jobs match.</div>`;
   document.body.append(m);
   const r = m.getBoundingClientRect();
-  m.style.left = Math.min(e.pageX, window.scrollX + document.documentElement.clientWidth - r.width - 12) + 'px';
-  m.style.top = Math.min(e.pageY + 6, window.scrollY + window.innerHeight - r.height - 12) + 'px';
+  m.style.left = Math.max(window.scrollX + 8, Math.min(e.pageX, window.scrollX + document.documentElement.clientWidth - r.width - 12)) + 'px';
+  m.style.top = Math.max(window.scrollY + 8, Math.min(e.pageY + 6, window.scrollY + window.innerHeight - r.height - 12)) + 'px';
   const close = () => { m.remove(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key, true); };
   const away = ev => { if (!m.contains(ev.target)) close(); };
-  const key = ev => { if (ev.key === 'Escape') close(); };
+  const key = ev => {
+    if (ev.key === 'Escape') { close(); return; }
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    const items = [...m.querySelectorAll('.pmq, button')].filter(b => !b.closest('[hidden]') && !b.hidden);
+    const i = items.indexOf(document.activeElement);
+    items[(i + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    ev.preventDefault();
+  };
   setTimeout(() => { document.addEventListener('pointerdown', away, true); document.addEventListener('keydown', key, true); }, 0);
+  const q = m.querySelector('.pmq');
+  if (q) q.oninput = () => {
+    const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+    let any = false;
+    m.querySelectorAll('.pmplan').forEach(pl => {
+      let shown = 0;
+      pl.querySelectorAll('[data-find]').forEach(b => { b.hidden = !words.every(w => b.dataset.find.includes(w)); if (!b.hidden) shown++; });
+      pl.hidden = !shown; any ||= !!shown;
+    });
+    m.querySelector('.pmnone').hidden = any;
+  };
   m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
-  m.querySelector('button')?.focus();
+  m.querySelectorAll('[data-job]').forEach(b => b.onclick = async () => {
+    const plan = CAL.plans.find(p => p.id === b.closest('.pmplan').dataset.plan), job = plan.jobs.find(j => j.id === b.dataset.job);
+    close();
+    const body = { start: workday(day || job.start || today()) };
+    if (email) body.people = [...(job.people || []).map(x => ({ email: x.email, name: x.name || personName(x.email) })), { email, name: personName(email) }];
+    try { await send(`tasks/${plan.id}/jobs/${job.id}`, body, 'PATCH'); afterJobChange(plan.id); }
+    catch (err) { cp.alert(err.message); }
+  });
+  (q || m.querySelector('button'))?.focus();
 }
 
 const dayAt = (track, e) => addDays(RS, Math.floor((e.clientX - track.getBoundingClientRect().left) / DW));
