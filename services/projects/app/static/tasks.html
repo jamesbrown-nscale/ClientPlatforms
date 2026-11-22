@@ -318,7 +318,10 @@
   .gseg { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--c); color: #fff; font-size: 12px; line-height: 24px;
           padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; box-shadow: 0 1px 2px rgba(4,14,39,.15); pointer-events: auto; }
   .gbar.can .gseg { cursor: grab; }
-  .gbar.dragging { opacity: .92; }
+  .gbar.dragging { opacity: .92; z-index: 5; }
+  .tlrow.droptarget, .tlrow.droptarget .tllab { background: rgba(15,65,243,.07) !important; }
+  .tlrow.tlgroup.droptarget .tllab { box-shadow: inset 3px 0 0 var(--primary); }
+  .droptip { position: absolute; z-index: 1000; pointer-events: none; background: #040E27; color: #fff; font-size: 12.5px; font-weight: 600; padding: 4px 9px; border-radius: 6px; white-space: nowrap; }
   .gbar.dragging .gseg { cursor: grabbing; box-shadow: 0 4px 14px rgba(4,14,39,.25); }
   .gbar.done { opacity: .45; }
   .gbar.late .gseg { box-shadow: 0 0 0 2px #E5484D; }
@@ -1285,7 +1288,7 @@ function drawCal() {
   const grid = DW >= 9 ? `background-image:repeating-linear-gradient(to right, transparent 0 ${DW - 1}px, #ECEFF5 ${DW - 1}px ${DW}px)` : '';
   const todayLine = t0 >= RS && t0 <= end ? `<div class="tltoday" style="left:${LEFT + x(t0) + DW / 2 - 1}px"></div>` : '';
 
-  const jobRow = (p, j, byPerson) => {
+  const jobRow = (p, j, byPerson, owner = null) => {
     const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
     const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
     const who = jobPeople(j).map(x => (x.name || personName(x.email)).split(' ')[0]).join(', ');
@@ -1295,8 +1298,8 @@ function drawCal() {
     const label = (byPerson ? j.title : j.title + (who ? ' · ' + who : '')) + (pc != null ? ` · ${pc}%` : '');
     const bar = j.start && j.end >= RS && j.start <= end
       ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv}"
-           data-plan="${esc(p.id)}" data-job="${esc(j.id)}" data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
-    return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}" style="min-height:${byPerson ? 44 : 48}px">
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}"${owner !== null ? ` data-owner="${esc(owner)}"` : ''} data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
+    return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}"${owner !== null ? ` data-grp="${esc(owner)}"` : ''} style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
   };
@@ -1326,20 +1329,20 @@ function drawCal() {
       for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) busy += `<div class="tlbusy ${load[d] > 1 ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${load[d] > 1 ? `title="${load[d]} jobs at once on ${esc(fmtDay(d))}"` : ''}></div>`; }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
       const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
-      rows += `<div class="tlrow tlgroup" style="min-height:40px">
+      rows += `<div class="tlrow tlgroup" data-grp="${esc(g.email)}" data-gname="${esc(g.name)}" style="min-height:40px">
         <div class="tllab" style="width:${LEFT}px;cursor:default" title="${esc(g.name)}${g.email ? ' · ' + esc(g.email) : ''}">${av}<span class="gt">${esc(g.name)}${g.email === ME.email ? ' (you)' : ''}</span><span class="cnt">${open} open</span>
           ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>
         <div class="tltrack ${anyChange ? 'pick' : ''}" style="width:${W}px" data-person="${esc(g.email)}" ${anyChange ? `title="Click a day to add a job for ${esc(g.name)} starting then"` : ''}>${busy}</div></div>`;
-      if (!g.jobs.length) rows += `<div class="tlrow tljob" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+      if (!g.jobs.length) rows += `<div class="tlrow tljob" data-grp="${esc(g.email)}" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
       // Each plan they have jobs in is a sub-heading, with its span of their jobs; their jobs in it underneath.
       for (const { p, jobs: js } of byPlan(g.jobs)) {
         const dated = js.filter(j => j.start), a = dated.map(j => j.start).sort()[0], b = dated.map(j => j.end).sort().pop();
         const spanBar = a ? spanPieces(a, b, colourOf(p.id)[0], x) : '';
         const can = p.canChange, gsel = OPEN?.id === p.id && !JOBOPEN, ex = isOpenSub(g.email, p, js), left = js.filter(j => j.status !== 'Done').length;
-        rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" style="min-height:34px">
+        rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" data-grp="${esc(g.email)}" style="min-height:34px">
           <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`} · ${left} open"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}</div>
           <div class="tltrack ${can ? 'pick' : ''}" style="width:${W}px" ${can ? `data-subplan="${esc(p.id)}" data-person="${esc(g.email)}" title="Click a day to add a job in ${esc(p.title)} for ${esc(g.name)} starting then"` : ''}>${spanBar}</div></div>`;
-        if (ex) for (const j of js) rows += jobRow(p, j, true);
+        if (ex) for (const j of js) rows += jobRow(p, j, true, g.email);
       }
     }
   }
@@ -1349,7 +1352,7 @@ function drawCal() {
     ${rows || `<div class="tlempty">${$('calWho').value === 'mine' ? 'No jobs for you in open plans.' : 'No open plans yet. Create one with New plan, then add its jobs.'}</div>`}
   </div>`;
   const unsched = CAL.plans.reduce((k, p) => k + p.jobs.filter(j => !j.start).length, 0);
-  $('calHint').textContent = [anyChange ? `Drag the dates to move along. Drag a bar to move a job, or its right edge to change how long it takes. Click a day in ${GROUP === 'person' ? 'someone’s' : 'a plan’s'} row to add a job starting then.${GROUP === 'person' ? ' Red under a name means two jobs at once.' : ''}` : 'Drag the dates to move along. Click a job to see it.',
+  $('calHint').textContent = [anyChange ? `Drag the dates to move along. Drag a bar to move a job, or its right edge to change how long it takes. Click a day in ${GROUP === 'person' ? 'someone’s' : 'a plan’s'} row to add a job starting then.${GROUP === 'person' ? ' Drag a bar up or down onto someone else to give them the job. Red under a name means two jobs at once.' : ''}` : 'Drag the dates to move along. Click a job to see it.',
     unsched ? `${unsched} job${unsched === 1 ? ' has' : 's have'} no start date: click a day in ${unsched === 1 ? 'its' : 'their'} row to schedule ${unsched === 1 ? 'it' : 'them'}.` : ''].filter(Boolean).join(' ');
   wireTimeline();
   $('colGrip').onpointerdown = e => {
@@ -1513,12 +1516,33 @@ function wireTimeline() {
       const resize = !!e.target.closest('.rh'), x0 = e.clientX, left0 = bar.offsetLeft, w0 = bar.offsetWidth;
       const len0 = job.duration || 1;
       let dd = 0, moved = false, s = job.start, len = len0;
+      // By person, a bar can also be dragged up or down onto someone else: that gives them the job instead.
+      const owner = bar.dataset.owner ?? null, y0 = e.clientY;
+      let target = owner, tip = null;
+      const groupAt = y => {
+        let hit = null;
+        g.querySelectorAll('.tlrow[data-grp]').forEach(r => { const b = r.getBoundingClientRect(); if (y >= b.top && y < b.bottom) hit = r.dataset.grp; });
+        return hit;
+      };
+      const mark = grp => g.querySelectorAll('.tlrow[data-grp]').forEach(r => r.classList.toggle('droptarget', grp !== owner && r.dataset.grp === grp));
       if (plan.canChange) { bar.style.pointerEvents = 'auto'; bar.setPointerCapture(e.pointerId); }   // the frame follows the drag
       bar.onpointermove = ev => {
         if (!plan.canChange) return;
-        const dx = ev.clientX - x0;
-        if (!moved && Math.abs(dx) < 4) return;
-        moved = true; bar.classList.add('dragging');
+        const dx = ev.clientX - x0, dy = ev.clientY - y0;
+        if (!moved && Math.abs(dx) < 4 && (owner === null || resize || Math.abs(dy) < 4)) return;
+        moved = true; bar.classList.add('dragging'); bar.parentElement.style.zIndex = '10';   // above the rows it's dragged over
+        if (owner !== null && !resize) {
+          const at = groupAt(ev.clientY);
+          target = at === null ? target : at;
+          bar.style.transform = target !== owner ? `translateY(${dy}px)` : '';
+          mark(target);
+          if (target !== owner) {
+            if (!tip) { tip = document.createElement('div'); tip.className = 'droptip'; document.body.append(tip); }
+            const gname = g.querySelector(`.tlgroup[data-grp="${CSS.escape(target)}"]`)?.dataset.gname || 'Unassigned';
+            tip.textContent = target ? `Give to ${gname}` : 'Unassign';
+            tip.style.left = ev.pageX + 14 + 'px'; tip.style.top = ev.pageY + 14 + 'px';
+          } else if (tip) { tip.remove(); tip = null; }
+        }
         dd = Math.round(dx / DW);
         // Weekends don't count: a move lands on a weekday, and the end skips Saturdays and Sundays.
         if (resize) len = Math.max(1, workDays(job.start, addDays(job.end, dd)));
@@ -1533,11 +1557,18 @@ function wireTimeline() {
       };
       bar.onpointerup = async () => {
         bar.onpointermove = bar.onpointerup = null;
-        bar.style.pointerEvents = '';
+        bar.style.pointerEvents = ''; bar.style.transform = ''; bar.parentElement.style.zIndex = '';
+        tip?.remove(); mark(null);
         if (!moved) { openTask(plan.id, job.id); return; }
         bar.classList.remove('dragging');
-        if (resize ? len === len0 : s === job.start) return drawCal();
-        const body = resize ? { duration: len } : { start: s };
+        const give = owner !== null && !resize && target !== owner;
+        if (!give && (resize ? len === len0 : s === job.start)) return drawCal();
+        const body = resize ? { duration: len } : s !== job.start ? { start: s } : {};
+        if (give) {
+          // Swap this person for the one it was dropped on; anyone else on the job stays.
+          const keep = jobPeople(job).filter(x => x.email !== owner && x.email !== target).map(x => ({ email: x.email, name: x.name || personName(x.email) }));
+          body.people = target ? [{ email: target, name: personName(target) }, ...keep] : keep;
+        }
         try { await send(`tasks/${plan.id}/jobs/${job.id}`, body, 'PATCH'); afterJobChange(plan.id); }
         catch (err) { cp.alert(err.message); drawCal(); }
       };
