@@ -440,3 +440,13 @@ def test_deleted_users_go_to_the_recycle_bin(c):
     assert c.post(f"/users/api/bin/{item['id']}/restore", headers=UA).status_code == 200
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     assert users["amy.chen@nscale.com"]["department"] == "IT"
+
+
+def test_csv_can_leave_out_dep_devices(c):
+    main.store.replace_devices("Jamf", [
+        {"id": "jamf:1", "platform": "Jamf", "name": "DEP-C02XL0AAJGH5", "serial": "C02XL0AAJGH5"},
+        {"id": "jamf:2", "platform": "Jamf", "name": "MB-LON-008", "serial": "C02YY1"},
+        {"id": "jamf:3", "platform": "Jamf", "name": "Depot iMac", "serial": "C02ZZ2"}])   # "Dep…", not "DEP…": kept
+    names = lambda q="": {row.split(",")[0] for row in c.get("/devices/api/devices.csv" + q, headers=DV).text.splitlines()[1:]}  # noqa: E731
+    assert names() == {"DEP-C02XL0AAJGH5", "MB-LON-008", "Depot iMac"}
+    assert names("?dep=hide") == {"MB-LON-008", "Depot iMac"}

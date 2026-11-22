@@ -265,8 +265,10 @@ def list_devices(user: User = Depends(auth.devices_viewer)):
 
 
 @devices_app.get("/api/devices.csv")
-def devices_csv(user: User = Depends(auth.devices_viewer)):
-    rows = [{**d, "primaryFor": ", ".join(o["email"] for o in d["primaryFor"])} for d in _devices_with_owners()]
+def devices_csv(dep: str = "show", user: User = Depends(auth.devices_viewer)):
+    """dep=hide leaves out DEP devices (named "DEP…"), as the page does with its DEP devices switch off."""
+    devices = [d for d in _devices_with_owners() if dep != "hide" or not str(d["name"] or "").startswith("DEP")]
+    rows = [{**d, "primaryFor": ", ".join(o["email"] for o in d["primaryFor"])} for d in devices]
     cols = [("name", "Name"), ("platform", "Platform"), ("make", "Make"), ("model", "Model"), ("os", "OS"), ("osVersion", "OS version"),
             ("serial", "Serial"), ("userEmail", "User"), ("lastSeen", "Last check-in"), ("primaryFor", "Primary device of")]
     return _csv(cols, rows, f"devices-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")

@@ -24,7 +24,7 @@
       <h1>Devices</h1>
       <p class="sub">Every device in Jamf and Intune, as of the last sync. Times are in your time zone.</p>
     </div>
-    <div class="acts"><a class="btn" href="api/devices.csv" download>Download CSV</a></div>
+    <div class="acts"><a class="btn" id="csv" href="api/devices.csv" download>Download CSV</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="syncbar" id="syncbar" hidden></div>
@@ -88,6 +88,12 @@ function ago(s) {
 }
 const daysOld = s => s && !isNaN(new Date(s)) ? (Date.now() - new Date(s)) / 864e5 : 0;
 let ME = null, ALL = [], CONNS = [], FILTER = 'all', SORT = { key: 'name', dir: 1 }, OPEN = null, POLL = null;
+/* DEP devices: Jamf's placeholders for devices enrolled through Apple's DEP that haven't been set up, named "DEP…".
+   Shown unless switched off; this browser remembers the choice. Switched off, they're left out of every count. */
+const isDep = d => String(d.name || '').startsWith('DEP');
+let SHOW_DEP = true;
+try { SHOW_DEP = localStorage.getItem('devices.showDep') !== 'no'; } catch { /* private window: shown */ }
+const shown = () => SHOW_DEP ? ALL : ALL.filter(d => !isDep(d));
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
@@ -123,14 +129,27 @@ function drawSync() {
   }
   const busy = on.some(c => c.syncing);
   bar.hidden = false;
-  bar.innerHTML = on.map(c => {
+  const deps = ALL.filter(isDep).length;
+  const depSwitch = `<label class="switch" title="Devices whose name starts with DEP: enrolled through Apple's DEP but not set up yet. Switched off, they're left out of the list and every count.">
+      <input type="checkbox" id="depToggle" role="switch" ${SHOW_DEP ? 'checked' : ''}><span class="track"></span>DEP devices <span class="muted">${deps.toLocaleString()}</span></label>`;
+  const items = on.map(c => {
     const dot = c.syncing ? 'busy' : !c.enabled ? 'off' : c.lastError ? 'err' : '';
+    const hidden = SHOW_DEP ? 0 : ALL.filter(d => d.platform === c.name && isDep(d)).length;
     const txt = c.syncing ? 'syncing…' : c.lastError ? `didn't sync ${ago(c.lastSync)}: ${esc(c.lastError)}`
-      : c.lastOk ? `${(c.count ?? 0).toLocaleString()} devices · synced ${ago(c.lastOk)}${c.enabled ? '' : ' · paused'}` : 'not synced yet';
-    return `<span class="src" title="${esc(c.lastNote || '')}"><span class="dot ${dot}"></span><b style="color:var(--text)">${esc(c.name)}</b> ${txt}</span>`;
-  }).join('') + `<span class="sp"></span>${ME?.admin ? '<a href="/settings#connections">Connections</a>' : ''}
+      : c.lastOk ? `${Math.max(0, (c.count ?? 0) - hidden).toLocaleString()} devices · synced ${ago(c.lastOk)}${c.enabled ? '' : ' · paused'}` : 'not synced yet';
+    return { name: c.name, html: `<span class="src" title="${esc(c.lastNote || '')}"><span class="dot ${dot}"></span><b style="color:var(--text)">${esc(c.name)}</b> ${txt}</span>` };
+  });
+  const j = items.findIndex(i => i.name === 'Jamf');   // after Jamf, before Intune
+  items.splice(j + 1, 0, { html: depSwitch });
+  bar.innerHTML = items.map(i => i.html).join('') + `<span class="sp"></span>${ME?.admin ? '<a href="/settings#connections">Connections</a>' : ''}
     ${ME?.canEdit ? `<button class="btn small" id="syncNow" type="button" ${busy ? 'disabled' : ''}>${busy ? 'Syncing…' : 'Sync now'}</button>` : ''}`;
   $('syncNow')?.addEventListener('click', syncNow);
+  $('depToggle').addEventListener('change', e => {
+    SHOW_DEP = e.target.checked;
+    try { localStorage.setItem('devices.showDep', SHOW_DEP ? 'yes' : 'no'); } catch { /* not remembered */ }
+    drawSync(); drawStats(); draw();
+    $('depToggle').focus();
+  });
   clearTimeout(POLL);
   if (busy) POLL = setTimeout(load, 3000);
 }
@@ -167,14 +186,15 @@ function sortVal(d, k) {
 }
 
 function draw() {
-  const rows = ALL.filter(matches);
+  const all = shown();
+  const rows = all.filter(matches);
   const k = SORT.key;
   rows.sort((a, b) => (sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir);
   document.querySelectorAll('th[data-sort]').forEach(th => {
     if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
   });
   document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
-  $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} devices` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
+  $('count').textContent = rows.length === all.length ? `${all.length.toLocaleString()} devices` : `${rows.length.toLocaleString()} of ${all.length.toLocaleString()}`;
   if (!ALL.length) {
     $('rows').innerHTML = `<tr><td colspan="6" class="empty"><b>No devices yet</b>${CONNS.some(c => c.connected) ? 'They appear here after the first sync.' : 'Connect Jamf or Intune under Settings → Connections and every device shows up here.'}</td></tr>`;
     return;
@@ -216,11 +236,21 @@ function openDevice(id) {
 }
 function closePanel() { $('panel').hidden = $('scrim').hidden = true; const r = document.querySelector(`tr[data-id="${CSS.escape(OPEN || '')}"]`); OPEN = null; r?.focus(); }
 
+/** The tiles, counted from the devices shown (so without DEP devices when they're switched off). */
+function drawStats() {
+  const v = shown();
+  const stats = { devices: v.length, Jamf: v.filter(d => d.platform === 'Jamf').length, Intune: v.filter(d => d.platform === 'Intune').length,
+                  computers: v.filter(d => d.kind === 'computer').length, mobiles: v.filter(d => d.kind === 'mobile').length,
+                  primary: v.filter(d => d.primaryFor.length).length, stale: v.filter(d => d.stale).length };
+  for (const [k, n] of Object.entries(stats)) { const el = $('s-' + k); if (el) el.textContent = n.toLocaleString(); }
+  $('csv').href = 'api/devices.csv' + (SHOW_DEP ? '' : '?dep=hide');
+}
+
 async function load() {
   try {
     const data = await api('api/devices');
     ALL = data.items; CONNS = data.connections;
-    for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
+    drawStats();
     const oses = [...new Set(ALL.map(d => d.os).filter(Boolean))].sort();
     const keep = $('os').value;
     $('os').innerHTML = '<option value="">Every OS</option>' + oses.map(o => `<option>${esc(o)}</option>`).join('');
