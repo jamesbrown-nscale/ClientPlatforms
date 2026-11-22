@@ -152,6 +152,13 @@ label.l { display: block; font-weight: 600; margin: 14px 0 6px; }
 .syncbar .dot.err { background: var(--err); } .syncbar .dot.off { background: #C7CBD4; } .syncbar .dot.busy { background: var(--primary); animation: pulse 1s infinite alternate; }
 @keyframes pulse { to { opacity: .3; } }
 .syncbar .sp { flex: 1; }
+/* A small copy button beside a value; shows a tick once copied. */
+.copybtn { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: 6px; vertical-align: middle; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text2); cursor: pointer; }
+.copybtn:hover { background: var(--surface); color: var(--primary); }
+.copybtn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(15,65,243,.3); }
+.copybtn svg { width: 15px; height: 15px; }
+.copybtn.done { color: #12B76A; }
 /* A sliding on/off switch (role="switch" on a checkbox). */
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-weight: 600; color: var(--text); }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }

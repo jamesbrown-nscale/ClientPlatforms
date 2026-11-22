@@ -117,6 +117,21 @@ function makeName(m) {
   if (s && s === s.toUpperCase() && s.length > 3) s = s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   return s || m || '';
 }
+const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+const TICK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+/** A copy button for a value (put beside it). */
+const copyBtn = (value, what) => value ? `<button class="copybtn" type="button" data-copy="${esc(value)}" title="Copy ${esc(what)}" aria-label="Copy ${esc(what)}">${COPY_ICON}</button>` : '';
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.copybtn');
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copy); }
+  catch {   // older browsers, or a page without clipboard access
+    const t = Object.assign(document.createElement('textarea'), { value: b.dataset.copy });
+    document.body.append(t); t.select(); document.execCommand('copy'); t.remove();
+  }
+  b.classList.add('done'); b.innerHTML = TICK_ICON; b.title = 'Copied';
+  setTimeout(() => { b.classList.remove('done'); b.innerHTML = COPY_ICON; b.title = b.getAttribute('aria-label'); }, 1500);
+});
 const cut = (text, cls = '') => `<div class="cut ${cls}" title="${esc(text)}">${esc(text)}</div>`;
 
 function drawSync() {
@@ -216,7 +231,7 @@ function openDevice(id) {
   if (!d) return;
   OPEN = id;
   $('p-badge').innerHTML = platformBadge(d.platform);
-  $('p-title').textContent = d.name || '(no name)';
+  $('p-title').innerHTML = esc(d.name || '(no name)') + copyBtn(d.name, 'device name');
   $('p-sub').textContent = [d.make, d.model].filter(Boolean).join(' ');
   $('p-body').innerHTML = `<dl>
       <dt>Make</dt><dd>${esc(d.make || '—')}</dd>
@@ -224,7 +239,7 @@ function openDevice(id) {
       <dt>OS</dt><dd>${esc(osText(d) || '—')}</dd>
       <dt>Platform</dt><dd>${esc(d.platform)} <span class="muted">(${d.kind === 'mobile' ? 'phone or tablet' : 'computer'})</span></dd>
       <dt>Serial</dt><dd class="mono">${esc(d.serial || '—')}</dd>
-      <dt>Assigned to</dt><dd>${esc(d.userName || '')}${d.userEmail ? ` <span class="muted">${esc(d.userEmail)}</span>` : d.userName ? '' : '—'}</dd>
+      <dt>Assigned to</dt><dd>${esc(d.userName || '')}${d.userEmail ? ` <span class="muted">${esc(d.userEmail)}</span>` : d.userName ? '' : '—'}${copyBtn(d.userEmail || d.userName, d.userEmail ? 'email' : 'name')}</dd>
       <dt>Last check-in</dt><dd>${esc(full(d.lastSeen) || '—')}</dd>
       <dt>Synced</dt><dd>${esc(full(d.syncedAt) || '—')}</dd>
     </dl>
