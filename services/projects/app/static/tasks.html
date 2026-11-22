@@ -356,6 +356,8 @@
   .planmenu button.pmnew { padding: 5px 8px 5px 30px; font-size: 12.5px; color: var(--primary); font-weight: 600; }
   .planmenu [hidden] { display: none !important; }
   .planmenu .pmnone { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+  .tlhidden { margin-top: 4px; color: var(--text2); }
+  .tlhidden .linkbtn { border: 0; background: none; padding: 0; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
   .tlnone { color: var(--muted); font-size: 13px; font-style: italic; }
   .tlempty { padding: 50px 16px; text-align: center; color: var(--text2); }
 
@@ -436,7 +438,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
 let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
 let JM = {};   // @mention pickers on the job form's description and note
-let MODE = 'list', ALLJOBS = null, CAL = null, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
+let MODE = 'list', ALLJOBS = null, CAL = null, CAL_ALL = null, CAL_HIDDEN = 0, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
 let GROUP = (() => { try { return localStorage.getItem('cp.tl.group') === 'plan' ? 'plan' : 'person'; } catch { return 'person'; } })();   // timeline rows: by person or by plan
 let RS = null, RE = null, DW = 34, FIT = false, WEEKS = true;   // timeline: first and last day shown, day width in px; fitted to the plans, or this week and the next two (the default)
 const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
@@ -1219,9 +1221,35 @@ const planBar = p => { const v = planPct(p); if (v == null) return '';
 const saidJob = j => said(j.status) + (pctOf(j) != null ? ` · ${pctOf(j)}%` : '');
 const avail = () => Math.max(200, ($('calGrid').clientWidth || 900) - LEFT);
 
+/**
+ * The timeline keeps to what's current: jobs with dates in last month, this month or later. Jobs with no
+ * start date, and ones that finished before last month, are left off (Show all brings them back). The
+ * + menu beside a person still offers every job, so the unscheduled ones are a click away there.
+ */
+let SHOW_ALL = (() => { try { return localStorage.getItem('tasks.showAll') === '1'; } catch { return false; } })();
+const sinceDay = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() - 1, 1, 12).toISOString().slice(0, 10); };
+function recentOnly() {
+  if (!CAL_ALL) return;
+  const since = sinceDay();
+  const keep = j => !!j.start && j.end >= since;
+  CAL_HIDDEN = 0;
+  CAL = SHOW_ALL ? CAL_ALL : { ...CAL_ALL, plans: CAL_ALL.plans.flatMap(p => {
+    const jobs = p.jobs.filter(keep);
+    CAL_HIDDEN += p.jobs.length - jobs.length;
+    return jobs.length || !p.jobs.length ? [{ ...p, jobs }] : [];   // a plan with only hidden jobs goes too; a new, empty one stays
+  }) };
+  if (SHOW_ALL) CAL_HIDDEN = CAL_ALL.plans.reduce((k, p) => k + p.jobs.filter(j => !keep(j)).length, 0);
+}
+function setShowAll(on) {
+  SHOW_ALL = on;
+  try { localStorage.setItem('tasks.showAll', on ? '1' : '0'); } catch {}
+  recentOnly(); drawCal();
+}
+
 async function loadCal() {
   try {
-    CAL = await api('timeline?' + new URLSearchParams({ project: $('calProj').value, mine: $('calWho').value === 'mine' }));
+    CAL_ALL = await api('timeline?' + new URLSearchParams({ project: $('calProj').value, mine: $('calWho').value === 'mine' }));
+    recentOnly();
     if (!RS) threeWeeks();
     drawCal();
   } catch (e) { $('calGrid').innerHTML = `<div class="notice" style="margin:16px">${esc(e.message)}</div>`; }
@@ -1354,6 +1382,17 @@ function drawCal() {
   const unsched = CAL.plans.reduce((k, p) => k + p.jobs.filter(j => !j.start).length, 0);
   $('calHint').textContent = [anyChange ? `Drag the dates to move along. Drag a bar to move a job, or its right edge to change how long it takes. Click a day in ${GROUP === 'person' ? 'someone’s' : 'a plan’s'} row to add a job starting then.${GROUP === 'person' ? ' Drag a bar up or down onto someone else to give them the job. Red under a name means two jobs at once.' : ''}` : 'Drag the dates to move along. Click a job to see it.',
     unsched ? `${unsched} job${unsched === 1 ? ' has' : 's have'} no start date: click a day in ${unsched === 1 ? 'its' : 'their'} row to schedule ${unsched === 1 ? 'it' : 'them'}.` : ''].filter(Boolean).join(' ');
+  const month = new Date(sinceDay() + 'T12:00:00').toLocaleDateString(undefined, { month: 'long' });
+  if (CAL_HIDDEN) {
+    const note = document.createElement('div');
+    note.className = 'tlhidden';
+    note.innerHTML = SHOW_ALL
+      ? `Showing every job, including ${CAL_HIDDEN} with no start date or finished before ${esc(month)}. <button type="button" class="linkbtn" id="showRecent">Show only ${esc(month)} onwards</button>`
+      : `Showing jobs from ${esc(month)} onwards. ${CAL_HIDDEN} job${CAL_HIDDEN === 1 ? ' isn’t' : 's aren’t'} shown: no start date yet, or finished before ${esc(month)} (schedule one with the + beside a person). <button type="button" class="linkbtn" id="showAll">Show all</button>`;
+    $('calHint').append(note);
+    $('showAll')?.addEventListener('click', () => setShowAll(true));
+    $('showRecent')?.addEventListener('click', () => setShowAll(false));
+  }
   wireTimeline();
   $('colGrip').onpointerdown = e => {
     e.preventDefault(); e.stopPropagation();
@@ -1426,7 +1465,7 @@ function wirePanning() {
  */
 function planMenu(e, email, day) {
   document.querySelector('.planmenu')?.remove();
-  const plans = CAL.plans.filter(p => p.canChange);
+  const plans = (CAL_ALL || CAL).plans.filter(p => p.canChange);   // every job, including the ones the timeline leaves off
   if (!plans.length) { cp.alert('Create a plan first, then add jobs to it.'); return; }
   const name = email ? personName(email) : 'nobody yet';
   const open = p => (p.jobs || []).filter(j => j.status !== 'Done' && !(email && (j.people || []).some(x => x.email === email)));
@@ -1477,7 +1516,7 @@ function planMenu(e, email, day) {
   };
   m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
   m.querySelectorAll('[data-job]').forEach(b => b.onclick = async () => {
-    const plan = CAL.plans.find(p => p.id === b.closest('.pmplan').dataset.plan), job = plan.jobs.find(j => j.id === b.dataset.job);
+    const plan = (CAL_ALL || CAL).plans.find(p => p.id === b.closest('.pmplan').dataset.plan), job = plan.jobs.find(j => j.id === b.dataset.job);
     close();
     const body = { start: workday(day || job.start || today()) };
     if (email) body.people = [...(job.people || []).map(x => ({ email: x.email, name: x.name || personName(x.email) })), { email, name: personName(email) }];
