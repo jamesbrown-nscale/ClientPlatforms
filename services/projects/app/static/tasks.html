@@ -349,6 +349,19 @@
   .tlgroup .tllab .cnt { font-weight: 400; color: var(--muted); font-size: 12px; white-space: nowrap; }
   .tlbusy { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--violet); opacity: .25; }
   .tlbusy.over { background: #E5484D; opacity: .55; }
+  .tlleave { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; background: repeating-linear-gradient(135deg, #FFF1D6 0 6px, #FFE6B3 6px 12px);
+    border: 1px solid #F0C36A; color: #8A5300; font-size: 11.5px; font-weight: 600; line-height: 1; padding: 0 6px; display: flex; align-items: center;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; z-index: 1; box-sizing: border-box; }
+  .tlleave:hover { border-color: #C98A12; }
+  .planmenu button.pmleave { color: #8A5300; font-weight: 600; }
+  dialog.leavedlg { border: 0; border-radius: 14px; padding: 0; width: min(420px, calc(100vw - 32px)); background: #FDFFF8; box-shadow: 0 24px 64px rgba(4,14,39,.28); }
+  dialog.leavedlg::backdrop { background: rgba(4,14,39,.45); }
+  .leavedlg form { padding: 22px 24px 18px; }
+  .leavedlg h2 { margin: 0 0 4px; font-size: 18px; text-transform: none; letter-spacing: normal; color: var(--text); }
+  .leavedlg .lrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .leavedlg label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .leavedlg input { width: 100%; height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; font: inherit; background: #fff; box-sizing: border-box; }
+  .leavedlg .lact { display: flex; gap: 8px; margin-top: 18px; align-items: center; }
   .planmenu { position: absolute; z-index: 1000; min-width: 240px; max-width: 340px; max-height: 300px; overflow: auto; background: #FDFFF8; border: 1px solid var(--border); border-radius: 10px;
               box-shadow: 0 12px 32px rgba(4,14,39,.18); padding: 4px; }
   .planmenu .g { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 8px 8px 4px; }
@@ -1385,8 +1398,16 @@ function drawCal() {
       // A faint line where they're busy; red where two of their open jobs overlap.
       const load = {};
       g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (const r of [j, ...(j.repeats || []).filter(r => r.start <= end)]) for (let d = r.start; d <= r.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + 1; });
+      // Their leave: a block on their own row (never a job under them); a job on a leave day is a clash.
+      const away = (CAL.leave || []).filter(l => g.email && l.email === g.email && l.end >= RS && l.start <= end);
+      const off = d => away.some(l => l.start <= d && d <= l.end);
       let busy = '';
-      for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) busy += `<div class="tlbusy ${load[d] > 1 ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${load[d] > 1 ? `title="${load[d]} jobs at once on ${esc(fmtDay(d))}"` : ''}></div>`; }
+      for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) { const clash = load[d] > 1 || off(d); busy += `<div class="tlbusy ${clash ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${clash ? `title="${off(d) ? 'A job while on leave' : load[d] + ' jobs at once'} on ${esc(fmtDay(d))}"` : ''}></div>`; } }
+      for (const l of away) {
+        const a = l.start < RS ? RS : l.start, b = l.end > end ? end : l.end;
+        busy += `<div class="tlleave" data-leave="${esc(l.id)}" style="left:${x(a) + 1}px;width:${(between(a, b) + 1) * DW - 2}px"
+          title="${esc(l.name || g.name)} on leave: ${esc(span(l.start, l.end))}${l.note ? '\n' + esc(l.note) : ''}\nClick to change or remove">${DW * (between(a, b) + 1) > 60 ? '🌴 ' + esc(l.note || 'Leave') : '🌴'}</div>`;
+      }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
       const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
       rows += `<div class="tlrow tlgroup" data-grp="${esc(g.email)}" data-gname="${esc(g.name)}" style="min-height:40px">
@@ -1464,7 +1485,7 @@ function wirePanning() {
   const g = $('calGrid');
   let pan = null, swallow = false, acc = 0;
   g.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || e.target.closest('.gbar, .rbar, .tllab, .diamond, button')) return;
+    if (e.button !== 0 || e.target.closest('.gbar, .rbar, .tlleave, .tllab, .diamond, button')) return;
     pan = { x: e.clientX, rs: RS, re: RE, moved: false };
   });
   window.addEventListener('pointermove', e => {
@@ -1495,13 +1516,47 @@ function wirePanning() {
  * or start a new job in a plan. Each plan lists its open jobs this person isn't on yet; picking one puts
  * them on it and schedules it (from the day you clicked, else where it already was, else today).
  */
+/** Add or change someone's leave: first and last day, and a short note. Shown on their timeline row only. */
+function leaveDialog(lv) {
+  document.querySelector('dialog.leavedlg')?.remove();
+  const d = document.createElement('dialog');
+  d.className = 'leavedlg';
+  d.innerHTML = `<form method="dialog">
+      <h2>${lv.id ? 'Leave' : 'Add leave'} · ${esc(lv.name || personName(lv.email))}</h2>
+      <p class="muted" style="margin:0">It shows on their row of the timeline, so nobody plans work for them then.</p>
+      <div class="lrow"><div><label for="lvStart">First day</label><input type="date" id="lvStart" value="${esc(lv.start)}" required></div>
+        <div><label for="lvEnd">Last day</label><input type="date" id="lvEnd" value="${esc(lv.end)}" required></div></div>
+      <div style="margin-top:12px"><label for="lvNote">Note <span class="muted" style="font-weight:400">(optional)</span></label><input id="lvNote" maxlength="200" value="${esc(lv.note || '')}" placeholder="e.g. Holiday, Training, Half day"></div>
+      <div class="notice" id="lvErr" hidden style="margin-top:12px"></div>
+      <div class="lact"><button class="btn primary small" value="save">${lv.id ? 'Save' : 'Add leave'}</button><button class="btn small" value="cancel" formnovalidate>Cancel</button>
+        <span style="flex:1"></span>${lv.id ? '<button class="btn small danger" type="button" id="lvDel">Remove</button>' : ''}</div>
+    </form>`;
+  document.body.append(d);
+  const err = m => { $('lvErr').textContent = m; $('lvErr').hidden = !m; };
+  $('lvStart').onchange = () => { if ($('lvEnd').value < $('lvStart').value) $('lvEnd').value = $('lvStart').value; };
+  d.querySelector('form').onsubmit = async e => {
+    if (e.submitter?.value !== 'save') return;
+    e.preventDefault();
+    const body = { email: lv.email, start: $('lvStart').value, end: $('lvEnd').value, note: $('lvNote').value };
+    try { await send(lv.id ? `leave/${lv.id}` : 'leave', body, lv.id ? 'PATCH' : 'POST'); d.close(); loadCal(); }
+    catch (x) { err(x.message); }
+  };
+  $('lvDel')?.addEventListener('click', async () => {
+    if (!(await cp.confirm({ title: 'Remove this leave?', message: `${lv.name || personName(lv.email)}, ${shortDay(lv.start)}${lv.end !== lv.start ? ' – ' + shortDay(lv.end) : ''}.`, confirm: 'Remove', danger: true }))) return;
+    try { await send(`leave/${lv.id}`, null, 'DELETE'); d.close(); loadCal(); } catch (x) { err(x.message); }
+  });
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  $('lvStart').focus();
+}
+
 function planMenu(e, email, day) {
   document.querySelector('.planmenu')?.remove();
   const plans = (CAL_ALL || CAL).plans.filter(p => p.canChange);   // every job, including the ones the timeline leaves off
-  if (!plans.length) { cp.alert('Create a plan first, then add jobs to it.'); return; }
+  if (!plans.length && !email) { cp.alert('Create a plan first, then add jobs to it.'); return; }
   const name = email ? personName(email) : 'nobody yet';
   const open = p => (p.jobs || []).filter(j => j.status !== 'Done' && !(email && (j.people || []).some(x => x.email === email)));
-  if (plans.length === 1 && !open(plans[0]).length) return addJobOn(plans[0].id, day, email);
+  if (!email && plans.length === 1 && !open(plans[0]).length) return addJobOn(plans[0].id, day, email);
   const first = OPEN && plans.find(p => p.id === OPEN.id);
   const list = first ? [first, ...plans.filter(p => p !== first)] : plans;
   const total = list.reduce((n, p) => n + open(p).length, 0);
@@ -1509,7 +1564,8 @@ function planMenu(e, email, day) {
   const who = j => (j.people || []).length ? (j.people || []).map(x => x.name || personName(x.email)).join(', ') : 'Unassigned';
   const m = document.createElement('div');
   m.className = 'planmenu'; m.setAttribute('role', 'menu');
-  m.innerHTML = `<div class="g">Schedule a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</div>` +
+  m.innerHTML = (email ? `<button type="button" role="menuitem" class="pmleave" data-leave>🌴 Add leave for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</button>` : '') +
+    (plans.length ? `<div class="g">Schedule a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</div>` : '') +
     (total > 6 ? `<input type="search" class="pmq" placeholder="Find a job or plan" aria-label="Find a job or plan">` : '') +
     list.map(p => {
       const jobs = open(p);
@@ -1546,6 +1602,7 @@ function planMenu(e, email, day) {
     });
     m.querySelector('.pmnone').hidden = any;
   };
+  m.querySelector('[data-leave]')?.addEventListener('click', () => { close(); leaveDialog({ email, start: day || today(), end: day || today(), note: '' }); });
   m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
   m.querySelectorAll('[data-job]').forEach(b => b.onclick = async () => {
     const plan = (CAL_ALL || CAL).plans.find(p => p.id === b.closest('.pmplan').dataset.plan), job = plan.jobs.find(j => j.id === b.dataset.job);
@@ -1568,6 +1625,7 @@ function wireTimeline() {
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
   g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob); });
+  g.querySelectorAll('.tlleave').forEach(b => b.onclick = e => { e.stopPropagation(); const l = (CAL.leave || []).find(x => x.id === b.dataset.leave); if (l) leaveDialog(l); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
     l.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(l.dataset.sub, l); };

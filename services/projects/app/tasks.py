@@ -1014,6 +1014,85 @@ def calendar(start: str, end: str, project: str = "", mine: bool = False, user: 
     return {"jobs": jobs, "due": due, "unscheduled": unscheduled}
 
 
+# ---------- Leave: when someone's away, shown on their row of the timeline ----------
+
+class LeaveIn(BaseModel):
+    email: str | None = Field(default=None, max_length=254)
+    start: str | None = None
+    end: str | None = None
+    note: str | None = Field(default=None, max_length=200)
+
+
+def _leave(r) -> dict:
+    return {"id": r["id"], "email": r["email"], "name": r["name"], "start": r["start"], "end": r["end"], "note": r["note"] or "",
+            "createdBy": r["created_by"], "updatedAt": r["updated_at"]}
+
+
+def leave_from(since: str) -> list[dict]:
+    with store().db() as db:
+        return [_leave(r) for r in db.execute("SELECT * FROM team_leave WHERE end >= ? ORDER BY start", (since,))]
+
+
+def _leave_fields(body: LeaveIn, old: dict | None = None) -> dict:
+    f = dict(old or {})
+    if body.email is not None:
+        email, name = _sub_person(body.email)
+        if not email:
+            raise HTTPException(422, "Whose leave is it? Pick someone.")
+        f["email"], f["name"] = email, name
+    for k in ("start", "end"):
+        v = getattr(body, k)
+        if v is not None:
+            try:
+                f[k] = date.fromisoformat(v).isoformat()
+            except ValueError:
+                raise HTTPException(422, "Leave needs a first and last day.")
+    if body.note is not None:
+        f["note"] = re.sub(r"\s+", " ", body.note).strip()
+    if not f.get("email") or not f.get("start") or not f.get("end"):
+        raise HTTPException(422, "Leave needs a person, a first day and a last day.")
+    if f["end"] < f["start"]:
+        raise HTTPException(422, "The last day of leave can't be before the first.")
+    if (date.fromisoformat(f["end"]) - date.fromisoformat(f["start"])).days > 366:
+        raise HTTPException(422, "Leave can be at most a year at a time.")
+    return f
+
+
+def _found_leave(lid: str) -> dict:
+    with store().db() as db:
+        r = db.execute("SELECT * FROM team_leave WHERE id = ?", (lid,)).fetchone()
+    if not r:
+        raise HTTPException(404, "That leave isn't there any more.")
+    return _leave(r)
+
+
+@router.post("/api/leave")
+def add_leave(body: LeaveIn, user: User = Depends(require_task_user)):
+    f = _leave_fields(body)
+    lid, stamp = uuid.uuid4().hex, now()
+    with store().lock, store().db() as db:
+        db.execute("INSERT INTO team_leave (id, email, name, start, end, note, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (lid, f["email"], f["name"], f["start"], f["end"], f.get("note", ""), user.email, stamp, stamp))
+    return _found_leave(lid)
+
+
+@router.patch("/api/leave/{lid}")
+def change_leave(lid: str, body: LeaveIn, user: User = Depends(require_task_user)):
+    f = _leave_fields(body, _found_leave(lid))
+    with store().lock, store().db() as db:
+        db.execute("UPDATE team_leave SET email = ?, name = ?, start = ?, end = ?, note = ?, updated_at = ? WHERE id = ?",
+                   (f["email"], f["name"], f["start"], f["end"], f.get("note", ""), now(), lid))
+    return _found_leave(lid)
+
+
+@router.delete("/api/leave/{lid}")
+def delete_leave(lid: str, user: User = Depends(require_task_user)):
+    _found_leave(lid)
+    with store().lock, store().db() as db:
+        db.execute("DELETE FROM team_leave WHERE id = ?", (lid,))
+    return {"ok": True}
+
+
 @router.get("/api/timeline")
 def timeline(project: str = "", mine: bool = False, done: bool = False, user: User = Depends(require_task_user)):
     """Open plans with all their jobs (scheduled or not), for the timeline: one group per plan.
@@ -1040,4 +1119,5 @@ def timeline(project: str = "", mine: bool = False, done: bool = False, user: Us
                     "start": min(starts) if starts else "", "end": max((j["end"] for j in jobs if j["end"]), default=""),
                     "jobs": jobs})
     out.sort(key=lambda p: (p["start"] or p["due"] or "9999", p["ref"]))
-    return {"plans": out}
+    # Leave from the last year onwards: drawn on each person's own row, never as a job.
+    return {"plans": out, "leave": leave_from((date.today() - timedelta(days=365)).isoformat())}

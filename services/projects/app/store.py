@@ -62,6 +62,10 @@ class Store:
                 data TEXT, created_at TEXT);
             CREATE INDEX IF NOT EXISTS activity_task ON task_activity(task_id, created_at);
             CREATE INDEX IF NOT EXISTS activity_waiting ON task_activity(waiting_on);
+            CREATE TABLE IF NOT EXISTS team_leave (
+                id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT DEFAULT '', start TEXT NOT NULL, end TEXT NOT NULL,
+                note TEXT DEFAULT '', created_by TEXT, created_at TEXT, updated_at TEXT);
+            CREATE INDEX IF NOT EXISTS leave_when ON team_leave(end, start);
             CREATE TABLE IF NOT EXISTS pipeline_jobs (
                 id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, position INTEGER DEFAULT 0,
                 title TEXT NOT NULL, description TEXT DEFAULT '', note TEXT DEFAULT '', start TEXT DEFAULT '',

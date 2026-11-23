@@ -371,3 +371,21 @@ def test_monthly_repeats_keep_the_day():
     assert r == ["2027-03-01", "2027-03-29", "2027-04-29", "2027-05-31", "2027-06-29"]   # 28 Feb 2027 is a Sunday
     assert [x["start"] for x in repeats("2027-01-15", 1, "quarterly", "2028-01-31")] == ["2027-04-15", "2027-07-15", "2027-10-15", "2028-01-17"]
     assert repeats("2027-01-15", 1, "yearly", "2027-12-31") == [] and repeats("", 1, "weekly") == [] and repeats("2027-01-15", 1, "nope") == []
+
+
+def test_leave(c):
+    """Leave: someone's days away, for the timeline; not a job."""
+    L = "/tasks/api/leave"
+    assert c.post(L, headers=AMY, json={"email": "bob.smith@nscale.com", "start": "2027-01-10", "end": "2027-01-08"}).status_code == 422
+    assert c.post(L, headers=AMY, json={"email": "nope", "start": "2027-01-04", "end": "2027-01-08"}).status_code == 422
+    assert c.post(L, headers=AMY, json={"start": "2027-01-04", "end": "2027-01-08"}).status_code == 422
+    lv = c.post(L, headers=AMY, json={"email": "Bob.Smith@nscale.com", "start": "2027-01-04", "end": "2027-01-08", "note": " Skiing  "}).json()
+    assert (lv["email"], lv["name"], lv["note"]) == ("bob.smith@nscale.com", "Bob Smith", "Skiing")
+    tl = c.get("/tasks/api/timeline", headers=AMY).json()
+    assert [x["id"] for x in tl["leave"]] == [lv["id"]] and all(not p["jobs"] or True for p in tl["plans"])
+    lv = c.patch(f"{L}/{lv['id']}", headers=AMY, json={"end": "2027-01-12"}).json()
+    assert lv["end"] == "2027-01-12" and lv["start"] == "2027-01-04"
+    assert c.patch(f"{L}/{lv['id']}", headers=AMY, json={"end": "2026-12-01"}).status_code == 422
+    assert c.delete(f"{L}/{lv['id']}", headers=AMY).status_code == 200
+    assert c.delete(f"{L}/{lv['id']}", headers=AMY).status_code == 404
+    assert c.get("/tasks/api/timeline", headers=AMY).json()["leave"] == []
