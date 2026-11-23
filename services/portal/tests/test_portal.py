@@ -63,8 +63,10 @@ def test_first_admin_and_sign_in(c):
     assert r.status_code == 303 and r.headers["location"] == "/"
     assert "httponly" in r.headers["set-cookie"].lower() and "samesite=lax" in r.headers["set-cookie"].lower()
     home = c.get("/")
-    assert "Hi James" in home.text and 'href="/settings"' in home.text
-    assert 'href="/notifications/"' in home.text and 'href="/elevation/"' in home.text and 'href="/restart/"' in home.text
+    assert "Hi James" in home.text and 'href="/settings"' in home.text and "Dashboard" in home.text
+    assert 'class="tile"' not in home.text   # the dashboard has no tool tiles: the tools are in the sidebar
+    tools = {t["id"] for t in c.get("/api/me").json()["tools"]}
+    assert {"notifications", "elevation", "restart"} <= tools
     assert c.get("/static/nscale-wordmark.svg").status_code == 200
     assert c.get("/static/dialog.js").headers["cache-control"] == "no-cache"   # updates reach everyone at once
     out = c.get("/logout", follow_redirects=False)
@@ -108,7 +110,9 @@ def test_each_person_only_gets_their_tools(c):
     assert add(c, "amy.chen@nscale.com", tools=["elevation"]).status_code == 200
     sign_in(c, "amy.chen@nscale.com", "a-good-password")
     home = c.get("/").text
-    assert 'href="/elevation/"' in home and 'href="/notifications/"' not in home and '>Settings</a>' not in home
+    assert '>Settings</a>' not in home and "No tools have been given" not in home
+    tools = {t["id"] for t in c.get("/api/me").json()["tools"]}
+    assert "elevation" in tools and "notifications" not in tools
     assert check(c, "/elevation/").status_code == 200
     denied = check(c, "/notifications/", headers=HTML)
     assert denied.status_code == 403 and "IT Notifications" in denied.text
@@ -202,10 +206,9 @@ def test_settings(c):
     s = c.put("/api/settings", headers=H, json=body).json()
     assert s["publicUrl"] == "https://cp.example.com"
     assert s["devices"]["notifications"] == "https://cp.example.com/notifications"
-    home = c.get("/").text
-    assert 'href="https://notify.example.com/"' in home and 'href="/elevation/"' not in home and 'href="/restart/"' in home
     side = {t["id"]: t for t in c.get("/api/me").json()["tools"]}
     assert "elevation" in side and side["elevation"]["enabled"] is False   # off the home page, still in the sidebar
+    assert side["notifications"]["url"] == "https://notify.example.com/" and side["restart"]["url"] == "/restart/"
     c.put("/api/settings", headers=H, json={**body, "tools": body["tools"] + [{"id": "org", "url": "/users/org", "enabled": True}]})
     assert next(t for t in c.get("/api/settings").json()["tools"] if t["id"] == "org")["url"] == "/org/"   # its old address
     body["deviceUrl"] = "http://10.0.0.5:8080"

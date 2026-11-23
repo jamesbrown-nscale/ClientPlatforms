@@ -136,7 +136,7 @@
     side.innerHTML = `
       <a class="cp-brand" href="/"><img src="/static/nscale-icon.svg" alt=""><span>Client Platforms</span>${/^[0-9.]+$/.test(me.version || '') ? `<span class="cp-ver" title="Client Platforms version ${me.version}">v${me.version}</span>` : ''}</a>
       <div class="cp-list" role="navigation" aria-label="Tools">
-        ${item('/', 'home', 'Home')}
+        ${item('/', 'home', 'Dashboard')}
         ${me.inbox ? item('/inbox/', 'inbox', 'Notifications', false, 'inbox') : ''}
         ${tools}
       </div>

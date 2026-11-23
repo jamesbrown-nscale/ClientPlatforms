@@ -321,12 +321,9 @@ def index(request: Request):
     user = current(request)
     if not user:
         return not_signed_in(request)
+    # The dashboard: the tools themselves are in the menu on the left.
     tools = [t for t in db.settings()["tools"] if t["enabled"] and can_use(user, t["id"])]
-    tiles = "".join(f"""
-      <a class="tile" href="{escape(t['url'])}">
-        <span class="ic">{ICONS[t['icon']]}</span>
-        <b>{escape(t['name'])}</b><span>{escape(t['about'])}</span><i>Open →</i>
-      </a>""" for t in tools) or "<p class='sub'>No tools have been given to your account yet. Ask a Client Platforms admin.</p>"
+    tiles = "" if tools else "<p class='sub'>No tools have been given to your account yet. Ask a Client Platforms admin.</p>"
     links = ('<a href="/settings">Settings</a> · ' if user.get("perms") else
              '<a href="/settings">Account</a> · ' if uses_password(user["email"]) else "")
     return HTMLResponse(PAGE.replace("{{TILES}}", tiles).replace("{{EMAIL}}", escape(user["email"]))
@@ -835,7 +832,7 @@ def message_page(message: str, status: int, button: str = "", href: str = "") ->
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nscale Client Platforms</title><link rel="icon" href="/static/nscale-icon.svg">
+<title>Dashboard · Nscale Client Platforms</title><link rel="icon" href="/static/nscale-icon.svg">
 <script src="/static/nav.js" defer></script>
 <style>""" + BASE_CSS + """
   header { background:var(--bg); border-bottom:1px solid var(--surface); }
@@ -865,7 +862,6 @@ PAGE = """<!doctype html>
 <div class="who">{{EMAIL}} · {{LINKS}}<a href="/logout">Sign out</a></div></div></header>
 <main>
   <h1>Hi {{FIRST}}</h1>
-  <p class="sub">Tools for managing Nscale's Windows and Mac devices.</p>
-  <div class="tiles">{{TILES}}</div>
-  <footer>Which tools you see is set on your account. If you need another, ask a Client Platforms admin.</footer>
+  <p class="sub">Your Client Platforms dashboard. Open a tool from the menu on the left.</p>
+  {{TILES}}
 </main></body></html>"""

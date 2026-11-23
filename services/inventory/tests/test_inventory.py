@@ -721,3 +721,39 @@ def test_location(c):
     cols = head.split(",")
     assert cols.index("Location") == cols.index("Line manager") + 1
     assert "Location" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]
+
+
+def test_jira_connection(c, monkeypatch):
+    """Settings → Connections: Jira, signed in with an email and API token, checked against /myself and the project."""
+    seen = []
+
+    def jira(req: httpx.Request):
+        seen.append((req.url.path, req.headers.get("authorization", "")))
+        if req.url.path == "/rest/api/3/myself":
+            ok = req.headers.get("authorization") == "Basic " + __import__("base64").b64encode(b"it@nscale.com:good-token").decode()
+            return httpx.Response(200, json={"displayName": "IT Bot"}) if ok else httpx.Response(401, json={})
+        if req.url.path == "/rest/api/3/project/CP":
+            return httpx.Response(200, json={"name": "Client Platform"})
+        return httpx.Response(404, json={})
+    monkeypatch.setattr(main, "make_client", lambda: httpx.Client(transport=httpx.MockTransport(jira)))
+    J = "/devices/api/integrations"
+    assert c.get(J, headers=DV).status_code == 403   # Devices admins only
+    assert c.get(J, headers=DA).json()["jira"]["connected"] is False
+    body = {"url": "nscale.atlassian.net", "email": "IT@nscale.com", "project": "cp"}
+    assert c.put(f"{J}/jira", headers=DA, json=body).status_code == 422             # no token yet
+    assert c.put(f"{J}/jira", headers=DA, json={**body, "url": "http://x.atlassian.net/foo", "token": "t"}).status_code == 422
+    r = c.put(f"{J}/jira", headers=DA, json={**body, "token": "good-token"}).json()
+    assert r["ok"] and "IT Bot" in r["note"] and "Client Platform" in r["note"]
+    v = r["jira"]
+    assert (v["url"], v["email"], v["project"], v["hasToken"], v["lastError"]) == ("https://nscale.atlassian.net", "it@nscale.com", "CP", True, "")
+    assert "token" not in v and "good-token" not in json.dumps(v)
+    # A wrong token: saved, but the check says so.
+    r = c.put(f"{J}/jira", headers=DA, json={**body, "token": "bad"}).json()
+    assert not r["ok"] and "API token" in r["error"] and r["jira"]["lastError"]
+    # The project can't be seen.
+    c.put(f"{J}/jira", headers=DA, json={**body, "project": "NOPE", "token": "good-token"})
+    r = c.post(f"{J}/jira/test", headers=DA).json()
+    assert not r["ok"] and "NOPE" in r["error"]
+    # Jira isn't a device source: syncing devices leaves it alone.
+    assert c.delete(f"{J}/jira", headers=DA).json()["jira"]["connected"] is False
+    assert c.delete(f"{J}/jira", headers=DA).status_code == 404
