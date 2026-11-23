@@ -51,6 +51,9 @@ class Store:
                     email TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', team TEXT DEFAULT '', manager TEXT DEFAULT '',
                     user_type TEXT DEFAULT 'Standard', primary_device TEXT DEFAULT '', title TEXT DEFAULT '',
                     department TEXT DEFAULT '', created_at TEXT, updated_at TEXT, updated_by TEXT DEFAULT '');
+                CREATE TABLE IF NOT EXISTS user_review (
+                    id TEXT PRIMARY KEY, kind TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '',
+                    fields TEXT NOT NULL DEFAULT '{}', changes TEXT NOT NULL DEFAULT '[]', created_at TEXT, created_by TEXT DEFAULT '');
                 CREATE TABLE IF NOT EXISTS connections (
                     kind TEXT PRIMARY KEY, settings TEXT NOT NULL DEFAULT '{}', secret TEXT DEFAULT '',
                     enabled INTEGER NOT NULL DEFAULT 1, last_sync TEXT, last_ok TEXT, last_error TEXT DEFAULT '',
@@ -145,6 +148,33 @@ class Store:
                                      by=by, tool="users")
                 n += db.execute("DELETE FROM users WHERE email = ?", (e,)).rowcount
             return n
+
+    # ----- review: what a CSV import would change, waiting for someone to accept it -----
+    #   new      in the file, not on Users          fields: everything the file gives them
+    #   changed  on Users, the file differs         fields: just what changes; changes: [{field, from, to}]
+    #   left     on Users, not in the file          (only when the file was said to be everyone)
+
+    def review(self) -> list[dict]:
+        with self._db() as db:
+            rows = db.execute("SELECT * FROM user_review ORDER BY kind, name COLLATE NOCASE, email").fetchall()
+        return [{**dict(r), "fields": json.loads(r["fields"]), "changes": json.loads(r["changes"])} for r in rows]
+
+    def review_count(self) -> int:
+        with self._db() as db:
+            return db.execute("SELECT COUNT(*) FROM user_review").fetchone()[0]
+
+    def replace_review(self, items: list[dict], by: str) -> None:
+        """A new import replaces whatever was still waiting from the last one."""
+        t = now()
+        with self._lock, self._db() as db:
+            db.execute("DELETE FROM user_review")
+            db.executemany("INSERT INTO user_review (id, kind, email, name, fields, changes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                           [(i["id"], i["kind"], i["email"], i.get("name", ""), json.dumps(i.get("fields", {})),
+                             json.dumps(i.get("changes", [])), t, by) for i in items])
+
+    def drop_review(self, ids: list[str]) -> None:
+        with self._lock, self._db() as db:
+            db.executemany("DELETE FROM user_review WHERE id = ?", [(i,) for i in ids])
 
     # ----- connections -----
 

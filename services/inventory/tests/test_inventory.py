@@ -112,6 +112,13 @@ def connect_intune(c):
                  json={"tenantId": "1b2c3d4e-0000-4000-8000-123456789abc", "clientId": "app", "secret": "ms-secret"})
 
 
+def accept_all(c):
+    """An import goes to Review: accept everything it sent there."""
+    ids = [i["id"] for i in c.get("/users/api/review", headers=UV).json()["items"]]
+    if ids:
+        assert c.post("/users/api/review/act", headers=UE, json={"ids": ids, "action": "accept"}).status_code == 200
+
+
 # ---------- Access ----------
 
 def test_who_can_do_what(c):
@@ -264,6 +271,7 @@ def test_csv_import(c, fake):
     assert not c.get("/users/api/users", headers=UV).json()["items"]    # a dry run saves nothing
 
     r = c.post("/users/api/import", headers=UE, json={"csv": CSV}).json()
+    accept_all(c)
     assert (r["added"], r["updated"]) == (3, 0)
     msgs = {}
     for prob in r["problems"]:
@@ -279,6 +287,7 @@ def test_csv_import(c, fake):
 
     # Again, with some changes: empty cells leave things alone.
     again = c.post("/users/api/import", headers=UE, json={"csv": "email,division,user type\namy.chen@nscale.com,,Standard\nsam.lee@nscale.com,Platform,\n"}).json()
+    accept_all(c)
     assert (again["added"], again["updated"], again["unchanged"]) == (0, 1, 1)
     amy = next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "amy.chen@nscale.com")
     assert amy["division"] == "Platform" and amy["type"] == "Standard" and amy["primaryDevice"]["serial"] == "C02AAA"
@@ -287,7 +296,7 @@ def test_csv_import(c, fake):
     assert stats["departments"] == [
         {"name": "Engineering", "count": 2, "divisions": [{"name": "Platform", "count": 2}]},
         {"name": "", "count": 1, "divisions": [{"name": "Support", "count": 1}]}]
-    assert stats["stats"] == {"users": 3, "vip": 0, "departments": 1, "withDevice": 1, "noDevice": 2}
+    assert stats["stats"] == {"users": 3, "review": 0, "vip": 0, "departments": 1, "withDevice": 1, "noDevice": 2}
     # The Team tool reads these, inside the stack.
     assert c.get("/internal/teams").json()["departments"] == stats["departments"]
     assert c.get("/internal/users/Amy.Chen@nscale.com").json() == {"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "",
@@ -389,6 +398,7 @@ def test_two_column_csv_updates_just_that(c):
 
     # Only people already here: the new email is left out.
     r = c.post("/users/api/import", headers=UE, json={"csv": csv_text, "addNew": False}).json()
+    accept_all(c)
     assert (r["added"], r["updated"], r["unchanged"], r["skipped"]) == (0, 1, 1, 1)
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     assert set(users) == {"amy@nscale.com", "sam@nscale.com"}
@@ -450,3 +460,49 @@ def test_csv_can_leave_out_dep_devices(c):
     names = lambda q="": {row.split(",")[0] for row in c.get("/devices/api/devices.csv" + q, headers=DV).text.splitlines()[1:]}  # noqa: E731
     assert names() == {"DEP-C02XL0AAJGH5", "MB-LON-008", "Depot iMac"}
     assert names("?dep=hide") == {"MB-LON-008", "Depot iMac"}
+
+
+def test_import_goes_to_review(c):
+    """An import doesn't change Users: its new people, changes and leavers wait on Review to be accepted."""
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy Chen", "type": "Standard", "department": "Tech"})
+    c.post("/users/api/users", headers=UE, json={"email": "sam@nscale.com", "name": "Sam Lee"})
+    c.post("/users/api/users", headers=UE, json={"email": "gone@nscale.com", "name": "Gone Person", "department": "Sales"})
+    csv_text = "Email,Name,User type\namy@nscale.com,Amy Chen,VIP\nsam@nscale.com,Sam Lee,\nnew@nscale.com,New Person,Standard\n"
+    dry = c.post("/users/api/import", headers=UE, json={"csv": csv_text, "dryRun": True, "everyone": True}).json()
+    assert (dry["added"], dry["updated"], dry["left"], dry["leftNames"]) == (1, 1, 1, ["Gone Person"])
+    assert c.get("/users/api/review", headers=UV).json()["items"] == []   # a dry run sends nothing
+    r = c.post("/users/api/import", headers=UE, json={"csv": csv_text, "everyone": True}).json()
+    assert r["review"] == {"new": 1, "changed": 1, "left": 1}
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["amy@nscale.com"]["type"] == "Standard" and "new@nscale.com" not in users   # nothing changed yet
+    assert c.get("/users/api/users", headers=UV).json()["stats"]["review"] == 3
+    assert "<h1>Review</h1>" in c.get("/users/review", headers=UV).text and c.get("/users/review").status_code == 403
+    rev = c.get("/users/api/review", headers=UV).json()
+    assert rev["counts"] == {"new": 1, "changed": 1, "left": 1} and rev["importedBy"] == "admin@nscale.com"
+    by = {i["kind"]: i for i in rev["items"]}
+    assert by["changed"]["changes"] == [{"field": "User type", "from": "Standard", "to": "VIP"}] and by["changed"]["fields"] == {"user_type": "VIP"}
+    assert by["left"]["email"] == "gone@nscale.com" and by["left"]["changes"][0]["from"] == "Sales"
+    assert c.post("/users/api/review/act", headers=UV, json={"ids": [by["new"]["id"]], "action": "accept"}).status_code == 403
+    assert c.post("/users/api/review/act", headers=UE, json={"ids": [by["new"]["id"]], "action": "dance"}).status_code == 422
+
+    act = lambda kind, action: c.post("/users/api/review/act", headers=UE, json={"ids": [by[kind]["id"]], "action": action}).json()
+    assert act("changed", "accept")["updated"] == 1
+    assert act("new", "delete")["added"] == 0            # not added
+    assert act("left", "keep")["deleted"] == 0           # kept
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["amy@nscale.com"]["type"] == "VIP" and users["amy@nscale.com"]["department"] == "Tech"
+    assert "new@nscale.com" not in users and "gone@nscale.com" in users
+    assert c.get("/users/api/review", headers=UV).json()["items"] == []
+
+    # Again: accept the leaver (they're deleted, into the bin) and the new person (added).
+    c.post("/users/api/import", headers=UE, json={"csv": csv_text, "everyone": True})
+    rev = c.get("/users/api/review", headers=UV).json()["items"]
+    out = c.post("/users/api/review/act", headers=UE, json={"ids": [i["id"] for i in rev], "action": "accept"}).json()
+    assert (out["added"], out["deleted"], out["left"]) == (1, 1, 0)
+    users = {u["email"] for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert "new@nscale.com" in users and "gone@nscale.com" not in users
+    # Without "everyone", nobody is listed as left; a new import replaces what was waiting.
+    c.post("/users/api/import", headers=UE, json={"csv": "Email,Department\namy@nscale.com,Ops\n"})
+    c.post("/users/api/import", headers=UE, json={"csv": "Email,Department\nsam@nscale.com,Ops\n"})
+    items = c.get("/users/api/review", headers=UV).json()["items"]
+    assert [(i["kind"], i["email"]) for i in items] == [("changed", "sam@nscale.com")]

@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import threading
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from html import escape
@@ -442,7 +443,7 @@ def users_payload() -> dict:
     # VIP first, then the others A-Z, Standard last: each but Standard gets a tile on the page.
     types = [{"name": t, "count": counts.get(t, 0)}
              for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
-    stats = {"users": len(items), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
+    stats = {"users": len(items), "review": store.review_count(), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
     return {"items": items, "departments": departments(items), "types": types, "stats": stats}
@@ -648,6 +649,7 @@ class ImportIn(BaseModel):
     csv: str = Field(max_length=MAX_CSV)
     dryRun: bool = False
     addNew: bool = True   # False: only update people already on Users; new emails are left out
+    everyone: bool = False   # the file is everyone: people on Users who aren't in it are listed as Left
 
 
 LABELS = {"email": "Email", "name": "Name", "first": "First name", "last": "Last name", "division": "Division",
@@ -759,10 +761,13 @@ def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
 
 @users_app.post("/api/import")
 def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
-    """Reads the CSV's columns by their headings and changes only those fields. With dryRun, says what
-    it would do without doing it; either way the answer lists, per person, what changes (old → new)."""
+    """Reads the CSV's columns by their headings and changes only those fields. Nothing is saved: the
+    changes go to Review (/users/review), where each is accepted or not. With dryRun, says what would go
+    there. Either way the answer lists, per person, what changes (old → new)."""
     rows, problems, unused, columns = parse_csv(body.csv)
     existing = {u["email"]: u for u in store.users()}
+    in_file = {r["email"] for r in rows}
+    left = sorted((e for e in existing if e not in in_file), key=lambda e: (existing[e]["name"] or e).lower()) if body.everyone else []
     new = [r for r in rows if r["email"] not in existing]
     skipped = 0
     if not body.addNew:
@@ -772,14 +777,77 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
     report = {"rows": len(rows), "newInFile": len(new), "skipped": skipped, "columns": columns, "unusedColumns": unused,
               "problems": problems[:200], "moreProblems": max(0, len(problems) - 200),
               "changes": changes[:500], "moreChanges": max(0, len(changes) - 500)}
+    added = sum(c["new"] for c in changes)
+    updated = len(changes) - added
+    report |= {"added": added, "updated": updated, "unchanged": len(rows) - added - updated, "left": len(left),
+               "leftNames": [existing[e]["name"] or e for e in left[:20]]}
     if body.dryRun:
-        added = sum(c["new"] for c in changes)
-        updated = len(changes) - added
-        return {**report, "dryRun": True, "added": added, "updated": updated, "unchanged": len(rows) - added - updated}
-    added, updated = store.save_users(rows, user.email)
-    log.info(json.dumps({"severity": "NOTICE", "message": "users imported", "by": user.email, "added": added, "updated": updated,
-                         "columns": [c["field"] for c in columns if c["field"]]}))
-    return {**report, "added": added, "updated": updated, "unchanged": len(rows) - added - updated}
+        return {**report, "dryRun": True}
+    by_email = {r["email"]: r for r in rows}
+    items = []
+    for c in changes:
+        r, old = by_email[c["email"]], existing.get(c["email"])
+        if old:   # only what differs
+            fields = {f: r[f] for f in FIELD_LABELS if f in r and (old.get(f) or ("Standard" if f == "user_type" else "")) != (r[f] or "")}
+        else:
+            fields = {k: v for k, v in r.items() if k != "email"}
+        items.append({"id": uuid.uuid4().hex, "kind": "new" if c["new"] else "changed", "email": c["email"], "name": c["name"],
+                      "fields": fields, "changes": c["fields"]})
+    for e in left:
+        u = existing[e]
+        items.append({"id": uuid.uuid4().hex, "kind": "left", "email": e, "name": u["name"] or access.display_name(e),
+                      "changes": [{"field": k, "from": u[f] or "", "to": ""} for f, k in (("department", "Department"), ("division", "Division"), ("title", "Job title")) if u.get(f)]})
+    store.replace_review(items, user.email)
+    log.info(json.dumps({"severity": "NOTICE", "message": "users import sent to review", "by": user.email, "new": added,
+                         "changed": updated, "left": len(left), "columns": [c["field"] for c in columns if c["field"]]}))
+    return {**report, "review": {"new": added, "changed": updated, "left": len(left)}}
+
+
+# ----- Review: an import's changes, accepted (or not) one by one or all at once -----
+
+@users_app.get("/review")
+def review_page(request: Request):
+    if not auth.current_user(request, USERS):
+        return _page(access.sign_in_message(), 403)
+    return FileResponse(STATIC / "review.html", headers={"Cache-Control": "no-store"})
+
+
+@users_app.get("/api/review")
+def get_review(user: User = Depends(auth.users_viewer)):
+    items = store.review()
+    counts = {k: sum(i["kind"] == k for i in items) for k in ("new", "changed", "left")}
+    first = items[0] if items else {}
+    return {"items": items, "counts": counts, "importedAt": first.get("created_at"), "importedBy": first.get("created_by", "")}
+
+
+class ReviewAct(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=MAX_ROWS)
+    action: str = Field(pattern="^(accept|delete|keep)$")
+
+
+@users_app.post("/api/review/act")
+def act_on_review(body: ReviewAct, user: User = Depends(auth.users_editor)):
+    """accept: new → add them; changed → make the changes; left → delete them (they've gone).
+    delete: new → don't add them; changed or left → delete the user (into the recycle bin).
+    keep:   leave Users as it is and take it off the list."""
+    want = set(body.ids)
+    items = [i for i in store.review() if i["id"] in want]
+    existing = {u["email"] for u in store.users()}
+    save, remove = [], []
+    for i in items:
+        if body.action == "accept":
+            if i["kind"] == "left":
+                remove.append(i["email"])
+            elif i["kind"] == "new" or i["email"] in existing:   # a changed user deleted since: nothing to change
+                save.append({"email": i["email"], **i["fields"]})
+        elif body.action == "delete" and i["kind"] != "new":
+            remove.append(i["email"])
+    added, updated = store.save_users(save, user.email) if save else (0, 0)
+    deleted = store.delete_users(remove, by=user.email) if remove else 0
+    store.drop_review([i["id"] for i in items])
+    log.info(json.dumps({"severity": "NOTICE", "message": f"users review: {body.action}", "by": user.email,
+                         "items": len(items), "added": added, "updated": updated, "deleted": deleted}))
+    return {"done": len(items), "added": added, "updated": updated, "deleted": deleted, "left": store.review_count()}
 
 
 @users_app.post("/api/match-devices")
