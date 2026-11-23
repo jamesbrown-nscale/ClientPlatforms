@@ -525,3 +525,26 @@ def test_platform_from_devices():
     assert platform_of(win, [mac]) == "Windows"          # the primary device decides
     assert platform_of(phone, [win, mac]) == "Mac"       # a phone doesn't: their latest computer does
     assert platform_of(None, []) == ""
+
+
+def test_invisible_characters_in_emails(c, tmp_path):
+    """A zero-width space (HR export) or a non-breaking space (Jamf) mustn't stop a user matching their device."""
+    from app.store import clean_email
+    assert clean_email(" Aarika.Plunkett​@nscale.com ") == "aarika.plunkett@nscale.com"
+    assert clean_email("a‎@x.com﻿") == "a@x.com"
+    main.store.replace_devices("Jamf", [{"id": "jamf:c9", "platform": "Jamf", "kind": "computer", "name": "NS-Mac", "os": "macOS",
+                                         "user_email": "aarika.plunkett@nscale.com ", "last_seen": "2026-11-23T10:00:00Z"}])
+    c.post("/users/api/import", headers=UE, json={"csv": "Email,Name\n﻿aarika.plunkett@nscale.com​,Aarika Plunkett\n"})
+    accept_all(c)
+    u = c.get("/users/api/users", headers=UV).json()["items"][0]
+    assert u["email"] == "aarika.plunkett@nscale.com" and u["platform"] == "Mac" and u["devices"] == 1
+
+    # Saved before this fix: tidied when the service starts.
+    path = str(tmp_path / "old.db")
+    s = store_mod.Store(path, "s" * 40)
+    with s._db() as db:
+        db.execute("INSERT INTO users (email, name, manager) VALUES (?, 'Bo', ?)", ("bo@nscale.com​", "amy@nscale.com​"))
+        db.execute("INSERT INTO devices (id, platform, user_email) VALUES ('d1', 'Jamf', ?)", ("bo@nscale.com ",))
+    s = store_mod.Store(path, "s" * 40)
+    assert [(u["email"], u["manager"]) for u in s.users()] == [("bo@nscale.com", "amy@nscale.com")]
+    assert s.devices()[0]["user_email"] == "bo@nscale.com"

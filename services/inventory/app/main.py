@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from . import access, auth, connectors, recycle
 from .auth import DEPARTMENTS, DEVICES, ORG, USERS, User
 from .connectors import PLATFORMS, SyncError
-from .store import Store, now
+from .store import Store, clean_email, now
 
 STATIC = Path(__file__).parent / "static"
 PORTAL_URL = os.environ.get("PORTAL_URL", "/")
@@ -530,7 +530,7 @@ def _resolve_manager(v: str, by_name: dict[str, str], email: str = "") -> str:
     if "@" in v:
         if not EMAIL.match(v):
             raise ValueError(f"\"{v}\" isn't an email address.")
-        v = v.lower()
+        v = clean_email(v)
     else:
         v = by_name.get(v.lower(), v)
     if email and v == email:
@@ -648,7 +648,7 @@ def _one(email: str) -> dict:
 
 @users_app.post("/api/users")
 def add_user(body: UserIn, user: User = Depends(auth.users_editor)):
-    email = body.email.strip().lower()
+    email = clean_email(body.email)
     if not EMAIL.match(email):
         raise ValueError("Enter a valid email address.")
     if store.user(email):
@@ -742,11 +742,11 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
     for _, r in raw:   # managers named in this same file count too
         nm = r.get("name") or " ".join(filter(None, [r.get("first"), r.get("last")]))
         if nm and r.get("email"):
-            by_name.setdefault(nm.lower(), r["email"].lower())
+            by_name.setdefault(nm.lower(), clean_email(r["email"]))
     out: dict[str, dict] = {}
     problems = []
     for n, r in raw:
-        email = (r.get("email") or "").lower()
+        email = clean_email(r.get("email") or "")
         if not EMAIL.match(email):
             problems.append({"row": n, "email": r.get("email", ""), "message": "Skipped: no valid email address."})
             continue

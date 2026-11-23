@@ -17,6 +17,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import unicodedata
 from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -25,6 +26,14 @@ from .recycle import Bin
 
 DEVICE_FIELDS = ("platform", "kind", "name", "make", "model", "os", "os_version", "serial", "user_email", "user_name", "last_seen")
 USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title", "platform_tag")
+
+
+def clean_email(v: str) -> str:
+    """An email as we compare it: lower case, with no spaces or invisible characters. HR exports and
+    Jamf / Intune fields sometimes carry a zero-width space, a non-breaking space or a direction mark
+    that looks like nothing but stops two identical-looking emails matching."""
+    v = unicodedata.normalize("NFKC", v or "")
+    return "".join(ch for ch in v if not ch.isspace() and unicodedata.category(ch)[0] not in ("C", "Z")).lower()
 
 
 def now() -> str:
@@ -67,7 +76,24 @@ class Store:
                 db.execute("UPDATE users SET division = team WHERE COALESCE(team, '') != ''")
             if "platform_tag" not in have:   # Mac, Windows or Linux set by hand ("" = from their devices)
                 db.execute("ALTER TABLE users ADD COLUMN platform_tag TEXT DEFAULT ''")
+            self._clean_emails(db)
         self.bin = Bin(self._db, self._lock)   # deleted users, kept 30 days (recycle.py; Settings → Recycle bin)
+
+    @staticmethod
+    def _clean_emails(db) -> None:
+        """Emails saved before clean_email: tidied in place, so they match their devices. A tidied
+        email that another user already has is left alone (both show; delete the one you don't want)."""
+        for r in db.execute("SELECT id, user_email FROM devices").fetchall():
+            if (c := clean_email(r["user_email"])) != r["user_email"]:
+                db.execute("UPDATE devices SET user_email = ? WHERE id = ?", (c, r["id"]))
+        for r in db.execute("SELECT email, manager FROM users").fetchall():
+            e = clean_email(r["email"])
+            if e != r["email"] and not db.execute("SELECT 1 FROM users WHERE email = ?", (e,)).fetchone():
+                db.execute("UPDATE users SET email = ? WHERE email = ?", (e, r["email"]))
+                db.execute("UPDATE users SET manager = ? WHERE manager = ?", (e, r["email"]))
+            m = r["manager"] or ""
+            if "@" in m and (c := clean_email(m)) != m:
+                db.execute("UPDATE users SET manager = ? WHERE manager = ?", (c, m))
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -93,6 +119,7 @@ class Store:
             ids = []
             for d in rows:
                 ids.append(d["id"])
+                d = {**d, "user_email": clean_email(d.get("user_email") or "")}
                 vals = [str(d.get(f) or "")[:300] for f in DEVICE_FIELDS]
                 db.execute(f"INSERT INTO devices (id, {', '.join(DEVICE_FIELDS)}, synced_at) VALUES (?, {', '.join('?' * len(DEVICE_FIELDS))}, ?) "
                            f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{f} = excluded.{f}' for f in DEVICE_FIELDS)}, synced_at = excluded.synced_at",
