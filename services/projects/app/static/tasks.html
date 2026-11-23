@@ -541,7 +541,9 @@ const workRuns = (s, e) => {
 };
 const shortDay = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
 const span = (a, b) => !a ? '' : a === b ? fmtDay(a) : `${fmtDay(a)} → ${fmtDay(b)}`;
-const days = n => `${n} day${n === 1 ? '' : 's'}`;
+/** "1 day", "2 days", "½ day", "1½ days". */
+const days = n => { n = Number(n) || 1; const w = Math.floor(n), h = n - w >= 0.5; return `${w ? w : ''}${h ? '½' : ''} day${n > 1 ? 's' : ''}`; };
+const isHalf = n => (Number(n) || 1) % 1 !== 0;
 const statusChip = st => `<span class="chip s-${esc(String(st).toLowerCase().replace(/\s+/g, ''))}">${esc(st)}</span>`;
 /** Everyone on a job (older jobs: their one assignee). */
 const jobPeople = j => j.people?.length ? j.people : j.assignee ? [{ email: j.assignee, name: j.assigneeName || personName(j.assignee) }] : [];
@@ -1008,7 +1010,7 @@ function jobForm(t, j) {
       ${j.id ? `<div class="wide"><label for="jPlan">Plan</label><select id="jPlan" class="jplan"><option value="${esc(t.id)}">${esc(t.ref)} ${esc(t.title)}</option></select>
         <span class="muted" id="jPlanHint" hidden>Saving moves the job, with its dates, people, sub jobs and notes, to the end of that plan.</span></div>` : ''}
       <div><label for="jStart">Expected start</label><input type="date" id="jStart" value="${esc(j.start)}"></div>
-      <div><label for="jDur">Duration (working days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
+      <div><label for="jDur">Duration (working days)</label><input type="number" id="jDur" min="0.5" max="365" step="0.5" value="${esc(j.duration || 1)}" title="Whole or half days: 0.5, 1, 1.5 …"></div>
       <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
       <div class="wide recur"><label class="rchk"><input type="checkbox" id="jRecur" ${j.recur ? 'checked' : ''}> Recurring</label>
         <span id="jRecurBox" ${j.recur ? '' : 'hidden'}><select id="jFreq" aria-label="How often">${Object.entries(ME.recur || {}).map(([k, v]) => `<option value="${k}" ${k === (j.recur || 'weekly') ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
@@ -1050,7 +1052,7 @@ function wireJobs() {
   // The form (a job being edited or added)
   if ($('jSave')) {
     const ends = () => {
-      const st = $('jStart').value, n = Math.max(1, Number($('jDur').value) || 1);
+      const st = $('jStart').value, n = Math.max(0.5, Number($('jDur').value) || 1);
       $('jEnds').textContent = st ? `${fmtDay(workEnd(st, n))}` : '–';
     };
     $('jStart').oninput = () => { ends(); recurHint(); }; $('jDur').oninput = ends; ends();
@@ -1105,7 +1107,7 @@ function wireJobs() {
     }
     $('jSave').onclick = async () => {
       if ($('jWho').value.trim()) { addWho(); if ($('jWho').value.trim()) return $('jWho').focus(); }   // someone typed but not added
-      const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(1, Number($('jDur').value) || 1),
+      const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(0.5, Math.round((Number($('jDur').value) || 1) * 2) / 2),
                      recur: $('jRecur').checked ? $('jFreq').value : '', recurUntil: $('jRecur').checked ? $('jUntil').value : '',
                      status: $('jStatus').value, ...($('jStatus').value === 'In progress' ? { progress: pct() } : {}), description: $('jDesc').value, note: $('jNote').value, people: JPEOPLE,
                      mentions: [...new Set([...(JM.desc?.picked() || []), ...(JM.note?.picked() || [])])] };
@@ -1440,11 +1442,11 @@ function drawCal() {
     const pc = pctOf(j);
     const label = (byPerson ? j.title : j.title + (who ? ' · ' + who : '')) + (pc != null ? ` · ${pc}%` : '');
     const bar = j.start && j.end >= RS && j.start <= end
-      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv}"
-           data-plan="${esc(p.id)}" data-job="${esc(j.id)}"${owner !== null ? ` data-owner="${esc(owner)}"` : ''} data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
+      ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1 - (isHalf(j.duration) ? 0.5 : 0)) * DW - 2}px;${cv}"
+           data-plan="${esc(p.id)}" data-job="${esc(j.id)}"${owner !== null ? ` data-owner="${esc(owner)}"` : ''} data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange, isHalf(j.duration))}</div>` : '';
     // A recurring job's later repeats: dashed bars of the same length; click one to open the job.
     const reps = (j.repeats || []).filter(r => r.end >= RS && r.start <= end).map(r =>
-      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}" data-rstart="${esc(r.start)}"
+      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1 - (isHalf(j.duration) ? 0.5 : 0)) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}" data-rstart="${esc(r.start)}"
         title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\nRepeats ${esc(recurWord(j).toLowerCase())}: ${esc(span(r.start, r.end))}${who ? '\n' + esc(jobNames(j)) : ''}\nChange it on the first one">↻ ${esc(j.title)}</div>`).join('');
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}"${owner !== null ? ` data-grp="${esc(owner)}"` : ''} style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn"><span class="jnum sm">${j.priority || ''}</span>${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
@@ -1471,12 +1473,12 @@ function drawCal() {
     for (const g of groups) {
       // A faint line where they're busy; red where two of their open jobs overlap.
       const load = {};
-      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (const r of [j, ...(j.repeats || []).filter(r => r.start <= end)]) for (let d = r.start; d <= r.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + 1; });
+      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (const r of [j, ...(j.repeats || []).filter(r => r.start <= end)]) for (let d = r.start; d <= r.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + (d === r.end && isHalf(j.duration) ? 0.5 : 1); });
       // Their leave: a block on their own row (never a job under them); a job on a leave day is a clash.
       const away = (CAL.leave || []).filter(l => g.email && l.email === g.email && l.end >= RS && l.start <= end);
       const off = d => away.some(l => l.start <= d && d <= l.end);
       let busy = '';
-      for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) { const clash = load[d] > 1 || off(d); busy += `<div class="tlbusy ${clash ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${clash ? `title="${off(d) ? 'A job while on leave' : load[d] + ' jobs at once'} on ${esc(fmtDay(d))}"` : ''}></div>`; } }
+      for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) { const clash = load[d] > 1 || off(d); busy += `<div class="tlbusy ${clash ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${clash ? `title="${off(d) ? 'A job while on leave' : Math.ceil(load[d]) + ' jobs at once'} on ${esc(fmtDay(d))}"` : ''}></div>`; } }
       for (const l of away) {
         const a = l.start < RS ? RS : l.start, b = l.end > end ? end : l.end;
         busy += `<div class="tlleave" data-leave="${esc(l.id)}" style="left:${x(a) + 1}px;width:${(between(a, b) + 1) * DW - 2}px"
@@ -1533,12 +1535,12 @@ function drawCal() {
 
 /** A job bar's pieces, one per working stretch, placed inside the bar (which starts at s). The name goes in
  *  the first piece wide enough for it, the resize handle on the last; % done fills the working days in order. */
-function barPieces(s, e, label, pc, handle) {
-  const runs = workRuns(s, e), total = runs.reduce((k, [a, b]) => k + between(a, b) + 1, 0);
+function barPieces(s, e, label, pc, handle, half = false) {
+  const runs = workRuns(s, e), total = runs.reduce((k, [a, b]) => k + between(a, b) + 1, 0) - (half ? 0.5 : 0);
   const done = pc != null && pc !== '' ? Number(pc) / 100 * total : null;
   let before = 0, named = false;
   return runs.map(([a, b], i) => {
-    const n = between(a, b) + 1, w = n * DW - 2;
+    const last = i === runs.length - 1, n = between(a, b) + 1 - (half && last ? 0.5 : 0), w = n * DW - 2;
     let fill = '';
     if (done != null) {
       const f = Math.round(Math.max(0, Math.min(1, (done - before) / n)) * 100);
@@ -1749,12 +1751,12 @@ function wireTimeline() {
         }
         dd = Math.round(dx / DW);
         // Weekends don't count: a move lands on a weekday, and the end skips Saturdays and Sundays.
-        if (resize) len = Math.max(1, workDays(job.start, addDays(job.end, dd)));
+        if (resize) len = Math.max(isHalf(len0) ? 0.5 : 1, workDays(job.start, addDays(job.end, dd)) - (isHalf(len0) ? 0.5 : 0));
         else s = workday(addDays(job.start, dd));
         const e = workEnd(s, len);
         bar.style.left = left0 + between(job.start, s) * DW + 'px';
-        bar.style.width = (between(s, e) + 1) * DW - 2 + 'px';
-        bar.innerHTML = barPieces(s, e, bar.dataset.label, bar.dataset.pc, true);   // weekends stay empty while dragging too
+        bar.style.width = (between(s, e) + 1 - (isHalf(len) ? 0.5 : 0)) * DW - 2 + 'px';
+        bar.innerHTML = barPieces(s, e, bar.dataset.label, bar.dataset.pc, true, isHalf(len));   // weekends stay empty while dragging too
         bar.title = `${span(s, e)} (${days(len)})`;
         const lab = bar.closest('.tlrow').querySelector('.js');
         if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${said(job.status)}`;

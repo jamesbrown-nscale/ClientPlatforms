@@ -421,3 +421,21 @@ def test_job_priority(c):
     assert [(x["priority"], x["title"][:6]) for x in jobs] == [(1, "Create"), (2, "Window"), (3, "Remova")]
     plan = next(p for p in c.get("/tasks/api/timeline", headers=AMY).json()["plans"] if p["id"] == t["id"])
     assert [x["priority"] for x in plan["jobs"]] == [1, 2, 3]
+
+
+def test_half_days():
+    from app.tasks import end_of
+    assert end_of("2027-01-04", 0.5) == "2027-01-04"   # Monday: half a day ends that day
+    assert end_of("2027-01-04", 1.5) == "2027-01-05"
+    assert end_of("2027-01-08", 1.5) == "2027-01-11"   # Friday + half of Monday
+
+
+def test_half_day_jobs(c):
+    t = new(c, title="Half days")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    j = c.post(J, headers=AMY, json={"title": "Quick fix", "start": "2027-01-04", "duration": 0.5}).json()["jobs"][0]
+    assert (j["duration"], j["end"]) == (0.5, "2027-01-04")
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"duration": 0.25}).status_code == 422
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"duration": 0.75}).status_code == 422
+    j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"duration": 2}).json()["jobs"][0]
+    assert j["duration"] == 2 and isinstance(j["duration"], int)

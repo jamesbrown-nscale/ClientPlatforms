@@ -25,6 +25,7 @@ Who changes it (and its jobs): whoever can see it, except that in a project, vie
 Only its creator, a project owner or a Client Platforms admin can delete it.
 """
 import json
+import math
 import re
 import uuid
 from datetime import date, timedelta
@@ -583,14 +584,15 @@ def workday(d: date) -> date:
     return d + timedelta(days=(7 - d.weekday()) if d.weekday() >= 5 else 0)
 
 
-def end_of(start: str, duration: int) -> str:
+def end_of(start: str, duration: float) -> str:
     """The last day of a job that starts on `start` and lasts `duration` working days (the start day counts).
-    Weekends don't count: five days from a Thursday ends the Wednesday after."""
+    Weekends don't count: five days from a Thursday ends the Wednesday after. A half day (0.5, 1.5 …)
+    ends on the day it's part of: half a day ends the day it starts."""
     try:
         d = workday(date.fromisoformat(start))
     except (TypeError, ValueError):
         return ""
-    left = max(1, duration or 1) - 1
+    left = max(1, math.ceil(duration or 1)) - 1
     d += timedelta(days=7 * (left // 5))
     for _ in range(left % 5):
         d = workday(d + timedelta(days=1))
@@ -707,7 +709,7 @@ class JobIn(BaseModel):
     description: str | None = Field(default=None, max_length=10000)
     note: str | None = Field(default=None, max_length=10000)
     start: str | None = None
-    duration: int | None = Field(default=None, ge=1, le=365)
+    duration: float | None = Field(default=None, ge=0.5, le=365)       # working days, in halves: 0.5, 1, 1.5 …
     assignee: str | None = Field(default=None, max_length=254)        # one person (older pages); `people` for several
     assigneeName: str | None = Field(default=None, max_length=100)
     people: list[PersonIn] | None = Field(default=None, max_length=30)
@@ -750,7 +752,9 @@ def _clean_job(body: JobIn) -> dict:
             raise HTTPException(422, "Start must be a real date.")
         out["start"] = workday(date.fromisoformat(body.start)).isoformat() if body.start else ""   # jobs start on a working day
     if body.duration is not None:
-        out["duration"] = body.duration
+        if body.duration * 2 != int(body.duration * 2):
+            raise HTTPException(422, "Duration is in whole or half days: 0.5, 1, 1.5 …")
+        out["duration"] = int(body.duration) if body.duration == int(body.duration) else body.duration
     if body.recur is not None:
         if body.recur and body.recur not in RECUR:
             raise HTTPException(422, f"How often must be one of: {', '.join(RECUR.values())}.")
@@ -808,7 +812,8 @@ def _when(j: dict) -> str:
         return "Not scheduled yet"
     days = j["duration"] or 1
     rec = RECUR.get(j.get("recur") or "")
-    return (f"Starts {nice_date(j['start'])} · {days} working day{'s' if days != 1 else ''}"
+    n = ("½" if days == 0.5 else f"{int(days)}½") if days != int(days) else str(int(days))
+    return (f"Starts {nice_date(j['start'])} · {n} working day{'s' if days > 1 else ''}"
             + (f" · repeats {rec.lower()}" + (f" until {nice_date(j['recurUntil'])}" if j.get("recurUntil") else "") if rec else ""))
 
 

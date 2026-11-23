@@ -197,6 +197,8 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 
 **Sub jobs.** A job can be broken into a checklist: open the job (or hover it and choose **+ Sub job**), type each one and press Enter, optionally with who it's for. Tick them off, click one's title to rename it, click its person to change or clear it, or × to remove it. The job shows "2 of 4", and its % complete follows the ticks. Ticking the first one moves a job that hadn't started to *In progress*. Someone given a sub job is notified.
 
+**Half days.** A job's duration can be in half days: 0.5, 1, 1.5 and so on. It reads "½ day" or "1½ days", and on the timeline the bar stops halfway through its last day. Two half-day jobs on the same day aren't counted as a clash. Dragging a bar's right edge changes it a whole day at a time and keeps the half.
+
 **Job priority.** A job's priority is its place in its plan: 1 is the top. The number shows on the left of every job (in the plan, List by person, All Tasks and the timeline), and each plan's jobs are listed in that order. Drag a job up or down, in the plan or in List by person, and the plan's jobs are renumbered. A job moved to another plan goes to the bottom of it.
 
 **Moving a job.** A job's **Plan** box lists every plan you can change; pick another and save to move the job there (to the end), with its dates, people, sub jobs, note and repeats. Both plans' activity says it moved.
