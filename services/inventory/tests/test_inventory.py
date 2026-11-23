@@ -296,7 +296,7 @@ def test_csv_import(c, fake):
     assert stats["departments"] == [
         {"name": "Engineering", "count": 2, "divisions": [{"name": "Platform", "count": 2}]},
         {"name": "", "count": 1, "divisions": [{"name": "Support", "count": 1}]}]
-    assert stats["stats"] == {"users": 3, "review": 0, "vip": 0, "departments": 1, "withDevice": 1, "noDevice": 2}
+    assert stats["stats"] == {"users": 3, "review": 0, "mismatches": 0, "vip": 0, "departments": 1, "withDevice": 1, "noDevice": 2}
     # The Team tool reads these, inside the stack.
     assert c.get("/internal/teams").json()["departments"] == stats["departments"]
     assert c.get("/internal/users/Amy.Chen@nscale.com").json() == {"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "",
@@ -548,3 +548,45 @@ def test_invisible_characters_in_emails(c, tmp_path):
     s = store_mod.Store(path, "s" * 40)
     assert [(u["email"], u["manager"]) for u in s.users()] == [("bo@nscale.com", "amy@nscale.com")]
     assert s.devices()[0]["user_email"] == "bo@nscale.com"
+
+
+def test_mismatches_and_links(c):
+    from app.main import suggest
+    people = [{"email": "aarika.plunkett@nscale.com", "name": "Aarika Plunkett"}, {"email": "sam.lee@nscale.com", "name": "Sam Lee"}]
+    assert suggest("aplunkett@nscale.com", "", people)[0]["email"] == "aarika.plunkett@nscale.com"
+    assert suggest("x@other.io", "Aarika Plunkett", people)[0]["why"] == "Same name"
+    assert suggest("aarika.plunkett@nscale.onmicrosoft.com", "", people)[0]["why"] == "Same before the @"
+    assert suggest("Plunkett.Aarika@nscale.com".lower(), "", people)[0]["email"] == "aarika.plunkett@nscale.com"
+    assert suggest("zed@nscale.com", "Zed Q", people) == []
+
+    main.store.replace_devices("Jamf", [
+        {"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "name": "NS-Mac", "os": "macOS", "user_email": "aplunkett@nscale.com",
+         "user_name": "Aarika Plunkett", "last_seen": "2026-11-23T10:00:00Z"},
+        {"id": "jamf:c2", "platform": "Jamf", "kind": "computer", "name": "NS-Mac2", "os": "macOS", "user_email": "sam.lee@nscale.com",
+         "user_name": "Sam Lee", "last_seen": "2026-11-23T10:00:00Z"}])
+    c.post("/users/api/import", headers=UE, json={"csv": "Email,Name\naarika.plunkett@nscale.com,Aarika Plunkett\nsam.lee@nscale.com,Sam Lee\n"})
+    accept_all(c)
+    assert c.get("/users/api/users", headers=UV).json()["stats"]["mismatches"] == 1
+    m = c.get("/users/api/mismatches", headers=UV).json()
+    assert [d["email"] for d in m["devices"]] == ["aplunkett@nscale.com"]
+    assert m["devices"][0]["suggestions"][0]["email"] == "aarika.plunkett@nscale.com"
+    assert [u["email"] for u in m["users"]] == ["aarika.plunkett@nscale.com"] and m["users"][0]["suggestions"][0]["email"] == "aplunkett@nscale.com"
+    devs = c.get("/devices/api/devices", headers=DV).json()["items"]
+    assert [d["id"] for d in devs if d["notOnUsers"]] == ["jamf:c1"]
+
+    link = lambda f, t: c.post("/users/api/links", headers=UE, json={"fromEmail": f, "toEmail": t})
+    assert link("aplunkett@nscale.com", "nobody@nscale.com").status_code == 404
+    assert link("sam.lee@nscale.com", "aarika.plunkett@nscale.com").status_code == 422   # Sam is on Users himself
+    assert c.post("/users/api/links", headers=UV, json={"fromEmail": "a@b.co", "toEmail": "aarika.plunkett@nscale.com"}).status_code == 403
+    assert link("aplunkett@nscale.com", "aarika.plunkett@nscale.com").status_code == 200
+    u = next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "aarika.plunkett@nscale.com")
+    assert u["platform"] == "Mac" and u["devices"] == 1 and u["primaryDevice"]["id"] == "jamf:c1"   # given a primary straight away
+    m = c.get("/users/api/mismatches", headers=UV).json()
+    assert m["devices"] == [] and m["users"] == [] and m["links"][0]["toName"] == "Aarika Plunkett" and m["links"][0]["devices"] == 1
+    # The link outlasts a sync.
+    main.store.replace_devices("Jamf", [{"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "user_email": "aplunkett@nscale.com"}])
+    assert c.get("/users/api/mismatches", headers=UV).json()["devices"] == []
+    assert c.delete("/users/api/links/aplunkett@nscale.com", headers=UE).status_code == 200
+    assert len(c.get("/users/api/mismatches", headers=UV).json()["devices"]) == 1
+    assert c.delete("/users/api/links/aplunkett@nscale.com", headers=UE).status_code == 404
+    assert "Mismatches" in c.get("/users/mismatches", headers=UV).text

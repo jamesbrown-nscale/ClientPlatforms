@@ -2,6 +2,7 @@
 /data/inventory.db in the container).
 
     devices      every device from Jamf and Intune, as of the last sync (id = "jamf:<id>" / "intune:<id>")
+    email_links  "devices under this email are this user's": made on Users → Mismatches, kept across syncs
     users        the people imported by CSV (or added by hand), with their tags: department, division
                  (their team within it), line manager, user type (VIP / Standard) and primary device (a
                  device id)
@@ -63,6 +64,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS user_review (
                     id TEXT PRIMARY KEY, kind TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '',
                     fields TEXT NOT NULL DEFAULT '{}', changes TEXT NOT NULL DEFAULT '[]', created_at TEXT, created_by TEXT DEFAULT '');
+                CREATE TABLE IF NOT EXISTS email_links (
+                    from_email TEXT PRIMARY KEY, to_email TEXT NOT NULL, created_at TEXT, created_by TEXT DEFAULT '');
                 CREATE TABLE IF NOT EXISTS connections (
                     kind TEXT PRIMARY KEY, settings TEXT NOT NULL DEFAULT '{}', secret TEXT DEFAULT '',
                     enabled INTEGER NOT NULL DEFAULT 1, last_sync TEXT, last_ok TEXT, last_error TEXT DEFAULT '',
@@ -177,6 +180,26 @@ class Store:
                                      by=by, tool="users")
                 n += db.execute("DELETE FROM users WHERE email = ?", (e,)).rowcount
             return n
+
+    # ----- email links: devices under one email belong to a user with another (Users → Mismatches) -----
+
+    def links(self) -> dict[str, str]:
+        with self._db() as db:
+            return {r["from_email"]: r["to_email"] for r in db.execute("SELECT from_email, to_email FROM email_links")}
+
+    def link_rows(self) -> list[dict]:
+        with self._db() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM email_links ORDER BY from_email")]
+
+    def add_link(self, from_email: str, to_email: str, by: str) -> None:
+        with self._lock, self._db() as db:
+            db.execute("INSERT INTO email_links (from_email, to_email, created_at, created_by) VALUES (?, ?, ?, ?) "
+                       "ON CONFLICT(from_email) DO UPDATE SET to_email = excluded.to_email, created_at = excluded.created_at, "
+                       "created_by = excluded.created_by", (from_email, to_email, now(), by))
+
+    def drop_link(self, from_email: str) -> bool:
+        with self._lock, self._db() as db:
+            return db.execute("DELETE FROM email_links WHERE from_email = ?", (from_email,)).rowcount > 0
 
     # ----- review: what a CSV import would change, waiting for someone to accept it -----
     #   new      in the file, not on Users          fields: everything the file gives them

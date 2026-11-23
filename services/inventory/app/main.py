@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import threading
+import unicodedata
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -248,7 +249,15 @@ def _devices_with_owners() -> list[dict]:
         if u["primary_device"]:
             owners.setdefault(u["primary_device"], []).append({"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
                                                                "type": u["user_type"]})
-    return [{**_device_view(d), "primaryFor": owners.get(d["id"], [])} for d in store.devices()]
+    on_users = {u["email"] for u in store.users()}
+    links = store.links()
+    out = []
+    for d in store.devices():
+        who = owner_email(d, links) if d["user_email"] else ""
+        out.append({**_device_view(d), "primaryFor": owners.get(d["id"], []),
+                    # Assigned in Jamf or Intune to an email that isn't on Users (nor linked to someone who is)
+                    "notOnUsers": bool(who) and who not in on_users, "linkedTo": who if who != d["user_email"] else ""})
+    return out
 
 
 @devices_app.get("/api/devices")
@@ -445,14 +454,20 @@ def pick_primary(ds: list[dict]) -> dict | None:
     return by_check_in(pool)[0] if pool else None
 
 
+def owner_email(d: dict, links: dict[str, str]) -> str:
+    """Whose a device is on Users: the email Jamf or Intune gives, or the user it's linked to (Mismatches)."""
+    return links.get(d["user_email"], d["user_email"])
+
+
 def _users() -> list[dict]:
     rows = store.users()
     devs = store.devices()
     devices = {d["id"]: d for d in devs}
     assigned: dict[str, list] = {}
+    links = store.links()
     for d in devs:
         if d["user_email"]:
-            assigned.setdefault(d["user_email"], []).append(d)
+            assigned.setdefault(owner_email(d, links), []).append(d)
     names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in rows}
     return [_user_view(u, devices, names, assigned) for u in rows]
 
@@ -470,7 +485,7 @@ def users_payload() -> dict:
     # VIP first, then the others A-Z, Standard last: each but Standard gets a tile on the page.
     types = [{"name": t, "count": counts.get(t, 0)}
              for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
-    stats = {"users": len(items), "review": store.review_count(), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
+    stats = {"users": len(items), "review": store.review_count(), "mismatches": len(mismatches(items)["devices"]), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
     return {"items": items, "departments": departments(items), "types": types, "stats": stats}
@@ -849,6 +864,128 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
 
 # ----- Review: an import's changes, accepted (or not) one by one or all at once -----
 
+# ---------- Mismatches: devices whose email isn't on Users, and users with no device ----------
+#   A device is someone's when the email Jamf or Intune gives is their email on Users. When it isn't
+#   (an alias, an old surname, a sign-in name, a different domain), Mismatches suggests who it may be
+#   and a link ("devices under this email are this user's") fixes it for good: links are kept across
+#   syncs and imports.
+
+def _tokens(s: str) -> list[str]:
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    return re.sub(r"[^a-z0-9]+", " ", s).split()
+
+
+def _local(email: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())
+
+
+def suggest(email: str, name: str, people: list[dict]) -> list[dict]:
+    """Who on Users a device email (and the name Jamf or Intune gives with it) is most likely to be."""
+    local, dn = _local(email), _tokens(name)
+    out = []
+    for u in people:
+        if u["email"] == email:
+            continue
+        ut = _tokens(u["name"])
+        why, score = "", 0
+        if dn and ut and dn == ut:
+            why, score = "Same name", 4
+        elif local and local == _local(u["email"]):
+            why, score = "Same before the @", 4
+        elif len(dn) >= 2 and len(ut) >= 2 and dn[0] == ut[0] and dn[-1] == ut[-1]:
+            why, score = "Same first and last name", 3
+        elif len(ut) >= 2 and local in {ut[0][0] + ut[-1], ut[0] + ut[-1], ut[0] + ut[-1][0], ut[-1] + ut[0], ut[-1] + ut[0][0], ut[0][0] + ut[1][0] + ut[-1]}:
+            why, score = "Their name in the email", 3
+        elif len(ut) >= 2 and len(ut[-1]) >= 3 and ut[-1] in local and (ut[0] in local or local.startswith(ut[0][0])):
+            why, score = "Their name in the email", 2
+        elif len(dn) >= 2 and len(ut) >= 2 and dn[-1] == ut[-1] and dn[0][0] == ut[0][0]:
+            why, score = "Similar name", 1
+        if score:
+            out.append({"email": u["email"], "name": u["name"], "why": why, "score": score})
+    out.sort(key=lambda x: (-x["score"], x["name"].lower()))
+    return out[:3]
+
+
+def mismatches(items: list[dict] | None = None) -> dict:
+    """devices: each email Jamf or Intune gives that isn't on Users (nor linked), with its devices and
+    who it may be. users: everyone on Users with no device, with any device emails that may be theirs."""
+    items = items if items is not None else _users()
+    on_users = {u["email"] for u in items}
+    links = store.links()
+    by_email: dict[str, list[dict]] = {}
+    for d in store.devices():
+        if d["user_email"] and owner_email(d, links) not in on_users:
+            by_email.setdefault(d["user_email"], []).append(d)
+    people = [{"email": u["email"], "name": u["name"]} for u in items]
+    devices, maybe = [], {}
+    for email, ds in sorted(by_email.items()):
+        name = next((d["user_name"] for d in ds if d["user_name"]), "")
+        sug = suggest(email, name, people)
+        devices.append({"email": email, "name": name, "devices": [_device_view(d) for d in by_check_in(ds)], "suggestions": sug})
+        for s_ in sug:
+            maybe.setdefault(s_["email"], []).append({"email": email, "name": name, "why": s_["why"], "score": s_["score"],
+                                                      "devices": len(ds)})
+    users = [{"email": u["email"], "name": u["name"], "department": u["department"], "type": u["type"],
+              "suggestions": sorted(maybe.get(u["email"], []), key=lambda x: -x["score"])[:3]}
+             for u in items if not u["devices"]]
+    return {"devices": devices, "users": users}
+
+
+class LinkIn(BaseModel):
+    fromEmail: str = Field(max_length=254)   # the email on the devices
+    toEmail: str = Field(max_length=254)     # the user on Users they belong to
+
+
+@users_app.get("/mismatches")
+def mismatches_page(request: Request):
+    if not auth.current_user(request, USERS):
+        return _page(access.sign_in_message(), 403)
+    return FileResponse(STATIC / "mismatches.html", headers={"Cache-Control": "no-store"})
+
+
+@users_app.get("/api/mismatches")
+def get_mismatches(user: User = Depends(auth.users_viewer)):
+    m = mismatches()
+    names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in store.users()}
+    links = [{"fromEmail": r["from_email"], "toEmail": r["to_email"], "toName": names.get(r["to_email"], ""),
+              "gone": r["to_email"] not in names, "createdAt": r["created_at"], "createdBy": r["created_by"],
+              "devices": sum(d["user_email"] == r["from_email"] for d in store.devices())}
+             for r in store.link_rows()]
+    return {**m, "links": links}
+
+
+@users_app.post("/api/links")
+def add_link(body: LinkIn, user: User = Depends(auth.users_editor)):
+    src, dst = clean_email(body.fromEmail), clean_email(body.toEmail)
+    if not EMAIL.match(src) or not EMAIL.match(dst):
+        raise ValueError("Both need to be email addresses.")
+    if src == dst:
+        raise ValueError("That's the same email.")
+    if not store.user(dst):
+        raise HTTPException(404, f"{dst} isn't on Users.")
+    if store.user(src):
+        raise ValueError(f"{src} is on Users itself, so its devices are already theirs.")
+    store.add_link(src, dst, user.email)
+    log.info(json.dumps({"severity": "NOTICE", "message": "email linked", "from": src, "to": dst, "by": user.email}))
+    # Someone with no primary device gets the one that checked in last of their devices now.
+    u = store.user(dst)
+    ids = {d["id"] for d in store.devices()}
+    if not (u["primary_device"] and u["primary_device"] in ids):
+        links = store.links()
+        if pick := pick_primary([d for d in store.devices() if d["user_email"] and owner_email(d, links) == dst]):
+            store.save_users([{"email": dst, "primary_device": pick["id"]}], user.email)
+    return {"ok": True}
+
+
+@users_app.delete("/api/links/{email}")
+def drop_link(email: str, user: User = Depends(auth.users_editor)):
+    if not store.drop_link(clean_email(email)):
+        raise HTTPException(404, "No such link.")
+    log.info(json.dumps({"severity": "NOTICE", "message": "email unlinked", "from": email, "by": user.email}))
+    return {"ok": True}
+
+
 @users_app.get("/review")
 def review_page(request: Request):
     if not auth.current_user(request, USERS):
@@ -900,9 +1037,10 @@ def match_devices(user: User = Depends(auth.users_editor)):
     computer that checked in most recently (or, with no computer, the device that did). Their other
     devices are listed with them anyway (see _user_view)."""
     mine: dict[str, list[dict]] = {}
+    links = store.links()
     for d in store.devices():
         if d["user_email"]:
-            mine.setdefault(d["user_email"], []).append(d)
+            mine.setdefault(owner_email(d, links), []).append(d)
     ids = {d["id"] for ds in mine.values() for d in ds}
     rows, several = [], 0
     for u in store.users():

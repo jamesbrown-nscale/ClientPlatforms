@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mismatches · Users · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  .rtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--surface); margin: 0 0 14px; flex-wrap: wrap; }
+  .rtabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; color: var(--text2); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .rtabs button[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+  .rtabs .n { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 10px; background: var(--grey-fill); color: var(--text2); font-size: 12px; text-align: center; }
+  .rtabs button[aria-selected="true"] .n { background: var(--surface); color: var(--primary); }
+  .rbar2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--surface); }
+  .rbar2 input[type=search] { height: 38px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; outline: none; flex: 1; min-width: 220px; max-width: 380px; }
+  .rbar2 .sp { flex: 1; }
+  .rbar2 label { display: inline-flex; gap: 6px; align-items: center; color: var(--text2); font-size: 14px; }
+  .mitem { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.2fr) minmax(280px, 1.3fr); gap: 16px; align-items: start; padding: 12px 16px; border-bottom: 1px solid var(--surface); }
+  .mitem:last-child { border-bottom: 0; }
+  .mitem b { font-weight: 600; }
+  .mitem .dev { margin: 0 0 4px; }
+  .sug { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 10px; border: 1px solid var(--surface); border-radius: 8px; margin: 0 0 6px; }
+  .sug .why { font-size: 12px; color: var(--text2); }
+  .other { display: flex; gap: 6px; margin-top: 6px; }
+  .other input { flex: 1; min-width: 0; height: 32px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; background: #fff; }
+  .lnk { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--surface); }
+  .lnk:last-child { border-bottom: 0; }
+  .arrow { color: var(--text2); }
+  @media (max-width: 900px) { .mitem, .lnk { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="./">← Users</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Mismatches</h1>
+      <p class="sub">A device is someone's when the email Jamf or Intune gives is their email on Users. When it isn't (an alias, an old surname, a sign-in name), link the two: the link stays across syncs and imports.</p>
+    </div>
+    <div class="acts"><a class="btn" href="./">Back to Users</a></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="rtabs" role="tablist" id="tabs">
+    <button role="tab" data-k="devices" aria-selected="true">Devices with no user <span class="n" id="n-devices">0</span></button>
+    <button role="tab" data-k="users" aria-selected="false">Users with no device <span class="n" id="n-users">0</span></button>
+    <button role="tab" data-k="links" aria-selected="false">Linked <span class="n" id="n-links">0</span></button>
+  </div>
+  <div class="card">
+    <div class="rbar2">
+      <input type="search" id="q" placeholder="Search name or email" aria-label="Search">
+      <label id="onlyWrap"><input type="checkbox" id="only"> <span id="onlyText">Only with a suggestion</span></label>
+      <span class="sp"></span>
+      <span class="muted" id="count"></span>
+    </div>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+  <datalist id="people"></datalist>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const day = s => s ? new Date(s).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '';
+let ME = null, DATA = { devices: [], users: [], links: [] }, KIND = 'devices', BUSY = false, PEOPLE = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, cache: 'no-store', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin' } });
+  if (res.status === 401) throw new Error('Your sign-in has expired. Reload the page to sign in again.');
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
+}
+function note(msg, kind = '') { const n = $('notice'); n.textContent = msg; n.hidden = !msg; n.className = 'notice ' + kind; }
+
+const linkBtn = (from, to, label) => ME?.canEdit
+  ? `<button class="btn small primary" type="button" data-link="${esc(from)}" data-to="${esc(to)}">${label}</button>` : '';
+
+function deviceRow(m) {
+  const devs = m.devices.map(d => `<div class="dev"><b>${esc(d.name || d.serial)}</b> <span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span>
+      <div class="muted">${esc([d.model, d.os].filter(Boolean).join(' · '))}${d.lastSeen ? ' · checked in ' + esc(day(d.lastSeen)) : ''}</div></div>`).join('');
+  const sug = m.suggestions.map(s => `<div class="sug"><div><b>${esc(s.name || s.email)}</b> <span class="why">· ${esc(s.why)}</span><div class="muted">${esc(s.email)}</div></div>${linkBtn(m.email, s.email, 'Link')}</div>`).join('')
+    || '<div class="muted" style="margin-bottom:6px">Nobody on Users looks like them.</div>';
+  const other = ME?.canEdit ? `<div class="other"><input type="text" list="people" placeholder="Someone else: name or email" aria-label="Link to someone else" data-other="${esc(m.email)}"><button class="btn small" type="button" data-pick="${esc(m.email)}">Link</button></div>` : '';
+  return `<div class="mitem"><div><b>${esc(m.email)}</b><div class="muted">${m.name ? 'Jamf / Intune name: ' + esc(m.name) : 'No name from Jamf or Intune'}</div></div>
+    <div>${devs}</div><div>${sug}${other}</div></div>`;
+}
+function userRow(u) {
+  const sug = u.suggestions.map(s => `<div class="sug"><div><b>${esc(s.email)}</b> <span class="why">· ${esc(s.why)}</span><div class="muted">${esc(s.name || 'No name')} · ${s.devices} device${s.devices === 1 ? '' : 's'}</div></div>${linkBtn(s.email, u.email, 'Link')}</div>`).join('')
+    || '<span class="muted">No device email looks like theirs. They may not have a managed device.</span>';
+  return `<div class="mitem"><div><b>${esc(u.name || u.email)}</b><div class="muted">${esc(u.email)}</div></div>
+    <div class="muted">${esc(u.department || '')}</div><div>${sug}</div></div>`;
+}
+function linkRow(l) {
+  return `<div class="lnk"><div><b>${esc(l.fromEmail)}</b><div class="muted">${l.devices} device${l.devices === 1 ? '' : 's'} in Jamf / Intune</div></div>
+    <span class="arrow">→</span>
+    <div><b>${esc(l.toName || l.toEmail)}</b><div class="muted">${esc(l.toEmail)}${l.gone ? ' · no longer on Users' : ''}</div>
+      <div class="muted">Linked ${esc(day(l.createdAt))}${l.createdBy ? ' by ' + esc(l.createdBy) : ''}</div></div>
+    <div>${ME?.canEdit ? `<button class="btn small" type="button" data-unlink="${esc(l.fromEmail)}">Unlink</button>` : ''}</div></div>`;
+}
+
+function draw() {
+  $('n-devices').textContent = DATA.devices.length.toLocaleString();
+  $('n-users').textContent = DATA.users.length.toLocaleString();
+  $('n-links').textContent = DATA.links.length.toLocaleString();
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.k === KIND)));
+  $('onlyWrap').hidden = KIND === 'links';
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = text => words.every(w => text.toLowerCase().includes(w));
+  let rows, html;
+  if (KIND === 'devices') {
+    rows = DATA.devices.filter(m => (!$('only').checked || m.suggestions.length) && hit([m.email, m.name, ...m.suggestions.map(s => s.name + ' ' + s.email), ...m.devices.map(d => d.name + ' ' + d.serial)].join(' ')));
+    html = rows.slice(0, 500).map(deviceRow).join('');
+  } else if (KIND === 'users') {
+    rows = DATA.users.filter(u => (!$('only').checked || u.suggestions.length) && hit([u.name, u.email, u.department].join(' ')));
+    rows.sort((a, b) => (b.suggestions.length > 0) - (a.suggestions.length > 0) || (a.name || a.email).localeCompare(b.name || b.email));
+    html = rows.slice(0, 500).map(userRow).join('');
+  } else {
+    rows = DATA.links.filter(l => hit([l.fromEmail, l.toEmail, l.toName].join(' ')));
+    html = rows.map(linkRow).join('');
+  }
+  const total = KIND === 'devices' ? DATA.devices.length : KIND === 'users' ? DATA.users.length : DATA.links.length;
+  $('count').textContent = rows.length === total ? `${total.toLocaleString()}` : `${rows.length.toLocaleString()} of ${total.toLocaleString()}`;
+  if (!total) {
+    $('list').innerHTML = `<div class="empty">${KIND === 'devices' ? '<b>Nothing to match</b>Every device assigned in Jamf or Intune belongs to someone on Users.'
+      : KIND === 'users' ? '<b>Everyone has a device</b>Every user on the list has a device from Jamf or Intune.' : '<b>No links yet</b>Link a device email to someone on the other tabs.'}</div>`;
+    return;
+  }
+  $('list').innerHTML = html ? html + (rows.length > 500 ? '<div class="empty">Showing the first 500. Search to find others.</div>' : '')
+    : '<div class="empty">Nothing matches.</div>';
+}
+
+async function people() {
+  if (PEOPLE) return PEOPLE;
+  const r = await api('api/users');
+  PEOPLE = r.items;
+  $('people').innerHTML = PEOPLE.map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+  return PEOPLE;
+}
+
+async function load() {
+  DATA = await api('api/mismatches');
+  draw();
+}
+
+async function link(from, to) {
+  if (BUSY) return;
+  BUSY = true;
+  try {
+    await api('api/links', { method: 'POST', body: JSON.stringify({ fromEmail: from, toEmail: to }) });
+    note(`Linked: devices under ${from} are now ${to}'s.`, 'ok');
+    await load();
+  } catch (e) { note(e.message); }
+  finally { BUSY = false; }
+}
+
+$('list').addEventListener('click', async e => {
+  const l = e.target.closest('[data-link]');
+  if (l) return link(l.dataset.link, l.dataset.to);
+  const p = e.target.closest('[data-pick]');
+  if (p) {
+    const v = document.querySelector(`[data-other="${CSS.escape(p.dataset.pick)}"]`).value.trim();
+    if (!v) return note('Type the name or email of the person on Users these devices belong to.');
+    const list = await people();
+    const who = list.find(u => u.email === v.toLowerCase()) || list.find(u => u.name.toLowerCase() === v.toLowerCase());
+    if (!who) return note(`"${v}" isn't on Users. Pick someone from the list.`);
+    return link(p.dataset.pick, who.email);
+  }
+  const u = e.target.closest('[data-unlink]');
+  if (u && await cp.confirm({ title: `Unlink ${u.dataset.unlink}?`, message: 'Its devices go back to belonging to nobody on Users (their primary device, if set, stays).', confirm: 'Unlink' })) {
+    try { await api('api/links/' + encodeURIComponent(u.dataset.unlink), { method: 'DELETE' }); note('Unlinked.', 'ok'); await load(); }
+    catch (err) { note(err.message); }
+  }
+});
+$('list').addEventListener('focusin', e => { if (e.target.matches('[data-other]')) people().catch(() => {}); });
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b) { KIND = b.dataset.k; draw(); } });
+$('q').addEventListener('input', draw);
+$('only').addEventListener('change', draw);
+
+(async () => {
+  try {
+    ME = await api('api/me'); $('who').textContent = ME.email;
+    await load();
+  } catch (e) { note(e.message); $('list').innerHTML = ''; }
+})();
+</script>
+</body>
+</html>

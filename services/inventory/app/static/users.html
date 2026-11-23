@@ -295,6 +295,9 @@ async function load() {
     for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
     TYPES = data.types;
     // Review: an import's changes waiting to be accepted. Its tile is there only while something waits.
+    document.getElementById('misTile')?.remove();
+    if (data.stats.mismatches) $('tiles').insertAdjacentHTML('beforeend',
+      `<a class="tile mis" id="misTile" href="mismatches" title="Devices assigned in Jamf or Intune to an email that isn't on Users: link them to the right person"><b>${data.stats.mismatches.toLocaleString()}</b><span>Device emails not matched</span></a>`);
     document.getElementById('reviewTile')?.remove();
     if (data.stats.review) $('tiles').querySelector('[data-f="all"]').insertAdjacentHTML('afterend',
       `<a class="tile rev" id="reviewTile" href="review" title="An import's new people, changes and leavers, waiting to be accepted"><b>${data.stats.review.toLocaleString()}</b><span>Review</span></a>`);

@@ -29,7 +29,7 @@
   <div class="notice" id="notice" hidden></div>
   <div class="syncbar" id="syncbar" hidden></div>
 
-  <div class="tiles" id="tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(auto-fit,minmax(112px,1fr))">
     <button class="tile" data-f="all"><b id="s-devices">–</b><span>Devices</span></button>
     <button class="tile" data-f="Jamf"><b id="s-Jamf">–</b><span>In Jamf</span></button>
     <button class="tile" data-f="Intune"><b id="s-Intune">–</b><span>In Intune</span></button>
@@ -37,6 +37,7 @@
     <button class="tile" data-f="mobile"><b id="s-mobiles">–</b><span>Phones and tablets</span></button>
     <button class="tile" data-f="primary" title="Someone's primary device on the Users page"><b id="s-primary">–</b><span>Primary devices</span></button>
     <button class="tile" data-f="unassigned" title="Nobody is assigned to it in Jamf or Intune"><b id="s-unassigned">–</b><span>Not assigned</span></button>
+    <button class="tile" data-f="notusers" title="Assigned in Jamf or Intune to an email that isn't on Users: link them on Users → Mismatches"><b id="s-notusers">–</b><span>Not on Users</span></button>
     <button class="tile warn" data-f="stale" title="No check-in with Jamf or Intune for 30 days, or none at all"><b id="s-stale">–</b><span>Not checked in for 30 days</span></button>
   </div>
 
@@ -186,6 +187,7 @@ function matches(d) {
   else if (FILTER === 'primary' && !d.primaryFor.length) return false;
   else if (FILTER === 'unassigned' && !unassigned(d)) return false;
   else if (FILTER === 'stale' && !d.stale) return false;
+  else if (FILTER === 'notusers' && !d.notOnUsers) return false;
   if ($('platform').value && d.platform !== $('platform').value) return false;
   if ($('os').value && d.os !== $('os').value) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -260,7 +262,7 @@ function drawStats() {
   const stats = { devices: v.length, Jamf: v.filter(d => d.platform === 'Jamf').length, Intune: v.filter(d => d.platform === 'Intune').length,
                   computers: v.filter(d => d.kind === 'computer').length, mobiles: v.filter(d => d.kind === 'mobile').length,
                   primary: v.filter(d => d.primaryFor.length).length, unassigned: v.filter(unassigned).length,
-                  stale: v.filter(d => d.stale).length };
+                  stale: v.filter(d => d.stale).length, notusers: v.filter(d => d.notOnUsers).length };
   for (const [k, n] of Object.entries(stats)) { const el = $('s-' + k); if (el) el.textContent = n.toLocaleString(); }
   $('csv').href = 'api/devices.csv' + (SHOW_DEP ? '' : '?dep=hide');
 }
