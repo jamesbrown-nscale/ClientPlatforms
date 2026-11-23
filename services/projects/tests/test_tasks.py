@@ -389,3 +389,21 @@ def test_leave(c):
     assert c.delete(f"{L}/{lv['id']}", headers=AMY).status_code == 200
     assert c.delete(f"{L}/{lv['id']}", headers=AMY).status_code == 404
     assert c.get("/tasks/api/timeline", headers=AMY).json()["leave"] == []
+
+
+def test_move_job_to_another_plan(c):
+    a, b = new(c, title="Mac Devices"), new(c, title="Mac / Jamf Remediation")
+    ja = f"/tasks/api/tasks/{a['id']}/jobs"
+    c.post(ja, headers=AMY, json={"title": "Keep me"})
+    j = c.post(ja, headers=AMY, json={"title": "Mac App Standardisation", "start": "2027-02-01", "duration": 3,
+                                      "people": [{"email": "bob.smith@nscale.com"}]}).json()["jobs"][1]
+    c.post(f"{ja}/{j['id']}/subs", headers=AMY, json={"title": "Inventory"})
+    assert c.post(f"{ja}/{j['id']}/move", headers=AMY, json={"plan": "nope"}).status_code == 404
+    moved = c.post(f"{ja}/{j['id']}/move", headers=AMY, json={"plan": b["id"]}).json()
+    assert moved["id"] == b["id"]
+    mj = next(x for x in moved["jobs"] if x["id"] == j["id"])
+    assert (mj["start"], mj["duration"], mj["people"][0]["email"], len(mj["subs"])) == ("2027-02-01", 3, "bob.smith@nscale.com", 1)
+    left = c.get(f"/tasks/api/tasks/{a['id']}", headers=AMY).json()
+    assert [x["title"] for x in left["jobs"]] == ["Keep me"]
+    assert any((x.get("data") or {}).get("action") == "moved_out" for x in left["activity"])
+    assert c.post(f"/tasks/api/tasks/{b['id']}/jobs/{j['id']}/move", headers=AMY, json={"plan": b["id"]}).json()["id"] == b["id"]   # same plan: nothing

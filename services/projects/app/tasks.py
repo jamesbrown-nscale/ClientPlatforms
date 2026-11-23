@@ -867,6 +867,27 @@ def update_job(tid: str, jid: str, body: JobIn, user: User = Depends(require_tas
     return read_task(tid, user)
 
 
+class MoveIn(BaseModel):
+    plan: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/api/tasks/{tid}/jobs/{jid}/move")
+def move_job(tid: str, jid: str, body: MoveIn, user: User = Depends(require_task_user)):
+    """Moves a job, as it is (dates, people, sub jobs, note), to the end of another plan. You must be
+    able to change both plans. Answers with the plan it's now in."""
+    src = _changeable(tid, user)
+    j = _job_row(tid, jid)
+    if body.plan == tid:
+        return read_task(tid, user)
+    dst = _changeable(body.plan, user)
+    with store().lock, store().db() as db:
+        pos = db.execute("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM pipeline_jobs WHERE task_id = ?", (dst["id"],)).fetchone()["n"]
+        db.execute("UPDATE pipeline_jobs SET task_id = ?, position = ?, updated_at = ? WHERE id = ?", (dst["id"], pos, now(), jid))
+    _add_activity(tid, "change", user, data={"field": "job", "action": "moved_out", "to": j["title"], "when": f"to {dst['ref']} {dst['title']}"})
+    _add_activity(dst["id"], "change", user, data={"field": "job", "action": "moved_in", "to": j["title"], "when": f"from {src['ref']} {src['title']}"})
+    return read_task(dst["id"], user)
+
+
 @router.delete("/api/tasks/{tid}/jobs/{jid}")
 def delete_job(tid: str, jid: str, user: User = Depends(require_task_user)):
     _changeable(tid, user)
