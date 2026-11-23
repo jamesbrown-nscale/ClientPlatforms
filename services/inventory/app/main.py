@@ -467,7 +467,7 @@ def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigne
     return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
             "department": u["department"] or "", "division": u["division"] or "",
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
-            "type": u["user_type"] or "Standard", "title": u["title"] or "",
+            "type": u["user_type"] or "Standard", "title": u["title"] or "", "location": u.get("location") or "",
             # Platform: set by hand if someone has, otherwise from their devices.
             "platform": tag or auto, "platformSet": tag, "platformAuto": auto,
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
@@ -560,7 +560,7 @@ def users_csv(user: User = Depends(auth.users_viewer)):
              "pdPlatform": (u["primaryDevice"] or {}).get("platform", ""),
              "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _users()]
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
-            ("manager", "Line manager"), ("type", "User type"), ("platform", "Platform"), ("pd", "Primary device"), ("pdSerial", "Serial"),
+            ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("platform", "Platform"), ("pd", "Primary device"), ("pdSerial", "Serial"),
             ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Managed by"), ("others", "Other devices")]
     return _csv(cols, rows, f"users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 
@@ -568,9 +568,9 @@ def users_csv(user: User = Depends(auth.users_viewer)):
 @users_app.get("/api/template.csv")
 def users_template(user: User = Depends(auth.users_viewer)):
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
-            ("manager", "Line manager"), ("type", "User type"), ("pd", "Primary device")]
+            ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("pd", "Primary device")]
     return _csv(cols, [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "Engineer", "department": "Engineering",
-                        "division": "Platform", "manager": "sam.lee@nscale.com", "type": "Standard", "pd": "C02XL0AAJGH5"}],
+                        "division": "Platform", "manager": "sam.lee@nscale.com", "location": "London", "type": "Standard", "pd": "C02XL0AAJGH5"}],
                 "users-template.csv")
 
 
@@ -655,6 +655,7 @@ class UserIn(BaseModel):
     primaryDevice: str = Field("", max_length=200)
     title: str = Field("", max_length=200)
     department: str = Field("", max_length=200)
+    location: str = Field("", max_length=200)
     platform: str = Field("", max_length=20)   # Mac, Windows or Linux by hand; "" = from their devices
 
 
@@ -666,6 +667,7 @@ class UserChange(BaseModel):
     primaryDevice: str | None = Field(None, max_length=200)
     title: str | None = Field(None, max_length=200)
     department: str | None = Field(None, max_length=200)
+    location: str | None = Field(None, max_length=200)
     platform: str | None = Field(None, max_length=20)
 
 
@@ -685,7 +687,7 @@ def _platform(v: str) -> str:
 def _fields(body: BaseModel, email: str) -> dict:
     d = body.model_dump(exclude_none=True)
     out = {}
-    for k in ("name", "division", "title", "department"):
+    for k in ("name", "division", "title", "department", "location"):
         if k in d:
             out[k] = re.sub(r"\s+", " ", d[k]).strip()
     if "manager" in d:
@@ -743,6 +745,8 @@ COLUMNS = {   # a CSV heading (lower case, letters and digits only) → the fiel
     "primarydevice": "device", "device": "device", "primarydeviceserial": "device", "serial": "device", "serialnumber": "device",
     "devicename": "device",
     "jobtitle": "title", "title": "title", "department": "department",
+    "location": "location", "officelocation": "location", "office": "location", "worklocation": "location", "site": "location",
+    "city": "location", "officecity": "location", "basedin": "location", "workplace": "location",
 }
 
 
@@ -754,9 +758,9 @@ class ImportIn(BaseModel):
 
 
 LABELS = {"email": "Email", "name": "Name", "first": "First name", "last": "Last name", "division": "Division",
-          "department": "Department", "title": "Job title", "manager": "Line manager", "type": "User type", "device": "Primary device"}
+          "department": "Department", "title": "Job title", "manager": "Line manager", "location": "Location", "type": "User type", "device": "Primary device"}
 FIELD_LABELS = {"name": "Name", "title": "Job title", "department": "Department", "division": "Division", "manager": "Line manager",
-                "user_type": "User type", "primary_device": "Primary device"}
+                "location": "Location", "user_type": "User type", "primary_device": "Primary device"}
 
 
 def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
@@ -813,7 +817,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
         name = r.get("name") or " ".join(filter(None, [r.get("first"), r.get("last")]))
         if name:
             u["name"] = re.sub(r"\s+", " ", name)[:200]
-        for k in ("division", "title", "department"):
+        for k in ("division", "title", "department", "location"):
             if r.get(k):
                 u[k] = r[k][:200]
         for k, field, fn in (("manager", "manager", lambda v: _resolve_manager(v, by_name, email)),
@@ -897,7 +901,7 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
     for e in left:
         u = existing[e]
         items.append({"id": uuid.uuid4().hex, "kind": "left", "email": e, "name": u["name"] or access.display_name(e),
-                      "changes": [{"field": k, "from": u[f] or "", "to": ""} for f, k in (("department", "Department"), ("division", "Division"), ("title", "Job title")) if u.get(f)]})
+                      "changes": [{"field": k, "from": u[f] or "", "to": ""} for f, k in (("department", "Department"), ("division", "Division"), ("title", "Job title"), ("location", "Location")) if u.get(f)]})
     book.replace_review(items, user.email)
     log.info(json.dumps({"severity": "NOTICE", "message": "users import sent to review", "by": user.email, "new": added,
                          "changed": updated, "left": len(left), "columns": [c["field"] for c in columns if c["field"]]}))

@@ -42,7 +42,7 @@
 
   <div class="card">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Search name, email, department, manager or device" aria-label="Search users">
+      <input type="search" id="q" placeholder="Search name, email, department, manager, location or device" aria-label="Search users">
       <select id="dept" aria-label="Department"><option value="">Every department</option></select>
       <select id="div" aria-label="Division" hidden><option value="">Every division</option></select>
       <select id="type" aria-label="User type"><option value="">Every user type</option></select>
@@ -52,16 +52,17 @@
       <span class="count" id="count"></span>
     </div>
     <div class="tablewrap"><table class="fit">
-      <colgroup><col style="width:23%"><col style="width:20%"><col class="hide-sm" style="width:16%"><col style="width:9%"><col style="width:10%"><col style="width:22%"></colgroup>
+      <colgroup><col style="width:21%"><col style="width:18%"><col class="hide-sm" style="width:15%"><col class="hide-sm" style="width:10%"><col style="width:9%"><col style="width:9%"><col style="width:18%"></colgroup>
       <thead><tr>
         <th data-sort="name"><button type="button">User</button></th>
         <th data-sort="team"><button type="button">Department</button></th>
         <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
+        <th data-sort="location" class="hide-sm"><button type="button">Location</button></th>
         <th data-sort="type"><button type="button">Type</button></th>
         <th data-sort="platform"><button type="button">Platform</button></th>
         <th data-sort="device"><button type="button">Primary device</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
     </table></div>
   </div>
 </main>
@@ -69,6 +70,7 @@
 <datalist id="depts"></datalist>
 <datalist id="divs"></datalist>
 <datalist id="people"></datalist>
+<datalist id="locations"></datalist>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="panel" id="panel" hidden role="dialog" aria-modal="true" aria-labelledby="p-title">
@@ -90,6 +92,7 @@
     </div>
     <div class="field"><label class="l" for="f-manager">Line manager</label><input type="text" id="f-manager" list="people" maxlength="200" placeholder="Start typing a name or email">
       <div class="hint" id="f-managerHint"></div></div>
+    <div class="field"><label class="l" for="f-location">Location</label><input type="text" id="f-location" list="locations" maxlength="200" placeholder="e.g. London, or Remote"></div>
     <label class="l">User type</label>
     <div class="seg" id="seg" role="group" aria-label="User type"></div>
     <div class="hint">Add a type (e.g. Contractor) and it gets its own tile at the top of the page.</div>
@@ -117,7 +120,7 @@
   <div class="in">
     <h2 id="impTitle">Import users from a CSV</h2>
     <p class="sub" style="margin:0">Each column is matched to Users by its heading, and only those fields change: a file with just Email and User type only changes user types. Empty cells leave what's there alone. Nothing changes straight away: the new people, changes and leavers go to <b>Review</b>, to accept or not.</p>
-    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>User type</span><span>Primary device</span></div>
+    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>Location</span><span>User type</span><span>Primary device</span></div>
     <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP, Standard or a type of your own. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
       <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
@@ -197,7 +200,7 @@ function matches(u) {
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const d = u.primaryDevice || {};
-  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform, u.platform].join(' ').toLowerCase();
+  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.location, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform, u.platform].join(' ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
 function sortVal(u, k) {
@@ -218,14 +221,15 @@ function draw() {
   document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === 'group' ? $('group').checked : t.dataset.f === FILTER)));
   $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} users` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
   if (!ALL.length) {
-    $('rows').innerHTML = `<tr><td colspan="6" class="empty"><b>No users yet</b>${ME?.canEdit ? 'Import a CSV with an Email column, or add people one at a time.' : 'Nobody has imported any users yet.'}</td></tr>`;
+    $('rows').innerHTML = `<tr><td colspan="7" class="empty"><b>No users yet</b>${ME?.canEdit ? 'Import a CSV with an Email column, or add people one at a time.' : 'Nobody has imported any users yet.'}</td></tr>`;
     return;
   }
-  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="6" class="empty">No users match.</td></tr>'; return; }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No users match.</td></tr>'; return; }
   const row = u => `<tr data-email="${esc(u.email)}" tabindex="0">
     <td><b class="cut" title="${esc(u.name)}">${esc(u.name)}</b>${cut(u.email, 'muted')}${cut(u.title, 'muted')}</td>
     <td>${u.department ? cut(u.department) : u.division ? '<span class="muted">No department</span>' : '<span class="muted">—</span>'}${u.division ? `<div class="cut"><span class="badge b-team" title="${esc(u.division)}">${esc(u.division)}</span></div>` : ''}</td>
     <td class="hide-sm">${u.manager ? `${cut(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? cut(u.manager, 'muted') : ''}` : '<span class="muted">—</span>'}</td>
+    <td class="hide-sm">${u.location ? cut(u.location) : '<span class="muted">—</span>'}</td>
     <td>${typeBadge(u.type)}</td>
     <td>${u.platform ? `<span class="badge b-os-${u.platform.toLowerCase()}"${u.platformSet ? ' title="Set by hand"' : ''}>${esc(u.platform)}${u.platformSet ? ' ✎' : ''}</span>` : '<span class="muted">—</span>'}</td>
     <td>${deviceCell(u)}</td>
@@ -233,7 +237,7 @@ function draw() {
   $('folds').hidden = !$('group').checked;
   if ($('group').checked) { $('rows').innerHTML = grouped(rows, row); return; }
   $('rows').innerHTML = rows.slice(0, 3000).map(row).join('');
-  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
+  if (rows.length > 3000) $('rows').insertAdjacentHTML('beforeend', `<tr><td colspan="7" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>`);
 }
 
 /** Rows under Department, then Division, headings (each folds), in the table's sort order within them. */
@@ -255,12 +259,12 @@ function grouped(rows, row) {
     const divs = tree.get(d), n = [...divs.values()].reduce((s, l) => s + l.length, 0), dk = 'd:' + d;
     GROUPKEYS.push(dk);
     for (const v of divs.keys()) GROUPKEYS.push(dk + '\u0001' + v);
-    html += `<tr class="gh"><td colspan="6"><button type="button" data-fold="${esc(dk)}" aria-expanded="${!FOLDED.has(dk)}">
+    html += `<tr class="gh"><td colspan="7"><button type="button" data-fold="${esc(dk)}" aria-expanded="${!FOLDED.has(dk)}">
       <span class="chev">▾</span> ${esc(d || 'No department')} <span class="muted">${n} user${n === 1 ? '' : 's'}${divs.size > 1 || [...divs.keys()][0] ? ` · ${[...divs.keys()].filter(Boolean).length} division${[...divs.keys()].filter(Boolean).length === 1 ? '' : 's'}` : ''}</span></button></td></tr>`;
     if (FOLDED.has(dk)) continue;
     for (const v of [...divs.keys()].sort(by)) {
       const list = divs.get(v), vk = dk + '\u0001' + v;
-      if (v || divs.size > 1) html += `<tr class="gh2"><td colspan="6"><button type="button" data-fold="${esc(vk)}" aria-expanded="${!FOLDED.has(vk)}">
+      if (v || divs.size > 1) html += `<tr class="gh2"><td colspan="7"><button type="button" data-fold="${esc(vk)}" aria-expanded="${!FOLDED.has(vk)}">
         <span class="chev">▾</span> ${esc(v || 'No division')} <span class="muted">${list.length}</span></button></td></tr>`;
       if (FOLDED.has(vk)) continue;
       for (const u of list) { if (shown++ < 3000) html += row(u); }
@@ -305,6 +309,7 @@ async function load() {
     drawTypeTiles();
     DEPTS = data.departments;
     drawFilters();
+    $('locations').innerHTML = [...new Set(ALL.map(u => u.location).filter(Boolean))].sort().map(l => `<option value="${esc(l)}">`).join('');
     $('depts').innerHTML = DEPTS.filter(d => d.name).map(d => `<option value="${esc(d.name)}">`).join('');
     $('people').innerHTML = ALL.map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
     draw();
@@ -397,7 +402,7 @@ async function openUser(email) {
   $('emailWrap').hidden = !!u;
   if ($('p-org')) { $('p-org').hidden = !u; if (u) $('p-org').href = '/org/#' + encodeURIComponent(u.email); }
   $('f-email').value = u ? u.email : ''; $('f-email').required = !u;
-  $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-div').value = u?.division || '';
+  $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-location').value = u?.location || ''; $('f-div').value = u?.division || '';
   $('f-dept').value = u?.department || ''; divisionList(); $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
   managerHint();
   document.querySelectorAll('#p-form input').forEach(i => { if (i.id !== 'f-devq') i.disabled = !can; });
@@ -424,7 +429,7 @@ function closePanel() {
 }
 
 async function save() {
-  const body = { name: $('f-name').value, title: $('f-title').value, division: $('f-div').value, department: $('f-dept').value,
+  const body = { name: $('f-name').value, title: $('f-title').value, location: $('f-location').value, division: $('f-div').value, department: $('f-dept').value,
                  manager: $('f-manager').value, type: DRAFT.type, primaryDevice: DRAFT.primaryDevice, platform: DRAFT.platform };
   const adding = !OPEN;
   if (adding) body.email = $('f-email').value.trim();

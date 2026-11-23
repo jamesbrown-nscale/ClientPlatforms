@@ -702,3 +702,22 @@ def test_suggestions_from_the_other_list(c):
     assert c.post(s["linkUrl"], headers=CE, json={"fromEmail": "adam.bullington.ct@nscale.com", "toEmail": s["email"]}).status_code == 200
     assert c.get("/users/api/mismatches", headers=UV).json()["devices"] == []        # matched on the other list
     assert c.get("/users-ct/api/users", headers=CV).json()["items"][0]["platform"] == "Windows"
+
+
+def test_location(c):
+    """Location: from a CSV (Office or Location column), set by hand, cleared, and in the CSV download."""
+    r = c.post("/users/api/import", headers=UE, json={"csv": "Email,Name,Office\namy.chen@nscale.com,Amy Chen,London\nsam.lee@nscale.com,Sam Lee,\n"}).json()
+    accept_all(c)
+    assert r["added"] == 2
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["amy.chen@nscale.com"]["location"] == "London" and users["sam.lee@nscale.com"]["location"] == ""
+    assert c.patch("/users/api/users/sam.lee@nscale.com", headers=UE, json={"location": "  New   York "}).status_code == 200
+    again = c.post("/users/api/import", headers=UE, json={"csv": "email,location\namy.chen@nscale.com,Remote\n"}).json()
+    accept_all(c)
+    assert again["updated"] == 1
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["sam.lee@nscale.com"]["location"] == "New York" and users["amy.chen@nscale.com"]["location"] == "Remote"
+    head, *rows = c.get("/users/api/users.csv", headers=UV).text.splitlines()
+    cols = head.split(",")
+    assert cols.index("Location") == cols.index("Line manager") + 1
+    assert "Location" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]
