@@ -89,6 +89,7 @@ class Store:
                                                     "recur_until": "TEXT DEFAULT ''",  # last day it can repeat on ('' = no end)
                                                     "reusable": "INTEGER DEFAULT 0",   # offered as a starting point when adding a job
                                                     "priority": "INTEGER"})            # 1 (most important) to 99; NULL = none
+            self._add_columns(db, "regular_work", {"saved": "INTEGER DEFAULT 1"})   # in the + menu to add again (0: a one-off)
             # Jobs from before a job could have several people: their one assignee becomes the list.
             db.execute("UPDATE pipeline_jobs SET people = json_array(json_object('email', assignee, 'name', assignee_name)) "
                        "WHERE assignee != '' AND (people IS NULL OR people = '[]')")

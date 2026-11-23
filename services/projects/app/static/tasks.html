@@ -1667,7 +1667,7 @@ async function regularDialog(opts = {}) {
       <h2>Regular work</h2>
       <p class="muted" style="margin:0">The team's standing duties. Give one to someone with the + beside their name on the timeline: it shows on their row, like leave.</p>
       <div class="rlist">${list.length ? list.map(w => `<button type="button" class="ritem" data-w="${esc(w.id)}"><span class="rt">↻ ${esc(w.title)}</span>
-        <span class="muted">${esc(days(w.duration))}${w.recur ? ' · ' + esc(recurWord(w)) : ''}</span></button>`).join('') : '<div class="rempty">None yet.</div>'}</div>
+        <span class="muted">${esc(days(w.duration))}${w.recur ? ' · ' + esc(recurWord(w)) : ''}${w.saved ? '' : ' · one-off, not in the menu'}</span></button>`).join('') : '<div class="rempty">None yet.</div>'}</div>
       <div class="lact"><button class="btn primary small" type="button" id="rgAdd">+ Add regular work</button><span style="flex:1"></span><button class="btn small" value="cancel" formnovalidate>Close</button></div>
     </form>`;
     d.querySelectorAll('[data-w]').forEach(b => b.onclick = () => showForm(list.find(w => w.id === b.dataset.w)));
@@ -1682,6 +1682,8 @@ async function regularDialog(opts = {}) {
       <div style="margin-top:12px"><label for="rgDesc">Description</label><textarea id="rgDesc" maxlength="10000" placeholder="What it involves">${esc(w.description || '')}</textarea></div>
       <div style="margin-top:12px"><label for="rgNote">Note</label><textarea id="rgNote" maxlength="10000" style="min-height:56px" placeholder="Anything to remember: access, contacts, where the queue is">${esc(w.note || '')}</textarea></div>
       <p class="muted" style="margin:10px 0 0;font-size:12.5px">Duration and how often are what it starts with when you give it to someone: you can change them for each person.</p>
+      <div style="margin-top:12px"><label class="rchk"><input type="checkbox" id="rgSaved" ${w.id ? (w.saved ? 'checked' : '') : (opts.then ? '' : 'checked')}> Save and re-use</label>
+        <div class="muted" style="font-size:12.5px;margin-top:2px">Keep it in the menu beside each person's name, to add again in the future.${opts.then && !w.id ? ' Leave it unticked for a one-off.' : ''}</div></div>
       <div class="notice" id="rgErr" hidden style="margin-top:12px"></div>
       <div class="lact"><button class="btn primary small" value="save">${w.id ? 'Save' : 'Add regular work'}</button><button class="btn small" type="button" id="rgBack">${opts.edit && !w.id ? 'Cancel' : 'Back'}</button>
         <span style="flex:1"></span>${w.id ? '<button class="btn small danger" type="button" id="rgDel">Delete</button>' : ''}</div>
@@ -1692,7 +1694,7 @@ async function regularDialog(opts = {}) {
       if (e.submitter?.value !== 'save') return;
       e.preventDefault();
       const body = { title: $('rgTitle').value, duration: Math.max(0.5, Math.round((Number($('rgDur').value) || 1) * 2) / 2), recur: $('rgFreq').value,
-                     description: $('rgDesc').value, note: $('rgNote').value };
+                     description: $('rgDesc').value, note: $('rgNote').value, saved: $('rgSaved').checked };
       try {
         const r = await send(w.id ? `regular-work/${w.id}` : 'regular-work', body, w.id ? 'PATCH' : 'POST');
         await done(r);
@@ -1800,7 +1802,7 @@ function planMenu(e, email, day) {
   const who = j => (j.people || []).length ? (j.people || []).map(x => x.name || personName(x.email)).join(', ') : 'Unassigned';
   const m = document.createElement('div');
   m.className = 'planmenu'; m.setAttribute('role', 'menu');
-  const regs = (CAL_ALL || CAL)?.regular || [];
+  const regs = ((CAL_ALL || CAL)?.regular || []).filter(w => w.saved);   // Save and re-use: one-offs aren't offered again
   m.innerHTML = (email ? `<button type="button" role="menuitem" class="pmleave" data-leave>🌴 Add leave for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</button>` +
       regs.map(w => `<button type="button" role="menuitem" class="pmreg" data-reg="${esc(w.id)}" data-find="${esc(w.title.toLowerCase())}">↻ ${esc(w.title)}<span class="pmm" style="font-weight:400">Regular work · ${esc(days(w.duration))}${w.recur ? ' · ' + esc(recurWord(w).toLowerCase()) : ''}</span></button>`).join('') +
       `<button type="button" role="menuitem" class="pmreg new" data-regnew>↻ New regular work…</button>` : '') +

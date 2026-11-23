@@ -1136,6 +1136,7 @@ def delete_leave(lid: str, user: User = Depends(require_task_user)):
 
 class RegularIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)
+    saved: bool | None = None   # Save and re-use: listed in the + beside a person, to add again
     duration: float | None = Field(default=None, ge=0.5, le=365)
     recur: str | None = Field(default=None, max_length=20)
     description: str | None = Field(default=None, max_length=10000)
@@ -1170,7 +1171,8 @@ def _recur_ok(v: str) -> str:
 
 def _regular(r) -> dict:
     return {"id": r["id"], "title": r["title"], "duration": _num(r["duration"] or 1), "recur": r["recur"] or "",
-            "description": r["description"] or "", "note": r["note"] or "", "createdBy": r["created_by"], "updatedAt": r["updated_at"]}
+            "description": r["description"] or "", "note": r["note"] or "",
+            "saved": bool(r["saved"]) if "saved" in r.keys() else True, "createdBy": r["created_by"], "updatedAt": r["updated_at"]}
 
 
 def _slot(r, titles: dict) -> dict:
@@ -1209,10 +1211,10 @@ def add_regular(body: RegularIn, user: User = Depends(require_task_user)):
         raise HTTPException(422, "Give the regular work a title.")
     wid, stamp = uuid.uuid4().hex, now()
     with store().lock, store().db() as db:
-        db.execute("INSERT INTO regular_work (id, title, duration, recur, description, note, created_by, created_at, updated_at) "
-                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        db.execute("INSERT INTO regular_work (id, title, duration, recur, description, note, saved, created_by, created_at, updated_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (wid, title, _halves(body.duration or 1), _recur_ok(body.recur or ""), (body.description or "").strip(),
-                    (body.note or "").strip(), user.email, stamp, stamp))
+                    (body.note or "").strip(), 0 if body.saved is False else 1, user.email, stamp, stamp))
     return {**regular_all(), "added": _found_regular(wid)}
 
 
@@ -1230,9 +1232,11 @@ def change_regular(wid: str, body: RegularIn, user: User = Depends(require_task_
     for k in ("description", "note"):
         if getattr(body, k) is not None:
             w[k] = getattr(body, k).strip()
+    if body.saved is not None:
+        w["saved"] = body.saved
     with store().lock, store().db() as db:
-        db.execute("UPDATE regular_work SET title = ?, duration = ?, recur = ?, description = ?, note = ?, updated_at = ? WHERE id = ?",
-                   (w["title"], w["duration"], w["recur"], w["description"], w["note"], now(), wid))
+        db.execute("UPDATE regular_work SET title = ?, duration = ?, recur = ?, description = ?, note = ?, saved = ?, updated_at = ? WHERE id = ?",
+                   (w["title"], w["duration"], w["recur"], w["description"], w["note"], 1 if w["saved"] else 0, now(), wid))
     return regular_all()
 
 

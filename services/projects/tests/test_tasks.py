@@ -484,3 +484,13 @@ def test_regular_work(c):
     assert c.get(R, headers=AMY).json()["regularSlots"][0]["title"] == "Ticket queue"
     gone = c.delete(f"{R}/{w['id']}", headers=AMY).json()
     assert gone == {"regular": [], "regularSlots": []}   # who it was given to goes with it
+
+
+def test_regular_work_save_and_reuse(c):
+    """Save and re-use: ticked (the default), it stays in the menu; unticked, it's a one-off."""
+    R = "/tasks/api/regular-work"
+    kept = c.post(R, headers=AMY, json={"title": "Ticket queue"}).json()["added"]
+    once = c.post(R, headers=AMY, json={"title": "Office move", "saved": False}).json()["added"]
+    assert (kept["saved"], once["saved"]) == (True, False)
+    after = {w["id"]: w["saved"] for w in c.patch(f"{R}/{once['id']}", headers=AMY, json={"saved": True}).json()["regular"]}
+    assert after == {kept["id"]: True, once["id"]: True}
