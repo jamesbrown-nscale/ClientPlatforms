@@ -46,6 +46,14 @@
       <input type="search" id="q" placeholder="Search name, serial, model or person" aria-label="Search devices">
       <select id="platform" aria-label="Platform"><option value="">Jamf and Intune</option><option>Jamf</option><option>Intune</option></select>
       <select id="os" aria-label="Operating system"><option value="">Every OS</option></select>
+      <div class="pills" id="pills" role="group" aria-label="Type of device">
+        <span class="thumb" aria-hidden="true"></span>
+        <button type="button" data-t="" aria-pressed="true">All</button>
+        <button type="button" data-t="mac" aria-pressed="false" title="Mac computers">Mac <span class="pn" id="pn-mac"></span></button>
+        <button type="button" data-t="laptop" aria-pressed="false" title="Windows and Linux computers">Laptop <span class="pn" id="pn-laptop"></span></button>
+        <button type="button" data-t="ipad" aria-pressed="false">iPad <span class="pn" id="pn-ipad"></span></button>
+        <button type="button" data-t="iphone" aria-pressed="false">iPhone <span class="pn" id="pn-iphone"></span></button>
+      </div>
       <span class="sp"></span>
       <span class="count" id="count"></span>
     </div>
@@ -181,6 +189,26 @@ async function syncNow() {
   } catch (e) { showError(e.message); }
 }
 
+/** Mac, Laptop (a Windows or Linux computer), iPad, iPhone, or '' (anything else). */
+let TYPE = '';
+try { TYPE = localStorage.getItem('cp-devices-type') || ''; } catch {}
+function typeOf(d) {
+  const m = `${d.model || ''} ${d.os || ''} ${d.name || ''}`.toLowerCase();
+  if (d.kind === 'computer') return /mac|os x/.test(`${d.os || ''}`.toLowerCase()) || (d.make || '').toLowerCase() === 'apple' ? 'mac' : 'laptop';
+  if (/ipad/.test(m)) return 'ipad';
+  if (/iphone/.test(m) || (d.os || '').toLowerCase() === 'ios') return 'iphone';
+  return '';
+}
+function drawPills() {
+  const v = shown(), n = { mac: 0, laptop: 0, ipad: 0, iphone: 0 };
+  v.forEach(d => { const t = typeOf(d); if (t in n) n[t]++; });
+  for (const k in n) $('pn-' + k).textContent = n[k].toLocaleString();
+  const box = $('pills');
+  box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.t === TYPE)));
+  const on = box.querySelector(`button[data-t="${TYPE}"]`), th = box.querySelector('.thumb');
+  if (on) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
+}
+
 function matches(d) {
   if (FILTER === 'Jamf' || FILTER === 'Intune') { if (d.platform !== FILTER) return false; }
   else if (FILTER === 'computer' || FILTER === 'mobile') { if (d.kind !== FILTER) return false; }
@@ -190,6 +218,7 @@ function matches(d) {
   else if (FILTER === 'notusers' && !d.notOnUsers) return false;
   if ($('platform').value && d.platform !== $('platform').value) return false;
   if ($('os').value && d.os !== $('os').value) return false;
+  if (TYPE && typeOf(d) !== TYPE) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const hay = [d.name, d.serial, d.make, d.model, d.os, d.osVersion, d.userEmail, d.userName, d.platform,
@@ -265,6 +294,7 @@ function drawStats() {
                   stale: v.filter(d => d.stale).length, notusers: v.filter(d => d.notOnUsers).length };
   for (const [k, n] of Object.entries(stats)) { const el = $('s-' + k); if (el) el.textContent = n.toLocaleString(); }
   $('csv').href = 'api/devices.csv' + (SHOW_DEP ? '' : '?dep=hide');
+  drawPills();
 }
 
 window.cpRefresh = () => load();   // the refresh button in the header
@@ -290,6 +320,13 @@ document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListene
   draw();
 }));
 ['q', 'platform', 'os'].forEach(id => $(id).addEventListener('input', draw));
+$('pills').addEventListener('click', e => {
+  const b = e.target.closest('button[data-t]'); if (!b) return;
+  TYPE = b.dataset.t;
+  try { localStorage.setItem('cp-devices-type', TYPE); } catch {}
+  drawPills(); draw();
+});
+window.addEventListener('resize', () => drawPills());
 $('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) openDevice(tr.dataset.id); });
 $('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-id]'); if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDevice(tr.dataset.id); } });
 $('p-close').onclick = closePanel; $('scrim').onclick = closePanel;
