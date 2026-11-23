@@ -197,6 +197,8 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 
 **Sub jobs.** A job can be broken into a checklist: open the job (or hover it and choose **+ Sub job**), type each one and press Enter, optionally with who it's for. Tick them off, click one's title to rename it, click its person to change or clear it, or × to remove it. The job shows "2 of 4", and its % complete follows the ticks. Ticking the first one moves a job that hadn't started to *In progress*. Someone given a sub job is notified.
 
+**Recurring jobs.** Tick **Recurring** on a job and pick how often: *Weekly*, *Every 2 weeks*, *Monthly*, *Quarterly* or *Yearly*, and optionally a date to repeat *until*. It repeats from its expected start, each repeat as many working days as the first: monthly, quarterly and yearly keep its day of the month (the 31st falls back to the month's last day), and a repeat that lands on a weekend moves to the Monday. The repeats show on the timeline as dashed bars, in each assigned person's row (and count towards their busy line); click one to open the job. The job shows "↻ Weekly" (etc.), and the person given it is told it repeats. Marking the job *Done* stops it repeating. Repeats are worked out two years ahead.
+
 **Three views**, switched at the top:
 
 | View | What it shows |

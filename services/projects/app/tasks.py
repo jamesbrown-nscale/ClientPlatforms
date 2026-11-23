@@ -276,7 +276,7 @@ def page(request: Request):
 
 @router.get("/api/me")
 def me(user: User = Depends(require_task_user)):
-    return {"email": user.email, "name": user.name, "admin": user.admin, "statuses": STATUSES, "priorities": PRIORITIES}
+    return {"email": user.email, "name": user.name, "admin": user.admin, "statuses": STATUSES, "priorities": PRIORITIES, "recur": RECUR}
 
 
 VIEWS = ("mine", "asked", "waiting", "mentioned", "all", "done")
@@ -597,6 +597,49 @@ def end_of(start: str, duration: int) -> str:
     return d.isoformat()
 
 
+RECUR = {"weekly": "Weekly", "biweekly": "Every 2 weeks", "monthly": "Monthly", "quarterly": "Quarterly", "yearly": "Yearly"}
+REPEAT_YEARS = 2       # repeats are worked out this far ahead
+MAX_REPEATS = 120
+
+
+def _add_months(d: date, n: int, day: int) -> date:
+    y, m = divmod(d.month - 1 + n, 12)
+    y, m = d.year + y, m + 1
+    last = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
+    return date(y, m, min(day, last))
+
+
+def repeats(start: str, duration: int, recur: str, until: str = "") -> list[dict]:
+    """Every later occurrence of a recurring job: [{start, end}], each lasting `duration` working days.
+    Monthly, quarterly and yearly keep the first one's day of the month (the 31st falls back to the
+    month's last day); each starts on a working day (a weekend moves to the Monday). They stop at
+    `until`, or REPEAT_YEARS from today."""
+    if recur not in RECUR or not start:
+        return []
+    try:
+        first = date.fromisoformat(start)
+    except ValueError:
+        return []
+    stop = date.today() + timedelta(days=365 * REPEAT_YEARS)
+    if until:
+        try:
+            stop = min(stop, date.fromisoformat(until))
+        except ValueError:
+            pass
+    out = []
+    for k in range(1, MAX_REPEATS + 1):
+        if recur in ("weekly", "biweekly"):
+            d = first + timedelta(days=(7 if recur == "weekly" else 14) * k)
+        else:
+            d = _add_months(first, k * {"monthly": 1, "quarterly": 3, "yearly": 12}[recur], first.day)
+        d = workday(d)
+        if d > stop:
+            break
+        s = d.isoformat()
+        out.append({"start": s, "end": end_of(s, duration)})
+    return out
+
+
 def _subs_of(r) -> list[dict]:
     try:
         subs = json.loads(r["subs"] or "[]") if "subs" in r.keys() else []
@@ -607,6 +650,9 @@ def _subs_of(r) -> list[dict]:
 
 def _job(r) -> dict:
     subs = _subs_of(r)
+    keys = r.keys()
+    recur = (r["recur"] if "recur" in keys else "") or ""
+    until = (r["recur_until"] if "recur_until" in keys else "") or ""
     done = sum(1 for s in subs if s.get("done"))
     # With a checklist, an unfinished job's % is how much of it is ticked off.
     progress = 100 if r["status"] == "Done" else round(done * 100 / len(subs)) if subs else (r["progress"] or 0)
@@ -614,7 +660,10 @@ def _job(r) -> dict:
             "description": r["description"], "note": r["note"], "start": r["start"], "duration": r["duration"],
             "end": end_of(r["start"], r["duration"]) if r["start"] else "", "assignee": r["assignee"],
             "assigneeName": r["assignee_name"], "people": _people_of(r), "status": r["status"],
-            "progress": progress, "subs": subs, "subsDone": done, "createdAt": r["created_at"], "updatedAt": r["updated_at"]}
+            "progress": progress, "subs": subs, "subsDone": done, "createdAt": r["created_at"], "updatedAt": r["updated_at"],
+            "recur": recur, "recurUntil": until,
+            # A finished recurring job stops repeating.
+            "repeats": [] if r["status"] == "Done" else repeats(r["start"], r["duration"], recur, until)}
 
 
 def jobs_of(tid: str) -> list[dict]:
@@ -657,6 +706,8 @@ class JobIn(BaseModel):
     status: str | None = None
     progress: int | None = Field(default=None, ge=0, le=100)          # % complete, shown while In progress
     mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list in the note or description
+    recur: str | None = Field(default=None, max_length=20)             # "" (doesn't repeat), weekly, biweekly, monthly, quarterly, yearly
+    recurUntil: str | None = Field(default=None, max_length=10)        # last day it can repeat on; "" for no end
 
 
 class OrderIn(BaseModel):
@@ -692,6 +743,17 @@ def _clean_job(body: JobIn) -> dict:
         out["start"] = workday(date.fromisoformat(body.start)).isoformat() if body.start else ""   # jobs start on a working day
     if body.duration is not None:
         out["duration"] = body.duration
+    if body.recur is not None:
+        if body.recur and body.recur not in RECUR:
+            raise HTTPException(422, f"How often must be one of: {', '.join(RECUR.values())}.")
+        out["recur"] = body.recur
+    if body.recurUntil is not None:
+        if body.recurUntil:
+            try:
+                date.fromisoformat(body.recurUntil)
+            except ValueError:
+                raise HTTPException(422, "Repeat until must be a date.")
+        out["recur_until"] = body.recurUntil
     if body.status is not None:
         if body.status not in STATUSES:
             raise HTTPException(422, f"Status must be one of {', '.join(STATUSES)}.")
@@ -737,7 +799,9 @@ def _when(j: dict) -> str:
     if not j.get("start"):
         return "Not scheduled yet"
     days = j["duration"] or 1
-    return f"Starts {nice_date(j['start'])} · {days} working day{'s' if days != 1 else ''}"
+    rec = RECUR.get(j.get("recur") or "")
+    return (f"Starts {nice_date(j['start'])} · {days} working day{'s' if days != 1 else ''}"
+            + (f" · repeats {rec.lower()}" + (f" until {nice_date(j['recurUntil'])}" if j.get("recurUntil") else "") if rec else ""))
 
 
 def _job_mentions(j: dict, picked: list[str]) -> set[str]:
@@ -772,10 +836,11 @@ def add_job(tid: str, body: JobIn, user: User = Depends(require_task_user)):
     with store().lock, store().db() as db:
         pos = db.execute("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM pipeline_jobs WHERE task_id = ?", (tid,)).fetchone()["n"]
         db.execute("INSERT INTO pipeline_jobs (id, task_id, position, title, description, note, start, duration, assignee, "
-                   "assignee_name, people, status, progress, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   "assignee_name, people, status, progress, recur, recur_until, created_by, created_at, updated_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (jid, tid, pos, f["title"], f.get("description", ""), f.get("note", ""), f.get("start", ""),
                     f.get("duration", 1), f.get("assignee", ""), f.get("assignee_name", ""), f.get("people", "[]"), f.get("status", "To do"),
-                    f.get("progress", 0), user.email, stamp, stamp))
+                    f.get("progress", 0), f.get("recur", ""), f.get("recur_until", ""), user.email, stamp, stamp))
     _add_activity(tid, "change", user, data={"field": "job", "action": "added", "to": f["title"]})
     j = _job_row(tid, jid)
     _tell_job_assignee(t, j, user)

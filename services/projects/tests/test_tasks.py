@@ -339,3 +339,35 @@ def test_sub_jobs(c, tmp_path):
     assert len(job["subs"]) == 3 and job["progress"] == 67
     assert c.delete(f"{S}/{subs[3]['id']}", headers=AMY).status_code == 404
     assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"status": "Done"}).json()["jobs"][0]["progress"] == 100
+
+
+def test_recurring_jobs(c):
+    """A job can repeat: weekly, every 2 weeks, monthly, quarterly or yearly, each repeat as long as the first."""
+    from datetime import date, timedelta
+    t = new(c, title="Patching")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    nxt = date.today() + timedelta(days=(7 - date.today().weekday()))   # next Monday
+    j = c.post(J, headers=AMY, json={"title": "Patch Tuesday checks", "start": nxt.isoformat(), "duration": 2,
+                                     "recur": "weekly", "people": [{"email": "bob.smith@nscale.com"}]}).json()["jobs"][0]
+    assert j["recur"] == "weekly" and j["repeats"][0] == {"start": (nxt + timedelta(days=7)).isoformat(),
+                                                           "end": (nxt + timedelta(days=8)).isoformat()}
+    assert len(j["repeats"]) > 100   # two years ahead
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"recur": "daily"}).status_code == 422
+    until = (nxt + timedelta(days=30)).isoformat()
+    j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"recur": "biweekly", "recurUntil": until}).json()["jobs"][0]
+    assert [r["start"] for r in j["repeats"]] == [(nxt + timedelta(days=14)).isoformat(), (nxt + timedelta(days=28)).isoformat()]
+    # The timeline gets them too; done, it stops repeating; off, no repeats.
+    plan = next(p for p in c.get("/tasks/api/timeline", headers=AMY).json()["plans"] if p["id"] == t["id"])
+    assert len(plan["jobs"][0]["repeats"]) == 2
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"status": "Done"}).json()["jobs"][0]["repeats"] == []
+    j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"status": "To do", "recur": ""}).json()["jobs"][0]
+    assert j["recur"] == "" and j["repeats"] == []
+
+
+def test_monthly_repeats_keep_the_day():
+    from app.tasks import repeats
+    # The 31st: Feb's last day, then the 31st again; weekends move to the Monday.
+    r = [x["start"] for x in repeats("2027-01-29", 1, "monthly", "2027-06-30")]
+    assert r == ["2027-03-01", "2027-03-29", "2027-04-29", "2027-05-31", "2027-06-29"]   # 28 Feb 2027 is a Sunday
+    assert [x["start"] for x in repeats("2027-01-15", 1, "quarterly", "2028-01-31")] == ["2027-04-15", "2027-07-15", "2027-10-15", "2028-01-17"]
+    assert repeats("2027-01-15", 1, "yearly", "2027-12-31") == [] and repeats("", 1, "weekly") == [] and repeats("2027-01-15", 1, "nope") == []

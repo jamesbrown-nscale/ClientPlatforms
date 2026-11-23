@@ -219,6 +219,18 @@
   .jb { padding: 4px 12px 12px; border-top: 1px solid var(--surface); }
   .jb .fields { margin: 10px 0; }
   .jb .ends { height: 36px; display: flex; align-items: center; color: var(--text2); }
+  .jb .recur { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; }
+  .jb .recur .rchk { display: inline-flex; gap: 6px; align-items: center; margin: 0; cursor: pointer; font-weight: 600; }
+  .jb .recur #jRecurBox { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .jb .recur #jRecurBox[hidden] { display: none; }
+  .jb .recur select, .jb .recur input[type=date] { height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; background: #fff; width: auto; }
+  .jb .recur #jRecurHint { flex-basis: 100%; }
+  .jb .recur .runtil { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 400; color: var(--text2); }
+  .rbar { position: absolute; top: 50%; transform: translateY(-50%); height: 22px; border-radius: 6px; border: 1.5px dashed var(--c, #0F41F3);
+    background: color-mix(in srgb, var(--c, #0F41F3) 12%, transparent); color: var(--text2); font-size: 11.5px; line-height: 19px; padding: 0 6px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; box-sizing: border-box; }
+  .rbar:hover { background: color-mix(in srgb, var(--c, #0F41F3) 22%, transparent); }
+  .jrec { color: var(--text2); white-space: nowrap; }
   .pplpick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; padding: 4px 6px; background: #fff; border: 1px solid var(--border); border-radius: 8px; cursor: text; }
   .pplpick:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
   .pplpick #jChips { display: contents; }
@@ -580,7 +592,7 @@ function drawPeople() {
       (ex ? js : []).map(j => {
       const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
       const meta = [
-        j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
+        j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}${recurTxt(j)}</span>` : '<span style="font-style:italic">Not scheduled</span>',
         j.status !== 'To do' && !done ? `<span>${esc(saidJob(j))}</span>` : '',
         subCount(j),
         j.note ? '<span title="Has a note">📝 Note</span>' : '',
@@ -638,7 +650,7 @@ function drawAllJobs() {
   }
   $('rows').innerHTML = `<div class="allsum">${list.length} job${list.length === 1 ? '' : 's'} in ${plans} plan${plans === 1 ? '' : 's'}</div>` + list.map(({ p, j }) => {
     const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id, pct = pctOf(j);
-    const when = j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>`
+    const when = j.start ? `<span class="${late ? 'late' : ''}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}${recurTxt(j)}</span>`
                          : '<span style="font-style:italic">Not scheduled</span>';
     const state = pct != null ? `<span class="jpct" title="In progress · ${pct}% complete"><span class="pbar"><i style="width:${pct}%"></i></span>${pct}%</span>`
                 : j.status !== 'To do' ? statusChip(j.status) : '';
@@ -825,7 +837,7 @@ function jobsSection(t) {
 function jobRow(t, j) {
   const open = JOBOPEN === j.id, isDone = j.status === 'Done';
   const late = !isDone && j.end && j.end < today();
-  const when = j.start ? `<span class="jw ${late ? 'late' : ''}" title="${esc(span(j.start, j.end))}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}</span>`
+  const when = j.start ? `<span class="jw ${late ? 'late' : ''}" title="${esc(span(j.start, j.end))}">${late ? 'Overdue · ' : ''}${esc(shortDay(j.start))}${j.end !== j.start ? ' – ' + esc(shortDay(j.end)) : ''} · ${days(j.duration)}${recurTxt(j)}</span>`
     : '<span class="jw unsched">Not scheduled</span>';
   const who = avatars(j);
   return `<div class="job ${open ? 'open' : ''} ${isDone ? 'isdone' : ''}" data-job="${esc(j.id)}" ${t.canChange ? 'draggable="true"' : ''}>
@@ -928,6 +940,9 @@ function jobText(j) {
   </div>`;
 }
 
+const recurWord = j => (ME.recur || {})[j.recur] || '';
+const recurTxt = j => j.recur ? ` · ↻ ${recurWord(j)}` : '';
+
 function jobForm(t, j) {
   const opt = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
   return `<div class="jb"><div class="fields">
@@ -935,6 +950,10 @@ function jobForm(t, j) {
       <div><label for="jStart">Expected start</label><input type="date" id="jStart" value="${esc(j.start)}"></div>
       <div><label for="jDur">Duration (working days)</label><input type="number" id="jDur" min="1" max="365" value="${esc(j.duration || 1)}"></div>
       <div><label>Ends</label><div class="ends" id="jEnds"></div></div>
+      <div class="wide recur"><label class="rchk"><input type="checkbox" id="jRecur" ${j.recur ? 'checked' : ''}> Recurring</label>
+        <span id="jRecurBox" ${j.recur ? '' : 'hidden'}><select id="jFreq" aria-label="How often">${Object.entries(ME.recur || {}).map(([k, v]) => `<option value="${k}" ${k === (j.recur || 'weekly') ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
+          <label class="runtil">until <input type="date" id="jUntil" value="${esc(j.recurUntil || '')}" aria-label="Repeat until (optional)"></label>
+          <span class="muted" id="jRecurHint"></span></span></div>
       <div class="two"><label for="jWho">Assigned to</label><div class="pplpick" id="jPeople"><span id="jChips"></span><input id="jWho" list="people" placeholder="Add someone: name or email" autocomplete="off"></div></div>
       <div class="two"><label for="jStatus">Status</label><div class="stp"><select id="jStatus">${opt(ME.statuses, j.status)}</select>
         <span class="pctin" id="jPctBox" ${j.status === 'In progress' ? '' : 'hidden'}><input type="number" id="jPct" min="0" max="100" step="5" value="${esc(j.progress || 0)}" aria-label="Per cent complete"><span>% complete</span>
@@ -970,7 +989,15 @@ function wireJobs() {
       const st = $('jStart').value, n = Math.max(1, Number($('jDur').value) || 1);
       $('jEnds').textContent = st ? `${fmtDay(workEnd(st, n))}` : '–';
     };
-    $('jStart').oninput = ends; $('jDur').oninput = ends; ends();
+    $('jStart').oninput = () => { ends(); recurHint(); }; $('jDur').oninput = ends; ends();
+    // Recurring: how often, and (optionally) until when. Each repeat is as long as the first, on the timeline.
+    const recurHint = () => {
+      const on = $('jRecur').checked;
+      $('jRecurBox').hidden = !on;
+      $('jRecurHint').textContent = !on ? '' : !$('jStart').value ? 'Set the expected start: it repeats from there.'
+        : `Repeats ${($('jFreq').selectedOptions[0]?.textContent || '').toLowerCase()} from ${fmtDay($('jStart').value)}${$('jUntil').value ? '' : ', with no end'}. Each repeat shows on the timeline for whoever it's assigned to.`;
+    };
+    $('jRecur').onchange = recurHint; $('jFreq').onchange = recurHint; $('jUntil').oninput = recurHint; recurHint();
     // Assigned to: a chip per person; pick from the list or type a name or email, then Enter (or a comma).
     const editing = JOBOPEN === 'new' ? null : t.jobs.find(x => x.id === JOBOPEN);
     JPEOPLE = editing ? jobPeople(editing).map(p => ({ ...p })) : (NEWASSIGNEE ? [{ email: NEWASSIGNEE, name: personName(NEWASSIGNEE) }] : []);
@@ -1006,6 +1033,7 @@ function wireJobs() {
     $('jSave').onclick = async () => {
       if ($('jWho').value.trim()) { addWho(); if ($('jWho').value.trim()) return $('jWho').focus(); }   // someone typed but not added
       const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(1, Number($('jDur').value) || 1),
+                     recur: $('jRecur').checked ? $('jFreq').value : '', recurUntil: $('jRecur').checked ? $('jUntil').value : '',
                      status: $('jStatus').value, ...($('jStatus').value === 'In progress' ? { progress: pct() } : {}), description: $('jDesc').value, note: $('jNote').value, people: JPEOPLE,
                      mentions: [...new Set([...(JM.desc?.picked() || []), ...(JM.note?.picked() || [])])] };
       $('jSave').disabled = true;
@@ -1321,15 +1349,19 @@ function drawCal() {
     const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
     const who = jobPeople(j).map(x => (x.name || personName(x.email)).split(' ')[0]).join(', ');
     const others = byPerson && jobPeople(j).length > 1 ? ' · with ' + jobPeople(j).length + ' people' : '';
-    const sub = byPerson ? `${dates} · ${saidJob(j)}${others}` : `${dates} · ${saidJob(j)}${who ? ' · ' + jobNames(j) : ''}`;
+    const sub = (byPerson ? `${dates} · ${saidJob(j)}${others}` : `${dates} · ${saidJob(j)}${who ? ' · ' + jobNames(j) : ''}`) + recurTxt(j);
     const pc = pctOf(j);
     const label = (byPerson ? j.title : j.title + (who ? ' · ' + who : '')) + (pc != null ? ` · ${pc}%` : '');
     const bar = j.start && j.end >= RS && j.start <= end
       ? `<div class="gbar ${p.canChange ? 'can' : ''} ${isDone ? 'done' : ''} ${lateJ ? 'late' : ''} ${sel ? 'sel' : ''}" style="left:${x(j.start) + 1}px;width:${(between(j.start, j.end) + 1) * DW - 2}px;${cv}"
            data-plan="${esc(p.id)}" data-job="${esc(j.id)}"${owner !== null ? ` data-owner="${esc(owner)}"` : ''} data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
+    // A recurring job's later repeats: dashed bars of the same length; click one to open the job.
+    const reps = (j.repeats || []).filter(r => r.end >= RS && r.start <= end).map(r =>
+      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}"
+        title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\nRepeats ${esc(recurWord(j).toLowerCase())}: ${esc(span(r.start, r.end))}${who ? '\n' + esc(jobNames(j)) : ''}\nChange it on the first one">↻ ${esc(j.title)}</div>`).join('');
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}"${owner !== null ? ` data-grp="${esc(owner)}"` : ''} style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
-      <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}</div></div>`;
+      <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}${reps}</div></div>`;
   };
   const anyChange = CAL.plans.some(p => p.canChange);
   let rows = '';
@@ -1352,7 +1384,7 @@ function drawCal() {
     for (const g of groups) {
       // A faint line where they're busy; red where two of their open jobs overlap.
       const load = {};
-      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (let d = j.start; d <= j.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + 1; });
+      g.jobs.forEach(({ j }) => { if (j.start && j.status !== 'Done') for (const r of [j, ...(j.repeats || []).filter(r => r.start <= end)]) for (let d = r.start; d <= r.end; d = addDays(d, 1)) if (!isWeekend(d)) load[d] = (load[d] || 0) + 1; });
       let busy = '';
       for (let i = 0; i < n; i++) { const d = addDays(RS, i); if (load[d]) busy += `<div class="tlbusy ${load[d] > 1 ? 'over' : ''}" style="left:${i * DW}px;width:${DW}px" ${load[d] > 1 ? `title="${load[d]} jobs at once on ${esc(fmtDay(d))}"` : ''}></div>`; }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
@@ -1432,7 +1464,7 @@ function wirePanning() {
   const g = $('calGrid');
   let pan = null, swallow = false, acc = 0;
   g.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || e.target.closest('.gbar, .tllab, .diamond, button')) return;
+    if (e.button !== 0 || e.target.closest('.gbar, .rbar, .tllab, .diamond, button')) return;
     pan = { x: e.clientX, rs: RS, re: RE, moved: false };
   });
   window.addEventListener('pointermove', e => {
@@ -1535,6 +1567,7 @@ function wireTimeline() {
     openTask(el.dataset.open, el.dataset.job || null);
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
+  g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
     l.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(l.dataset.sub, l); };
