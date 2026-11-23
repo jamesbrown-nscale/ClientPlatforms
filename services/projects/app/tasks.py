@@ -1242,6 +1242,9 @@ def change_regular(wid: str, body: RegularIn, user: User = Depends(require_task_
 
 @router.delete("/api/regular-work/{wid}")
 def delete_regular(wid: str, user: User = Depends(require_task_user)):
+    """Takes it off everyone it was given to, so it's for Team Planning admins."""
+    if not user.admin:
+        raise HTTPException(403, "Only Team Planning admins can delete regular work (it comes off everyone's timeline). Take it off one person instead.")
     _found_regular(wid)
     with store().lock, store().db() as db:
         db.execute("DELETE FROM regular_slots WHERE work_id = ?", (wid,))   # who it was given to goes with it

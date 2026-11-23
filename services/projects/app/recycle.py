@@ -16,7 +16,8 @@ first), or something new now has the same ID or name.
     GET    /api/bin                 what's in the bin (no contents, just what each thing was)
     POST   /api/bin/{id}/restore    put it back
     DELETE /api/bin/{id}            delete it for good
-Only site admins (the service's own admin check) can use these.
+Only site admins (the service's own admin check) can use these. A router made with `tool` lists and acts on
+only what was deleted in that tool (so each tool's admins see their own, and nobody else's).
 """
 import base64
 import json
@@ -154,14 +155,20 @@ class Bin:
     def _expire(self, db) -> None:
         db.execute("DELETE FROM recycle_bin WHERE deleted_at < ?", (_iso(_now() - timedelta(days=KEEP_DAYS)),))
 
-    def list(self) -> list[dict]:
+    def list(self, tool: str | None = None) -> list[dict]:
         with self.lock, self.connect() as db:
             self._expire(db)
             rows = db.execute("SELECT id, kind, label, context, tool, deleted_at, deleted_by, length(payload) FROM recycle_bin "
-                              "ORDER BY deleted_at DESC").fetchall()
+                              + ("WHERE tool = ? " if tool else "") + "ORDER BY deleted_at DESC", (tool,) if tool else ()).fetchall()
         return [{"id": r[0], "kind": r[1], "label": r[2], "context": r[3], "tool": r[4], "deletedAt": r[5], "deletedBy": r[6],
                  "size": r[7], "expiresAt": _iso(datetime.strptime(r[5], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                                                   + timedelta(days=KEEP_DAYS))} for r in rows]
+
+    def tool_of(self, bid: str) -> str | None:
+        """Which tool something in the bin was deleted in ("" if not said), or None if it isn't there."""
+        with self.connect() as db:
+            r = db.execute("SELECT tool FROM recycle_bin WHERE id = ?", (bid,)).fetchone()
+        return None if not r else (r[0] or "")
 
     def restore(self, bid: str) -> dict:
         with self.lock, self.connect() as db:
@@ -206,10 +213,15 @@ class Bin:
             return db.execute("DELETE FROM recycle_bin WHERE id = ?", (bid,)).rowcount > 0
 
 
-def router(get_bin: Callable[[], Bin], admin: Callable, log: Callable | None = None) -> APIRouter:
+def router(get_bin: Callable[[], Bin], admin: Callable, log: Callable | None = None, tool: str | None = None) -> APIRouter:
     """The bin's API. get_bin() returns the service's Bin. `admin` is a FastAPI dependency that returns
-    the signed-in site admin's email, or raises (401 not signed in, 403 not an admin)."""
+    the signed-in site admin's email, or raises (401 not signed in, 403 not an admin). tool: only what was
+    deleted in that tool."""
     r = APIRouter()
+
+    def mine(bid: str) -> None:
+        if tool and get_bin().tool_of(bid) != tool:
+            raise HTTPException(404, "It isn't in the recycle bin any more.")
 
     def changing(request: Request, who: str = Depends(admin)) -> str:
         if request.headers.get("x-requested-with") != "nscale-admin":
@@ -218,24 +230,26 @@ def router(get_bin: Callable[[], Bin], admin: Callable, log: Callable | None = N
 
     @r.get("/api/bin")
     def list_bin(who: str = Depends(admin)):
-        return {"items": get_bin().list(), "keepDays": KEEP_DAYS}
+        return {"items": get_bin().list(tool), "keepDays": KEEP_DAYS}
 
     @r.post("/api/bin/{bid}/restore")
     def restore(bid: str, who: str = Depends(changing)):
+        mine(bid)
         try:
             done = get_bin().restore(bid)
         except BinError as e:
             raise HTTPException(409, str(e))
         if log:
             log(f"restored from the recycle bin: {done['kind']} {done['label']}", who)
-        return {"restored": done, "items": get_bin().list()}
+        return {"restored": done, "items": get_bin().list(tool)}
 
     @r.delete("/api/bin/{bid}")
     def purge(bid: str, who: str = Depends(changing)):
+        mine(bid)
         if not get_bin().purge(bid):
             raise HTTPException(404, "It isn't in the recycle bin any more.")
         if log:
             log(f"deleted for good from the recycle bin: {bid}", who)
-        return {"items": get_bin().list()}
+        return {"items": get_bin().list(tool)}
 
     return r

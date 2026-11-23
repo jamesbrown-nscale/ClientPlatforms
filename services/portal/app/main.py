@@ -28,12 +28,13 @@ from html import escape
 from pathlib import Path
 from urllib.parse import parse_qs, quote
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import access, directory, oidc, recycle
+from . import access, directory, jira, oidc, recycle
 from .db import ADMIN_ROLE, DB, LEVELS, SITE_PERMS, TOOL_IDS, TOOLS, USES
 
 STATIC = Path(__file__).parent / "static"
@@ -142,6 +143,12 @@ def require_people(user: dict = Depends(require_user)) -> dict:
 def require_settings(user: dict = Depends(require_user)) -> dict:
     if not has(user, "settings"):
         raise HTTPException(403, "Only people who manage the site settings can do that.")
+    return user
+
+
+def require_integrations(user: dict = Depends(require_user)) -> dict:
+    if not has(user, "integrations"):
+        raise HTTPException(403, "Only people who manage integrations can do that.")
     return user
 
 
@@ -648,6 +655,79 @@ def _bin_admin(user: dict = Depends(require_people)) -> str:
 
 
 app.include_router(recycle.router(lambda: db.bin, _bin_admin))
+
+
+# ---------- Integrations: Jira (Settings → Connections) ----------
+
+class JiraIn(BaseModel):
+    url: str = Field(max_length=300)
+    email: str = Field(max_length=254)
+    project: str = Field("", max_length=20)            # optional: the project to work with, e.g. CP
+    token: str | None = Field(None, max_length=2000)   # None (or blank) keeps the saved one
+
+
+def jira_client() -> httpx.Client:
+    return httpx.Client(follow_redirects=False, headers={"User-Agent": "Nscale-Client-Platforms"})
+
+
+def _jira_view() -> dict:
+    j = db.setting("jira") or {}
+    return {"connected": bool(j), "url": j.get("url", ""), "email": j.get("email", ""), "project": j.get("project", ""),
+            "hasToken": bool(j.get("token")), "lastCheck": j.get("lastCheck"), "lastOk": j.get("lastOk"),
+            "lastError": j.get("lastError", ""), "lastNote": j.get("lastNote", ""),
+            "updatedAt": j.get("updatedAt"), "updatedBy": j.get("updatedBy", "")}
+
+
+def _jira_check() -> dict:
+    j = db.setting("jira")
+    if not j:
+        raise HTTPException(400, "Save the Jira connection first.")
+    t = jira.now()
+    try:
+        with jira_client() as client:
+            note = jira.check(client, j["url"], j["email"], jira.unseal(j.get("token", ""), access.AUTH_SECRET), j.get("project", ""))
+        db.save_settings({"jira": {**j, "lastCheck": t, "lastOk": t, "lastError": "", "lastNote": note}})
+        return {"ok": True, "note": note}
+    except jira.JiraError as e:
+        db.save_settings({"jira": {**j, "lastCheck": t, "lastError": str(e)}})
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/integrations")
+def get_integrations(user: dict = Depends(require_integrations)):
+    return {"jira": _jira_view()}
+
+
+@app.put("/api/integrations/jira")
+def put_jira(body: JiraIn, user: dict = Depends(require_integrations)):
+    try:
+        new = {"url": jira.site(body.url), "email": jira.account(body.email), "project": jira.project(body.project)}
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    old = db.setting("jira") or {}
+    token = (body.token or "").strip()
+    if not token and not old.get("token"):
+        raise HTTPException(422, "Enter the API token.")
+    new["token"] = jira.seal(token, access.AUTH_SECRET) if token else old["token"]
+    db.save_settings({"jira": {**new, "updatedAt": jira.now(), "updatedBy": user["email"]}})
+    log.info(json.dumps({"severity": "NOTICE", "message": "Jira connection saved", "by": user["email"], "tokenChanged": bool(token)}))
+    result = _jira_check()   # check it works straight away
+    return {**result, "jira": _jira_view()}
+
+
+@app.post("/api/integrations/jira/test")
+def test_jira(user: dict = Depends(require_integrations)):
+    result = _jira_check()
+    return {**result, "jira": _jira_view()}
+
+
+@app.delete("/api/integrations/jira")
+def delete_jira(user: dict = Depends(require_integrations)):
+    if not db.setting("jira"):
+        raise HTTPException(404, "Not connected.")
+    db.delete_setting("jira")
+    log.info(json.dumps({"severity": "NOTICE", "message": "Jira disconnected", "by": user["email"]}))
+    return {"jira": _jira_view()}
 
 
 @app.get("/api/directory", dependencies=[Depends(require_accounts)])

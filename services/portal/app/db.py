@@ -53,7 +53,9 @@ LEGACY_URLS = {"org": ("/users/org", "/users/org/"), "departments": ("/users/dep
 TOOL_IDS = [t["id"] for t in TOOLS if not t.get("uses")]   # the ones with an access entry
 USES = {t["id"]: t["uses"] for t in TOOLS if t.get("uses")}   # page → the tool whose access it follows
 LEVELS = ["none", "view", "edit", "admin"]
-SITE_PERMS = {"people": "Manage people and roles", "settings": "Manage site settings"}
+SITE_PERMS = {"people": "Manage people and roles", "settings": "Manage site settings",
+              "integrations": "Manage integrations (Jira)"}
+CORE_PERMS = ("people", "settings")   # both make someone a site admin (newer abilities don't take that away)
 ADMIN_ROLE = "administrator"
 
 
@@ -218,7 +220,7 @@ class DB:
                 if LEVELS.index(lv) > LEVELS.index(levels.get(t, "none")):
                     levels[t] = lv
         return {"levels": levels, "perms": sorted(perms), "tools": [t for t in TOOL_IDS if t in levels],
-                "admin": all(p in perms for p in SITE_PERMS)}
+                "admin": all(p in perms for p in CORE_PERMS)}
 
     def _users(self, where: str = "", args: tuple = ()) -> list[dict]:
         with self._db() as db:
@@ -385,6 +387,10 @@ class DB:
         with self._db() as db:
             r = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return json.loads(r["value"]) if r else default
+
+    def delete_setting(self, key: str) -> None:
+        with self._lock, self._db() as db:
+            db.execute("DELETE FROM settings WHERE key = ?", (key,))
 
     def save_settings(self, values: dict) -> None:
         with self._lock, self._db() as db:

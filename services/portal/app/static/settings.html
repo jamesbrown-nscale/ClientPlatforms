@@ -348,6 +348,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
+let CX = { devices: false, integrations: false };   // which parts of Connections you see
 let me = null, tools = [], users = [], roles = [], editing = null, resetting = null, LEVELS = ['none', 'view', 'edit', 'admin'], SITE = [];
 
 async function api(path, opts = {}) {
@@ -755,7 +756,20 @@ $('userForm').addEventListener('submit', async e => {
 /* ---------- Permissions: roles ---------- */
 let ROLE = null, ROLE_DIRTY = false;
 const HELP = { none: 'No access. The tool is hidden.', view: 'Sees everything, changes nothing.',
-               edit: 'Uses it fully: adds, changes, comments.', admin: "Edit, plus the tool's admin powers." };
+               edit: 'Uses it fully: adds, changes, comments.', admin: "Edit, plus the tool's admin powers (under each tool)." };
+// What admin adds in each tool, shown under its name in the role editor.
+const ADMIN_NOTE = {
+  devices: 'Jamf and Intune connections (Settings → Connections)',
+  notifications: 'Device keys and install steps (Settings → Applications)',
+  elevation: 'Device keys and install steps (Settings → Applications)',
+  restart: 'Device keys and install steps (Settings → Applications)',
+  changes: 'Change types and approval flows (Settings → Change management); every change; its recycle bin',
+  projects: 'Owner of every project; its recycle bin',
+  tasks: 'Changes every plan; deletes regular work; its recycle bin',
+  users: 'Its recycle bin (deleted users)',
+  'users-ct': 'Its recycle bin (deleted users)',
+  team: "Everyone's 1-2-1s, notes and feedback; adds and removes members; its recycle bin",
+};
 
 async function loadRoles(selectId) {
   const r = await api('/api/roles');
@@ -785,7 +799,7 @@ function drawRole() {
   const groups = [...new Set(tools.map(t => t.group))];
   const rows = groups.map(g => `<tr class="grp"><td colspan="5">${esc(g)}</td></tr>` + tools.filter(t => t.group === g).map(t => {
     const cur = r.levels[t.id] || 'none';
-    return `<tr><td>${esc(t.name)}</td>${LEVELS.map(l => `<td><input type="radio" name="lv_${t.id}" value="${l}" ${cur === l ? 'checked' : ''} ${ro ? 'disabled' : ''} aria-label="${esc(t.name)}: ${l}"></td>`).join('')}</tr>`;
+    return `<tr><td>${esc(t.name)}${ADMIN_NOTE[t.id] ? `<div class="muted" style="font-size:12px;font-weight:400">Admin: ${esc(ADMIN_NOTE[t.id])}</div>` : ''}</td>${LEVELS.map(l => `<td><input type="radio" name="lv_${t.id}" value="${l}" ${cur === l ? 'checked' : ''} ${ro ? 'disabled' : ''} aria-label="${esc(t.name)}: ${l}"></td>`).join('')}</tr>`;
   }).join('')).join('');
   $('roleEditor').innerHTML = `
     <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">${r.id ? esc(r.name) : 'New role'}</h2>
@@ -799,7 +813,7 @@ function drawRole() {
     <div class="row" style="margin:8px 0 0">${ro ? '' : '<button class="btn small" type="button" data-all="view">All view</button><button class="btn small" type="button" data-all="edit">All edit</button><button class="btn small" type="button" data-all="none">Clear</button>'}</div>
     <label>Site abilities</label>
     <div class="abil">${SITE.map(p => `<label><input type="checkbox" value="${p.id}" ${r.perms.includes(p.id) ? 'checked' : ''} ${ro ? 'disabled' : ''}> ${esc(p.name)}
-      <span class="muted">· ${p.id === 'people' ? 'Settings → People and Permissions' : 'Settings → Site: addresses and tool links'}</span></label>`).join('')}</div>
+      <span class="muted">· ${({ people: 'Settings → People and Permissions', settings: 'Settings → Site: addresses and tool links', integrations: 'Settings → Connections: Jira' })[p.id] || ''}</span></label>`).join('')}</div>
     ${r.id ? `<label>People with this role</label><div>${(r.people || []).map(p => `<span class="rbadge">${esc(p.name)}</span>`).join('') || '<span class="muted">Nobody yet. Give it to people under People.</span>'}</div>` : ''}
     <div id="rNotice" class="notice" hidden></div>
     ${ro ? '' : `<div class="row"><button class="btn primary" id="rSave" type="button">${r.id ? 'Save role' : 'Create role'}</button><span class="muted" id="rDirty"></span></div>`}`;
@@ -941,12 +955,16 @@ function setupTabs(available) {
     }
     if (tab === 'connections' && !$('connectionsTab').dataset.loaded) {
       $('connectionsTab').dataset.loaded = '1';
-      // Jamf and Intune live with Devices (inventory service), which draws them here.
-      const sc = document.createElement('script');
-      sc.src = '/devices/static/connections.js';
-      sc.onload = () => window.cpConnections.mount($('connectionsTab'));
-      sc.onerror = () => { $('connectionsTab').innerHTML = '<section class="card"><h2>Connections</h2><p class="sub">Couldn\'t load the connections. Is the inventory service running?</p></section>'; };
-      document.head.append(sc);
+      $('connectionsTab').innerHTML = '<div id="cxDevices"></div><div id="cxInt"></div>';
+      const load = (src, ready, where, what) => {
+        const sc = document.createElement('script');
+        sc.src = src; sc.onload = ready;
+        sc.onerror = () => { $(where).innerHTML = `<section class="card"><h2>${what}</h2><p class="sub">Couldn't load them. Is the service running?</p></section>`; };
+        document.head.append(sc);
+      };
+      // Jamf and Intune live with Devices (inventory service, for Devices admins); Jira with this portal (Manage integrations).
+      if (CX.devices) load('/devices/static/connections.js', () => window.cpConnections.mount($('cxDevices')), 'cxDevices', 'Device sources');
+      if (CX.integrations) load('/static/integrations.js', () => window.cpIntegrations.mount($('cxInt')), 'cxInt', 'Integrations');
     }
   };
   btns.forEach(b => b.onclick = () => show(b.dataset.stab));
@@ -960,7 +978,7 @@ window.cpRefresh = async () => {
   else if (tab === 'permissions' && !ROLE_DIRTY) await loadRoles(ROLE?.id);
   else if (tab === 'bin') await loadBin();
   else if (tab === 'apps') await loadApps();
-  else if (tab === 'connections') window.cpConnections?.refresh?.();
+  else if (tab === 'connections') { window.cpConnections?.refresh?.(); window.cpIntegrations?.refresh?.(); }
 };
 
 /* ---------- Start ---------- */
@@ -977,11 +995,14 @@ window.cpRefresh = async () => {
   const changesAdmin = (me.tools || []).some(t => t.id === 'changes' && t.level === 'admin');
   const devicesAdmin = (me.tools || []).some(t => t.id === 'devices' && t.level === 'admin');
   const adminOf = id => (me.tools || []).some(t => t.id === id && t.level === 'admin');
-  BIN_SOURCES = [...(can('people') && me.accounts ? [''] : []), ...(adminOf('projects') ? ['/projects'] : []), ...(adminOf('users') ? ['/users'] : [])];   // '' is this portal
+  // Each tool's deletions are for its own admins ('' is this portal: deleted people, for whoever manages people).
+  BIN_SOURCES = [...(can('people') && me.accounts ? [''] : []),
+                 ...['projects', 'tasks', 'team', 'changes', 'users'].filter(adminOf).map(t => '/' + t)];
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
-                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes', devicesAdmin && 'connections',
+                     can('people') && me.accounts && 'permissions', changesAdmin && 'changes', (devicesAdmin || can('integrations')) && 'connections',
                      (can('settings') || ['notifications', 'elevation', 'restart'].some(adminOf)) && 'apps',
                      BIN_SOURCES.length && 'bin'].filter(Boolean);
+  CX = { devices: devicesAdmin, integrations: can('integrations') };
   if (!available.length || (available.length === 1 && available[0] === 'account')) $('title').textContent = 'Your account';
   if (me.oidc) $('peopleSub').textContent += ` People sign in with ${me.provider}: only people on this list get in. Add them with the email they sign in with${me.directory ? `, or find them in ${me.directory}` : ''}.`;
   if (me.directory) $('udDir').textContent = me.directory;

@@ -1707,7 +1707,7 @@ async function regularDialog(opts = {}) {
         <div class="muted" style="font-size:12.5px;margin-top:2px">Keep it in the menu beside each person's name, to add again in the future.${opts.then && !w.id ? ' Leave it unticked for a one-off.' : ''}</div></div>
       <div class="notice" id="rgErr" hidden style="margin-top:12px"></div>
       <div class="lact"><button class="btn primary small" value="save">${w.id ? 'Save' : 'Add regular work'}</button><button class="btn small" type="button" id="rgBack">${opts.edit && !w.id ? 'Cancel' : 'Back'}</button>
-        <span style="flex:1"></span>${w.id ? '<button class="btn small danger" type="button" id="rgDel">Delete</button>' : ''}</div>
+        <span style="flex:1"></span>${w.id && ME.admin ? '<button class="btn small danger" type="button" id="rgDel">Delete</button>' : ''}</div>
     </form>`;
     const err = m => { $('rgErr').textContent = m; $('rgErr').hidden = !m; };
     $('rgBack').onclick = () => opts.edit && !w.id ? d.close() : showList();

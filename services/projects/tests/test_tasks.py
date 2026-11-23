@@ -482,7 +482,7 @@ def test_regular_work(c):
     assert (s["duration"], s["repeats"], s["note"]) == (2, [], "Mornings")
     c.patch(f"{R}/{w['id']}", headers=AMY, json={"title": "Ticket queue"})
     assert c.get(R, headers=AMY).json()["regularSlots"][0]["title"] == "Ticket queue"
-    gone = c.delete(f"{R}/{w['id']}", headers=AMY).json()
+    gone = c.delete(f"{R}/{w['id']}", headers=ADMIN).json()
     assert gone == {"regular": [], "regularSlots": []}   # who it was given to goes with it
 
 
@@ -494,3 +494,9 @@ def test_regular_work_save_and_reuse(c):
     assert (kept["saved"], once["saved"]) == (True, False)
     after = {w["id"]: w["saved"] for w in c.patch(f"{R}/{once['id']}", headers=AMY, json={"saved": True}).json()["regular"]}
     assert after == {kept["id"]: True, once["id"]: True}
+
+
+def test_regular_work_delete_is_for_admins(c):
+    w = c.post("/tasks/api/regular-work", headers=AMY, json={"title": "Ticket queue"}).json()["added"]
+    assert c.delete(f"/tasks/api/regular-work/{w['id']}", headers=AMY).status_code == 403
+    assert c.delete(f"/tasks/api/regular-work/{w['id']}", headers=ADMIN).json()["regular"] == []

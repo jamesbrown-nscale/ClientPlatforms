@@ -277,7 +277,7 @@ def test_roles_and_levels(c):
     sign_in(c)
     roles = c.get("/api/roles").json()
     assert roles["roles"][0]["id"] == "administrator" and roles["roles"][0]["system"]
-    assert roles["levels"] == ["none", "view", "edit", "admin"] and {p["id"] for p in roles["sitePerms"]} == {"people", "settings"}
+    assert roles["levels"] == ["none", "view", "edit", "admin"] and {p["id"] for p in roles["sitePerms"]} == {"people", "settings", "integrations"}
     # The Administrator role can't be changed or deleted.
     assert c.put("/api/roles/administrator", headers=H, json={"name": "x"}).status_code == 400
     assert c.delete("/api/roles/administrator", headers=H).status_code == 400
@@ -428,3 +428,38 @@ def test_users_ct_gets_users_levels_once(tmp_path):
     con.commit()
     db_mod.DB(path)
     assert {r["id"]: r["levels"] for r in d.roles()}["u"]["users-ct"] == "view"
+
+
+def test_jira_integration(c, monkeypatch):
+    """Settings → Connections → Jira: only for people with Manage integrations; the token is kept sealed."""
+    import base64
+    import httpx
+    from app import main
+
+    def jira(req: httpx.Request):
+        good = req.headers.get("authorization") == "Basic " + base64.b64encode(b"it@nscale.com:good-token").decode()
+        if req.url.path == "/rest/api/3/myself":
+            return httpx.Response(200, json={"displayName": "IT Bot"}) if good else httpx.Response(401, json={})
+        if req.url.path == "/rest/api/3/project/CP":
+            return httpx.Response(200, json={"name": "Client Platform"})
+        return httpx.Response(404, json={})
+    monkeypatch.setattr(main, "jira_client", lambda: httpx.Client(transport=httpx.MockTransport(jira)))
+    sign_in(c)
+    J = "/api/integrations"
+    assert c.get(J).json()["jira"]["connected"] is False   # the first admin has every ability
+    body = {"url": "nscale.atlassian.net", "email": "IT@nscale.com", "project": "cp"}
+    assert c.put(f"{J}/jira", headers=H, json=body).status_code == 422   # no token yet
+    r = c.put(f"{J}/jira", headers=H, json={**body, "token": "good-token"}).json()
+    assert r["ok"] and "IT Bot" in r["note"] and "Client Platform" in r["note"]
+    assert (r["jira"]["url"], r["jira"]["email"], r["jira"]["project"], r["jira"]["hasToken"]) == ("https://nscale.atlassian.net", "it@nscale.com", "CP", True)
+    assert "good-token" not in str(main.db.setting("jira"))   # sealed
+    assert c.post(f"{J}/jira/test", headers=H).json()["ok"]
+    bad = c.put(f"{J}/jira", headers=H, json={**body, "token": "bad"}).json()
+    assert not bad["ok"] and "API token" in bad["error"] and bad["jira"]["lastError"]
+    # Someone who manages settings but not integrations can't see it.
+    rid = c.post("/api/roles", headers=H, json={"name": "Site", "levels": {}, "perms": ["settings"]}).json()["id"]
+    r = c.post("/api/users", headers=H, json={"email": "site.only@nscale.com", "password": "a-good-password", "roles": [rid]}); assert r.status_code == 200, r.text
+    sign_in(c, "site.only@nscale.com", "a-good-password")
+    assert c.get(J).status_code == 403 and c.delete(f"{J}/jira", headers=H).status_code == 403
+    sign_in(c)
+    assert c.delete(f"{J}/jira", headers=H).json()["jira"]["connected"] is False

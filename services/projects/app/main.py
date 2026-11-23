@@ -21,8 +21,9 @@ Settings: DATABASE_PATH, AUTH_MODE, AUTH_SECRET, PORTAL_URL, BASE_PATH.
 """
 import os
 import re
-from urllib.parse import quote, unquote
 from pathlib import Path
+from typing import Callable
+from urllib.parse import quote, unquote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -569,14 +570,18 @@ def _back_to_meeting(pid: str, action: dict, user: User) -> None:
         store.update_item(pid, meeting["id"], {**meeting["data"], "actions": rows}, user.email)
 
 
-def _bin_admin(user: User = Depends(require_user)) -> str:
-    """The recycle bin (Projects, Team Planning, Team, Change management) is for Projects admins."""
-    if not user.admin:
-        raise HTTPException(403, "Only admins can see the recycle bin.")
-    return user.email
+def _bin_admin_of(require: Callable) -> Callable:
+    """Each tool's deletions are for that tool's admins: Projects at /projects/api/bin, Team Planning at
+    /tasks/api/bin, Client Platform Team at /team/api/bin, Change management at /changes/api/bin."""
+    def admin(user: User = Depends(require)) -> str:
+        if not user.admin:
+            raise HTTPException(403, "Only admins can see the recycle bin.")
+        return user.email
+    return admin
 
 
-app.include_router(recycle.router(lambda: store.bin, _bin_admin))
+_bin_admin = _bin_admin_of(require_user)
+app.include_router(recycle.router(lambda: store.bin, _bin_admin, tool="projects"))
 
 
 @app.exception_handler(HTTPException)
@@ -591,10 +596,12 @@ def _http_error(request: Request, exc: HTTPException):
 tasks_app = FastAPI(title="Nscale Tasks", docs_url=None, redoc_url=None, openapi_url=None)
 tasks_app.mount("/static", StaticFiles(directory=STATIC), name="static")
 tasks_app.include_router(tasks.router)
+tasks_app.include_router(recycle.router(lambda: store.bin, _bin_admin_of(auth.require_task_user), tool="tasks"))
 tasks_app.add_exception_handler(HTTPException, _http_error)
 team_app = FastAPI(title="Nscale Team", docs_url=None, redoc_url=None, openapi_url=None)
 team_app.mount("/static", StaticFiles(directory=STATIC), name="static")
 team_app.include_router(team.router)
+team_app.include_router(recycle.router(lambda: store.bin, _bin_admin_of(auth.require_team_user), tool="team"))
 team_app.add_exception_handler(HTTPException, _http_error)
 inbox_app = FastAPI(title="Nscale notifications", docs_url=None, redoc_url=None, openapi_url=None)
 inbox_app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -603,6 +610,7 @@ inbox_app.add_exception_handler(HTTPException, _http_error)
 changes_app = FastAPI(title="Nscale Change management", docs_url=None, redoc_url=None, openapi_url=None)
 changes_app.mount("/static", StaticFiles(directory=STATIC), name="static")
 changes_app.include_router(changes.router)
+changes_app.include_router(recycle.router(lambda: store.bin, _bin_admin_of(auth.require_changes_user), tool="changes"))
 changes_app.add_exception_handler(HTTPException, _http_error)
 
 _projects = app

@@ -1,5 +1,5 @@
-/* Settings → Connections: Jamf Pro and Microsoft Intune, where Devices reads its devices from;
- * and integrations with other systems (Jira).
+/* Settings → Connections: Jamf Pro and Microsoft Intune, where Devices reads its devices from.
+ * (Integrations are the portal's: /static/integrations.js.)
  *
  * Served by the inventory service at /devices/static/connections.js and shown in the portal's
  * Settings → Connections tab:  window.cpConnections.mount(element)
@@ -7,12 +7,11 @@
  * set or replace one, never read it back.
  */
 (() => {
-  const API = '/devices/api/connections', IAPI = '/devices/api/integrations';
+  const API = '/devices/api/connections';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const when = s => s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
   const LOGO = {
     jamf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
-    jira: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 12l9 9 9-9-9-9Z"/><path d="m12 8-4 4 4 4 4-4-4-4Z"/></svg>',
     intune: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>',
   };
   const INFO = {
@@ -75,7 +74,7 @@
     return data;
   }
 
-  let ROOT, ITEMS = [], EVERY = 60, JIRA = null;
+  let ROOT, ITEMS = [], EVERY = 60;
   const NOTE = {};
 
   function badge(c) {
@@ -120,70 +119,8 @@
     </section>`;
   }
 
-  function jiraCard(j) {
-    const st = !j.connected ? '<span class="st">Not connected</span>' : j.lastError ? '<span class="st err">Not working</span>'
-      : j.lastOk ? '<span class="st ok">Connected</span>' : '<span class="st">Not checked yet</span>';
-    const status = !j.connected || NOTE.jira ? '' : j.lastError ? `<div class="status err"><b>Last check ${esc(when(j.lastCheck))}:</b> ${esc(j.lastError)}</div>`
-      : j.lastOk ? `<div class="status">Checked ${esc(when(j.lastOk))}. ${esc(j.lastNote)}</div>` : '';
-    return `<section class="card" data-int="jira">
-      <div class="top"><span class="logo">${LOGO.jira}</span><div style="flex:1;min-width:0">
-        <h2>Jira ${st}</h2><p class="sub">Jira Cloud, signed in with an Atlassian account and an API token.</p></div></div>
-      ${status}
-      <form autocomplete="off">
-        <div class="grid">
-          <div><label class="l" for="cx-jira-url">Jira address</label><input id="cx-jira-url" data-k="url" type="text" placeholder="https://yourcompany.atlassian.net" value="${esc(j.url)}" autocomplete="off" spellcheck="false"></div>
-          <div><label class="l" for="cx-jira-project">Project key <span style="font-weight:400;color:#3B404E">(optional)</span></label><input id="cx-jira-project" data-k="project" type="text" placeholder="e.g. CP" value="${esc(j.project)}" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
-            <div class="hint">The project to work with, e.g. the Client Platform queue.</div></div>
-          <div><label class="l" for="cx-jira-email">Account email</label><input id="cx-jira-email" data-k="email" type="text" placeholder="it-automation@nscale.com" value="${esc(j.email)}" autocomplete="off" spellcheck="false"></div>
-          <div><label class="l" for="cx-jira-token">API token</label>
-            <input id="cx-jira-token" data-k="token" type="password" autocomplete="new-password" placeholder="${j.hasToken ? 'Saved: leave blank to keep it' : ''}">
-            <div class="hint">${j.hasToken ? 'Kept encrypted. Type a new one only to replace it.' : 'Kept encrypted, and never shown again.'}</div></div>
-        </div>
-        <div class="row">
-          <button class="btn primary" type="submit">${j.connected ? 'Save' : 'Connect'}</button>
-          ${j.connected ? '<button class="btn" type="button" data-act="check">Check connection</button>' : ''}
-          <span class="sp"></span>
-          ${j.connected ? '<button class="btn danger" type="button" data-act="remove">Disconnect</button>' : ''}
-        </div>
-        ${NOTE.jira ? `<div class="note ${NOTE.jira.ok ? 'ok' : 'err'}" role="status">${esc(NOTE.jira.text)}</div>` : ''}
-      </form>
-      <details${j.connected ? '' : ' open'}><summary>How to set this up</summary><ol>
-        <li>Sign in to Atlassian as the account Client Platforms should use (ideally a service account with access to the project).</li>
-        <li>Go to <b>id.atlassian.com → Security → Create and manage API tokens</b>, and <b>Create API token</b> (e.g. "Client Platforms").</li>
-        <li>Paste your Jira address, that account's email and the token here. Add the project key if you'll work with one project (e.g. <b>CP</b>).</li>
-        <li>The token can do what that account can do in Jira, so give the account only the access it needs.</li></ol></details>
-    </section>`;
-  }
-
-  function wireJira() {
-    const sec = ROOT.querySelector('section[data-int="jira"]');
-    if (!sec) return;
-    const form = sec.querySelector('form'), val = k => form.querySelector(`[data-k="${k}"]`).value;
-    const done = r => { JIRA = r.jira; if ('ok' in r) NOTE.jira = r.ok ? { ok: true, text: `Connected. ${r.note}` } : { ok: false, text: r.error }; draw(); };
-    form.onsubmit = async e => {
-      e.preventDefault();
-      const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
-      NOTE.jira = null;
-      try { done(await api(`${IAPI}/jira`, { method: 'PUT', body: JSON.stringify({ url: val('url'), email: val('email'), project: val('project'), token: val('token') || null }) })); }
-      catch (err) { NOTE.jira = { ok: false, text: err.message }; draw(); }
-    };
-    sec.querySelector('[data-act=check]')?.addEventListener('click', async () => {
-      NOTE.jira = { ok: true, text: 'Signing in to Jira…' }; draw();
-      try { done(await api(`${IAPI}/jira/test`, { method: 'POST' })); } catch (err) { NOTE.jira = { ok: false, text: err.message }; draw(); }
-    });
-    sec.querySelector('[data-act=remove]')?.addEventListener('click', async () => {
-      const ok = await (window.cp?.confirm ? cp.confirm({ title: 'Disconnect Jira?', message: 'Its saved address, email and API token are deleted.', confirm: 'Disconnect', danger: true })
-        : Promise.resolve(confirm('Disconnect Jira?')));
-      if (!ok) return;
-      try { JIRA = (await api(`${IAPI}/jira`, { method: 'DELETE' })).jira; NOTE.jira = { ok: true, text: 'Disconnected.' }; } catch (err) { NOTE.jira = { ok: false, text: err.message }; }
-      draw();
-    });
-  }
-
   function draw() {
-    ROOT.innerHTML = `<div class="cx"><h3 class="cxh">Device sources</h3><p class="intro">Devices reads every device from these, read only. A user's primary device is picked from them on the Users page.</p>${ITEMS.map(card).join('')}
-      ${JIRA ? `<h3 class="cxh">Integrations</h3><p class="intro">Other systems Client Platforms works with.</p>${jiraCard(JIRA)}` : ''}</div>`;
-    wireJira();
+    ROOT.innerHTML = `<div class="cx"><h3 class="cxh">Device sources</h3><p class="intro">Devices reads every device from these, read only. A user's primary device is picked from them on the Users page.</p>${ITEMS.map(card).join('')}</div>`;
     ROOT.querySelectorAll('section[data-kind]').forEach(sec => {
       const kind = sec.dataset.kind;
       const form = sec.querySelector('form');
@@ -240,8 +177,8 @@
     }
     el.innerHTML = '<section class="card"><p class="sub">Loading…</p></section>';
     try {
-      const [r, i] = await Promise.all([api(API), api(IAPI).catch(() => null)]);
-      ITEMS = r.items; EVERY = r.syncMinutes || 60; JIRA = i?.jira || null;
+      const r = await api(API);
+      ITEMS = r.items; EVERY = r.syncMinutes || 60;
       draw();
     } catch (err) {
       el.innerHTML = `<section class="card"><h2>Connections</h2><p class="sub">${esc(err.message)}</p></section>`;
