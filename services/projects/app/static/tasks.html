@@ -566,6 +566,14 @@ const subKey = (email, pid) => `${email}|${pid}`;
 const CLOSED = new Set();   // headings you folded yourself, which stay folded even while one of their jobs is open
 const isOpenSub = (email, p, js) => { const k = subKey(email, p.id);
   return EXPANDED.has(k) || (!CLOSED.has(k) && OPEN?.id === p.id && js.some(j => j.id === JOBOPEN)); };
+/** A plan heading: its arrow folds and unfolds; anywhere else opens the plan on the right, unfolded. */
+function headClick(e, el) {
+  if (e.target.closest('[data-psub]')) return;
+  if (e.target.closest('.chev') || !el.dataset.hplan) { toggleSub(el.dataset.sub, el); return; }
+  if (el.getAttribute('aria-expanded') !== 'true') { EXPANDED.add(el.dataset.sub); CLOSED.delete(el.dataset.sub); try { localStorage.setItem('cp.tl.open', JSON.stringify([...EXPANDED])); } catch {} }
+  openTask(el.dataset.hplan);
+}
+
 function toggleSub(key, el) {
   const shown = el?.getAttribute('aria-expanded') === 'true';
   if (shown) { EXPANDED.delete(key); CLOSED.add(key); } else { EXPANDED.add(key); CLOSED.delete(key); }
@@ -601,7 +609,7 @@ function drawPeople() {
     const jobs = byPlan(g.jobs).map(({ p, jobs: js }) => {
       const open = js.filter(j => j.status !== 'Done').length;
       const ex = isOpenSub(g.email, p, js);
-      return `<div class="psub" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}<span class="muted" style="font-weight:400;font-size:12px">${open} open</span></div>` +
+      return `<div class="psub" data-sub="${esc(subKey(g.email, p.id))}" data-hplan="${esc(p.id)}" role="button" tabindex="0" aria-expanded="${ex}" title="Open ${esc(p.title)} and its jobs (the arrow ${ex ? 'hides' : 'shows'} them here)"><span class="chev" title="${ex ? 'Hide' : 'Show'} the jobs">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}<span class="muted" style="font-weight:400;font-size:12px">${open} open</span></div>` +
       (ex ? js : []).map(j => {
       const done = j.status === 'Done', late = !done && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
       const meta = [
@@ -623,7 +631,7 @@ function drawPeople() {
     r.onkeydown = e => { if (e.key === 'Enter') openTask(r.dataset.plan, r.dataset.job); };
   });
   $('rows').querySelectorAll('.psub[data-sub]').forEach(r => {
-    r.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(r.dataset.sub, r); };
+    r.onclick = e => headClick(e, r);
     r.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === r) { e.preventDefault(); toggleSub(r.dataset.sub, r); } };
   });
   $('rows').querySelectorAll('[data-psub]').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.psub); });
@@ -1401,7 +1409,7 @@ function drawCal() {
     const late = p.due && p.due < t0;
     const due = p.due ? `<div class="diamond ${late ? 'late' : ''}" style="left:${x(p.due) + DW / 2}px;${cv}" data-open="${esc(p.id)}" title="${esc(p.ref)} ${esc(p.title)} is due ${esc(fmtDay(p.due))}${late ? ' (overdue)' : ''}"></div>` : '';
     rows += `<div class="tlrow tlgroup ${gsel ? 'sel' : ''}" style="min-height:36px">
-      <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey('plan', p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} the jobs · ${left} open${p.project ? ' · ' + esc(p.project) : ''}"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}
+      <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey('plan', p.id))}" data-hplan="${esc(p.id)}" role="button" tabindex="0" aria-expanded="${ex}" title="Open ${esc(p.title)} and its jobs · ${left} open${p.project ? ' · ' + esc(p.project) : ''}"><span class="chev" title="${ex ? 'Hide' : 'Show'} the jobs">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}
         ${canAdd ? `<button type="button" class="tladd" data-add="${esc(p.id)}" title="Add a job to ${esc(p.title)}" aria-label="Add a job to ${esc(p.title)}">+</button>` : ''}</div>
       <div class="tltrack ${canAdd ? 'pick' : ''}" style="width:${W}px" data-plan="${esc(p.id)}" ${canAdd ? 'title="Click a day to add a job starting then"' : ''}>${spanBar}${due}</div></div>`;
     if (!ex) continue;
@@ -1438,7 +1446,7 @@ function drawCal() {
         const spanBar = a ? spanPieces(a, b, colourOf(p.id)[0], x) : '';
         const can = p.canChange, gsel = OPEN?.id === p.id && !JOBOPEN, ex = isOpenSub(g.email, p, js), left = js.filter(j => j.status !== 'Done').length;
         rows += `<div class="tlrow tlsub ${gsel ? 'sel' : ''}" data-grp="${esc(g.email)}" style="min-height:34px">
-          <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" role="button" tabindex="0" aria-expanded="${ex}" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`} · ${left} open"><span class="chev">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}</div>
+          <div class="tllab" style="width:${LEFT}px" data-sub="${esc(subKey(g.email, p.id))}" data-hplan="${esc(p.id)}" role="button" tabindex="0" aria-expanded="${ex}" title="Open ${esc(p.title)} and its jobs · ${left} open"><span class="chev" title="${ex ? 'Hide' : 'Show'} ${js.length === 1 ? 'the job' : `the ${js.length} jobs`}">▶</span><span class="sq" style="background:${colourOf(p.id)[0]}"></span><span class="gt">${esc(p.title)}</span><button type="button" class="refbtn" data-psub="${esc(p.id)}" title="Open ${esc(p.ref)} ${esc(p.title)}">${esc(p.ref)}</button>${planBar(p)}</div>
           <div class="tltrack ${can ? 'pick' : ''}" style="width:${W}px" ${can ? `data-subplan="${esc(p.id)}" data-person="${esc(g.email)}" title="Click a day to add a job in ${esc(p.title)} for ${esc(g.name)} starting then"` : ''}>${spanBar}</div></div>`;
         if (ex) for (const j of js) rows += jobRow(p, j, true, g.email);
       }
@@ -1645,7 +1653,7 @@ function wireTimeline() {
   g.querySelectorAll('.tlleave').forEach(b => b.onclick = e => { e.stopPropagation(); const l = (CAL.leave || []).find(x => x.id === b.dataset.leave); if (l) leaveDialog(l); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
-    l.onclick = e => { if (!e.target.closest('[data-psub]')) toggleSub(l.dataset.sub, l); };
+    l.onclick = e => headClick(e, l);
     l.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === l) { e.preventDefault(); toggleSub(l.dataset.sub, l); } };
   });
   g.querySelectorAll('.tllab [data-psub]').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.psub); });
