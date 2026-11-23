@@ -751,11 +751,19 @@ function drawRows() {
 }
 
 /* ---------- One plan ---------- */
-async function openTask(id, job = null) {
+async function openTask(id, job = null, at = null) {
   try {
     if (OPEN?.id !== id) { KIND = 'comment'; ANSWERING = null; }
     OPEN = await api('tasks/' + id); if (job && job !== JOBOPEN) CLOSED.clear(); JOBOPEN = job; NEWSTART = ''; NEWASSIGNEE = '';
-    showDetail(); drawDetail(); drawRows(); if (MODE === 'timeline') drawCal(); save();
+    showDetail(); drawDetail(); drawRows();
+    if (MODE === 'timeline') {
+      // The timeline moves so the job you clicked (or the repeat of it) sits in the middle of what's shown.
+      const j = job && OPEN.jobs.find(x => x.id === job);
+      const r = at && (j?.repeats || []).find(x => x.start === at);
+      if (j?.start) centreOn((r || j).start, (r || j).end);
+      drawCal();
+    }
+    save();
     if (job) document.querySelector(`.job[data-job="${CSS.escape(job)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
   catch (e) { showDetail(); $('detail').innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
@@ -988,7 +996,11 @@ function wireJobs() {
   box.querySelectorAll('[data-toggle]').forEach(h => h.onclick = e => {
     if (e.target.closest('[data-jdone], [data-sfirst]')) return;
     JOBOPEN = JOBOPEN === h.dataset.toggle ? null : h.dataset.toggle; drawDetail(); save();
-    if (MODE === 'timeline') drawCal();
+    if (MODE === 'timeline') {
+      const j = JOBOPEN && t.jobs.find(x => x.id === JOBOPEN);
+      if (j?.start) centreOn(j.start, j.end);
+      drawCal();
+    }
   });
   box.querySelectorAll('[data-jdone]').forEach(b => b.onclick = async e => {
     e.stopPropagation();
@@ -1326,6 +1338,11 @@ function zoom(dir) {
   DW = next; const m = Math.ceil(avail() / DW);
   RS = addDays(mid, -Math.floor(m / 2)); RE = addDays(RS, m - 1); FIT = WEEKS = false; drawCal(); save();
 }
+/** Put these days in the middle of the timeline, at the zoom you're on. */
+function centreOn(start, end) {
+  const m = Math.max(1, Math.ceil(avail() / DW)), len = between(start, end || start) + 1;
+  RS = addDays(start, -Math.max(1, Math.floor((m - len) / 2))); RE = addDays(RS, m - 1); FIT = WEEKS = false;
+}
 function shift(dir) { const n = between(RS, RE) + 1, by = Math.max(1, Math.round(n / 3)); RS = addDays(RS, dir * by); RE = addDays(RE, dir * by); FIT = WEEKS = false; drawCal(); save(); }
 function goToday() { threeWeeks(); drawCal(); save(); }   // back to this week and the next two
 
@@ -1370,7 +1387,7 @@ function drawCal() {
            data-plan="${esc(p.id)}" data-job="${esc(j.id)}"${owner !== null ? ` data-owner="${esc(owner)}"` : ''} data-label="${esc(label)}" data-pc="${pc ?? ''}" title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\n${esc(span(j.start, j.end))} (${days(j.duration)})${who ? '\n' + esc(jobNames(j)) : ''}\n${esc(saidJob(j))}${p.canChange ? '\nDrag to move; drag its right edge to change how long' : ''}">${barPieces(j.start, j.end, label, pc, p.canChange)}</div>` : '';
     // A recurring job's later repeats: dashed bars of the same length; click one to open the job.
     const reps = (j.repeats || []).filter(r => r.end >= RS && r.start <= end).map(r =>
-      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}"
+      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}" data-rstart="${esc(r.start)}"
         title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\nRepeats ${esc(recurWord(j).toLowerCase())}: ${esc(span(r.start, r.end))}${who ? '\n' + esc(jobNames(j)) : ''}\nChange it on the first one">↻ ${esc(j.title)}</div>`).join('');
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}"${owner !== null ? ` data-grp="${esc(owner)}"` : ''} style="min-height:${byPerson ? 44 : 48}px">
       <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
@@ -1624,7 +1641,7 @@ function wireTimeline() {
     openTask(el.dataset.open, el.dataset.job || null);
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
-  g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob); });
+  g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob, b.dataset.rstart); });
   g.querySelectorAll('.tlleave').forEach(b => b.onclick = e => { e.stopPropagation(); const l = (CAL.leave || []).find(x => x.id === b.dataset.leave); if (l) leaveDialog(l); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
