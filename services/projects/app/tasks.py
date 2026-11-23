@@ -1131,6 +1131,191 @@ def delete_leave(lid: str, user: User = Depends(require_task_user)):
     return {"ok": True}
 
 
+# ---------- Regular work: the team's standing duties (a ticket queue, a weekly check), given to people
+# like leave: on their own row of the timeline, never as a job in a plan. ----------
+
+class RegularIn(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    duration: float | None = Field(default=None, ge=0.5, le=365)
+    recur: str | None = Field(default=None, max_length=20)
+    description: str | None = Field(default=None, max_length=10000)
+    note: str | None = Field(default=None, max_length=10000)
+
+
+class SlotIn(BaseModel):
+    workId: str | None = Field(default=None, max_length=64)
+    email: str | None = Field(default=None, max_length=254)
+    start: str | None = None
+    duration: float | None = Field(default=None, ge=0.5, le=365)
+    recur: str | None = Field(default=None, max_length=20)
+    recurUntil: str | None = Field(default=None, max_length=10)
+    note: str | None = Field(default=None, max_length=200)
+
+
+def _num(v):
+    return int(v) if v == int(v) else v
+
+
+def _halves(v: float) -> float:
+    if v * 2 != int(v * 2):
+        raise HTTPException(422, "Duration is in whole or half days: 0.5, 1, 1.5 …")
+    return _num(v)
+
+
+def _recur_ok(v: str) -> str:
+    if v and v not in RECUR:
+        raise HTTPException(422, f"How often must be one of: {', '.join(RECUR.values())}.")
+    return v
+
+
+def _regular(r) -> dict:
+    return {"id": r["id"], "title": r["title"], "duration": _num(r["duration"] or 1), "recur": r["recur"] or "",
+            "description": r["description"] or "", "note": r["note"] or "", "createdBy": r["created_by"], "updatedAt": r["updated_at"]}
+
+
+def _slot(r, titles: dict) -> dict:
+    dur = _num(r["duration"] or 1)
+    return {"id": r["id"], "workId": r["work_id"], "title": titles.get(r["work_id"], ""), "email": r["email"], "name": r["name"],
+            "start": r["start"], "duration": dur, "end": end_of(r["start"], dur), "recur": r["recur"] or "",
+            "recurUntil": r["recur_until"] or "", "note": r["note"] or "",
+            "repeats": repeats(r["start"], dur, r["recur"] or "", r["recur_until"] or "")}
+
+
+def regular_all() -> dict:
+    with store().db() as db:
+        work = [_regular(r) for r in db.execute("SELECT * FROM regular_work ORDER BY title COLLATE NOCASE")]
+        titles = {w["id"]: w["title"] for w in work}
+        slots = [_slot(r, titles) for r in db.execute("SELECT * FROM regular_slots ORDER BY start")]
+    return {"regular": work, "regularSlots": slots}
+
+
+def _found_regular(wid: str) -> dict:
+    with store().db() as db:
+        r = db.execute("SELECT * FROM regular_work WHERE id = ?", (wid,)).fetchone()
+    if not r:
+        raise HTTPException(404, "That regular work isn't there any more.")
+    return _regular(r)
+
+
+@router.get("/api/regular-work")
+def list_regular(user: User = Depends(require_task_user)):
+    return regular_all()
+
+
+@router.post("/api/regular-work")
+def add_regular(body: RegularIn, user: User = Depends(require_task_user)):
+    title = (body.title or "").strip()
+    if not title:
+        raise HTTPException(422, "Give the regular work a title.")
+    wid, stamp = uuid.uuid4().hex, now()
+    with store().lock, store().db() as db:
+        db.execute("INSERT INTO regular_work (id, title, duration, recur, description, note, created_by, created_at, updated_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (wid, title, _halves(body.duration or 1), _recur_ok(body.recur or ""), (body.description or "").strip(),
+                    (body.note or "").strip(), user.email, stamp, stamp))
+    return {**regular_all(), "added": _found_regular(wid)}
+
+
+@router.patch("/api/regular-work/{wid}")
+def change_regular(wid: str, body: RegularIn, user: User = Depends(require_task_user)):
+    w = _found_regular(wid)
+    if body.title is not None:
+        if not body.title.strip():
+            raise HTTPException(422, "Give the regular work a title.")
+        w["title"] = body.title.strip()
+    if body.duration is not None:
+        w["duration"] = _halves(body.duration)
+    if body.recur is not None:
+        w["recur"] = _recur_ok(body.recur)
+    for k in ("description", "note"):
+        if getattr(body, k) is not None:
+            w[k] = getattr(body, k).strip()
+    with store().lock, store().db() as db:
+        db.execute("UPDATE regular_work SET title = ?, duration = ?, recur = ?, description = ?, note = ?, updated_at = ? WHERE id = ?",
+                   (w["title"], w["duration"], w["recur"], w["description"], w["note"], now(), wid))
+    return regular_all()
+
+
+@router.delete("/api/regular-work/{wid}")
+def delete_regular(wid: str, user: User = Depends(require_task_user)):
+    _found_regular(wid)
+    with store().lock, store().db() as db:
+        db.execute("DELETE FROM regular_slots WHERE work_id = ?", (wid,))   # who it was given to goes with it
+        db.execute("DELETE FROM regular_work WHERE id = ?", (wid,))
+    return regular_all()
+
+
+def _slot_fields(body: SlotIn, old: dict | None = None) -> dict:
+    f = dict(old or {})
+    if body.workId is not None:
+        f["workId"] = _found_regular(body.workId)["id"]
+    if body.email is not None:
+        email, name = _sub_person(body.email)
+        if not email:
+            raise HTTPException(422, "Who is doing it? Pick someone.")
+        f["email"], f["name"] = email, name
+    if body.start is not None:
+        try:
+            f["start"] = workday(date.fromisoformat(body.start)).isoformat()
+        except ValueError:
+            raise HTTPException(422, "Pick the first day.")
+    if body.duration is not None:
+        f["duration"] = _halves(body.duration)
+    if body.recur is not None:
+        f["recur"] = _recur_ok(body.recur)
+    if body.recurUntil is not None:
+        if body.recurUntil:
+            try:
+                date.fromisoformat(body.recurUntil)
+            except ValueError:
+                raise HTTPException(422, "Repeat until must be a date.")
+        f["recurUntil"] = body.recurUntil
+    if body.note is not None:
+        f["note"] = re.sub(r"\s+", " ", body.note).strip()
+    if not f.get("workId") or not f.get("email") or not f.get("start"):
+        raise HTTPException(422, "Regular work needs what it is, who's doing it and a first day.")
+    return f
+
+
+def _found_slot(sid: str) -> dict:
+    with store().db() as db:
+        r = db.execute("SELECT * FROM regular_slots WHERE id = ?", (sid,)).fetchone()
+    if not r:
+        raise HTTPException(404, "That regular work isn't on their timeline any more.")
+    return _slot(r, {})
+
+
+@router.post("/api/regular-slots")
+def add_slot(body: SlotIn, user: User = Depends(require_task_user)):
+    f = _slot_fields(body)
+    w = _found_regular(f["workId"])
+    sid, stamp = uuid.uuid4().hex, now()
+    with store().lock, store().db() as db:
+        db.execute("INSERT INTO regular_slots (id, work_id, email, name, start, duration, recur, recur_until, note, created_by, created_at, updated_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (sid, f["workId"], f["email"], f["name"], f["start"], f.get("duration", w["duration"]), f.get("recur", w["recur"]),
+                    f.get("recurUntil", ""), f.get("note", ""), user.email, stamp, stamp))
+    return regular_all()
+
+
+@router.patch("/api/regular-slots/{sid}")
+def change_slot(sid: str, body: SlotIn, user: User = Depends(require_task_user)):
+    f = _slot_fields(body, _found_slot(sid))
+    with store().lock, store().db() as db:
+        db.execute("UPDATE regular_slots SET work_id = ?, email = ?, name = ?, start = ?, duration = ?, recur = ?, recur_until = ?, "
+                   "note = ?, updated_at = ? WHERE id = ?",
+                   (f["workId"], f["email"], f["name"], f["start"], f["duration"], f["recur"], f["recurUntil"], f["note"], now(), sid))
+    return regular_all()
+
+
+@router.delete("/api/regular-slots/{sid}")
+def delete_slot(sid: str, user: User = Depends(require_task_user)):
+    _found_slot(sid)
+    with store().lock, store().db() as db:
+        db.execute("DELETE FROM regular_slots WHERE id = ?", (sid,))
+    return regular_all()
+
+
 @router.get("/api/reusable-jobs")
 def reusable_jobs(user: User = Depends(require_task_user)):
     """Jobs marked Reusable, in plans you can see (finished plans too): the starting points Add job offers.
@@ -1171,4 +1356,4 @@ def timeline(project: str = "", mine: bool = False, done: bool = False, user: Us
                     "jobs": jobs})
     out.sort(key=lambda p: (p["start"] or p["due"] or "9999", p["ref"]))
     # Leave from the last year onwards: drawn on each person's own row, never as a job.
-    return {"plans": out, "leave": leave_from((date.today() - timedelta(days=365)).isoformat())}
+    return {"plans": out, "leave": leave_from((date.today() - timedelta(days=365)).isoformat()), **regular_all()}

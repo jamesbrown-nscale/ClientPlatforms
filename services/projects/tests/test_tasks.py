@@ -457,3 +457,30 @@ def test_reusable_jobs(c):
     assert [x["reusable"] for x in copy] == [True, False, False]
     assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"reusable": False}).json()["jobs"][0]["reusable"] is False
     assert c.get("/tasks/api/reusable-jobs", headers=AMY).json()["items"] == []
+
+
+def test_regular_work(c):
+    """Regular work: set up once, then given to people like leave, shown on their row of the timeline."""
+    from datetime import date, timedelta
+    R = "/tasks/api/regular-work"
+    assert c.post(R, headers=AMY, json={"title": " "}).status_code == 422
+    assert c.post(R, headers=AMY, json={"title": "Tickets", "recur": "daily"}).status_code == 422
+    r = c.post(R, headers=AMY, json={"title": "Client Platform Tickets", "duration": 1, "recur": "weekly",
+                                     "description": "The Jira queue"}).json()
+    w = r["added"]
+    assert (w["title"], w["duration"], w["recur"]) == ("Client Platform Tickets", 1, "weekly")
+    nxt = date.today() + timedelta(days=(7 - date.today().weekday()))   # next Monday
+    S = "/tasks/api/regular-slots"
+    assert c.post(S, headers=AMY, json={"workId": w["id"], "start": nxt.isoformat()}).status_code == 422   # who?
+    got = c.post(S, headers=AMY, json={"workId": w["id"], "email": "bob.smith@nscale.com", "start": nxt.isoformat()}).json()
+    s = got["regularSlots"][0]
+    assert (s["title"], s["email"], s["duration"], s["recur"], s["end"]) == ("Client Platform Tickets", "bob.smith@nscale.com", 1, "weekly", nxt.isoformat())
+    assert s["repeats"][0]["start"] == (nxt + timedelta(days=7)).isoformat()
+    tl = c.get("/tasks/api/timeline", headers=AMY).json()
+    assert [x["id"] for x in tl["regularSlots"]] == [s["id"]] and tl["regular"][0]["title"] == "Client Platform Tickets"
+    s = c.patch(f"{S}/{s['id']}", headers=AMY, json={"duration": 2, "recur": "", "note": "Mornings"}).json()["regularSlots"][0]
+    assert (s["duration"], s["repeats"], s["note"]) == (2, [], "Mornings")
+    c.patch(f"{R}/{w['id']}", headers=AMY, json={"title": "Ticket queue"})
+    assert c.get(R, headers=AMY).json()["regularSlots"][0]["title"] == "Ticket queue"
+    gone = c.delete(f"{R}/{w['id']}", headers=AMY).json()
+    assert gone == {"regular": [], "regularSlots": []}   # who it was given to goes with it

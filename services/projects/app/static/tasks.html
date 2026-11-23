@@ -364,6 +364,26 @@
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; z-index: 1; box-sizing: border-box; }
   .tlleave:hover { border-color: #C98A12; }
   .planmenu button.pmleave { color: #8A5300; font-weight: 600; }
+  .tlreg { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; background: repeating-linear-gradient(135deg, #E6EDFF 0 6px, #D6E1FF 6px 12px);
+    border: 1px solid #9DB4F2; color: #1F3C9A; font-size: 11.5px; font-weight: 600; line-height: 1; padding: 0 6px; display: flex; align-items: center;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; z-index: 1; box-sizing: border-box; }
+  .tlreg.rep { border-style: dashed; opacity: .85; }
+  .tlreg:hover { border-color: #0F41F3; }
+  .planmenu button.pmreg { color: #1F3C9A; font-weight: 600; flex-direction: column; align-items: flex-start; gap: 1px; }
+  .planmenu button.pmreg .pmm { max-width: 100%; }
+  .planmenu button.pmreg.new { font-weight: 500; color: var(--primary); }
+  dialog.regdlg { width: min(640px, calc(100vw - 32px)); }
+  .regdlg .rlist { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .regdlg .ritem { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid var(--surface); background: #fff; text-align: left; font: inherit; cursor: pointer; }
+  .regdlg .ritem:first-child { border-top: 0; }
+  .regdlg .ritem:hover { background: var(--surface); }
+  .regdlg .ritem .rt { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .regdlg .ritem .muted { font-size: 12.5px; white-space: nowrap; }
+  .regdlg .rempty { padding: 14px; color: var(--muted); }
+  .regdlg textarea { width: 100%; min-height: 70px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; background: #fff; box-sizing: border-box; resize: vertical; }
+  .regdlg select { height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; background: #fff; font: inherit; }
+  .regdlg .rchk { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; margin: 0; }
+  .regdlg .rchk input { width: auto; height: auto; }
   dialog.leavedlg { border: 0; border-radius: 14px; padding: 0; width: min(420px, calc(100vw - 32px)); background: #FDFFF8; box-shadow: 0 24px 64px rgba(4,14,39,.28); }
   dialog.leavedlg::backdrop { background: rgba(4,14,39,.45); }
   .leavedlg form { padding: 22px 24px 18px; }
@@ -415,7 +435,7 @@
         <button type="button" data-mode="all" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 1.5 1.5L11 8M7 15l1.5 1.5L11 14M14 9.5h4M14 15.5h4"/></svg><span>All Tasks</span></button>
         <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
         <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
-      </div><button class="btn primary" id="newBtn">New plan</button></div>
+      </div><button class="btn" id="regBtn" type="button" title="The team's standing duties (a ticket queue, a weekly check): set them up here, then give them to people from the + beside their name">Regular work</button><button class="btn primary" id="newBtn">New plan</button></div>
     <div class="tabs" id="tabs" role="toolbar" aria-label="Show"></div>
     <div class="filters" id="filters">
       <select id="listGroup" aria-label="Group"><option value="person">By person</option><option value="plan">By plan</option></select>
@@ -438,6 +458,7 @@
         <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
         <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
       </div>
+      <button class="btn" id="regBtn2" type="button" title="The team's standing duties (a ticket queue, a weekly check): set them up here, then give them to people from the + beside their name">Regular work</button>
       <button class="btn primary" id="newBtn2">New plan</button>
     </div>
     <div class="tlbar">
@@ -1510,6 +1531,15 @@ function drawCal() {
         busy += `<div class="tlleave" data-leave="${esc(l.id)}" style="left:${x(a) + 1}px;width:${(between(a, b) + 1) * DW - 2}px"
           title="${esc(l.name || g.name)} on leave: ${esc(span(l.start, l.end))}${l.note ? '\n' + esc(l.note) : ''}\nClick to change or remove">${DW * (between(a, b) + 1) > 60 ? '🌴 ' + esc(l.note || 'Leave') : '🌴'}</div>`;
       }
+      // Their regular work: blocks on their own row like leave; later repeats dashed.
+      for (const s of (CAL.regularSlots || []).filter(s => g.email && s.email === g.email)) {
+        [{ start: s.start, end: s.end }, ...(s.repeats || [])].forEach((o, k) => {
+          if (o.end < RS || o.start > end) return;
+          const a = o.start < RS ? RS : o.start, b = o.end > end ? end : o.end, w = (between(a, b) + 1) * DW;
+          busy += `<div class="tlreg ${k ? 'rep' : ''}" data-slot="${esc(s.id)}" style="left:${x(a) + 1}px;width:${w - 2}px"
+            title="${esc(s.title)}: ${esc(s.name || g.name)}, ${esc(span(o.start, o.end))}${s.recur ? '\nRepeats ' + esc(recurWord(s).toLowerCase()) : ''}${s.note ? '\n' + esc(s.note) : ''}\nClick to change or remove">${w > 44 ? '↻ ' + esc(s.title) : '↻'}</div>`;
+        });
+      }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
       const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
       rows += `<div class="tlrow tlgroup" data-grp="${esc(g.email)}" data-gname="${esc(g.name)}" style="min-height:40px">
@@ -1587,7 +1617,7 @@ function wirePanning() {
   const g = $('calGrid');
   let pan = null, swallow = false, acc = 0;
   g.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || e.target.closest('.gbar, .rbar, .tlleave, .tllab, .diamond, button')) return;
+    if (e.button !== 0 || e.target.closest('.gbar, .rbar, .tlleave, .tlreg, .tllab, .diamond, button')) return;
     pan = { x: e.clientX, rs: RS, re: RE, moved: false };
   });
   window.addEventListener('pointermove', e => {
@@ -1618,6 +1648,109 @@ function wirePanning() {
  * or start a new job in a plan. Each plan lists its open jobs this person isn't on yet; picking one puts
  * them on it and schedules it (from the day you clicked, else where it already was, else today).
  */
+/**
+ * Regular work: the team's standing duties. The list (click one to change it), or the form for one,
+ * based on the job form: what it is, how long it usually takes, how often, a description and a note.
+ * opts.edit: open straight on the form ({} for a new one). opts.then(work): after adding, e.g. give it to someone.
+ */
+async function regularDialog(opts = {}) {
+  document.querySelector('dialog.regdlg')?.remove();
+  let list = (CAL_ALL || CAL)?.regular;
+  if (!list) { try { list = (await api('regular-work')).regular; } catch (x) { cp.alert(x.message); return; } }
+  const d = document.createElement('dialog');
+  d.className = 'leavedlg regdlg';
+  document.body.append(d);
+  const freq = v => `<option value="">Doesn't repeat</option>` + Object.entries(ME.recur || {}).map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  const done = async r => { list = r.regular; if (MODE === 'timeline') await loadCal(); };
+  const showList = () => {
+    d.innerHTML = `<form method="dialog">
+      <h2>Regular work</h2>
+      <p class="muted" style="margin:0">The team's standing duties. Give one to someone with the + beside their name on the timeline: it shows on their row, like leave.</p>
+      <div class="rlist">${list.length ? list.map(w => `<button type="button" class="ritem" data-w="${esc(w.id)}"><span class="rt">↻ ${esc(w.title)}</span>
+        <span class="muted">${esc(days(w.duration))}${w.recur ? ' · ' + esc(recurWord(w)) : ''}</span></button>`).join('') : '<div class="rempty">None yet.</div>'}</div>
+      <div class="lact"><button class="btn primary small" type="button" id="rgAdd">+ Add regular work</button><span style="flex:1"></span><button class="btn small" value="cancel" formnovalidate>Close</button></div>
+    </form>`;
+    d.querySelectorAll('[data-w]').forEach(b => b.onclick = () => showForm(list.find(w => w.id === b.dataset.w)));
+    $('rgAdd').onclick = () => showForm({});
+  };
+  const showForm = w => {
+    d.innerHTML = `<form method="dialog">
+      <h2>${w.id ? 'Regular work' : 'Add regular work'}</h2>
+      <div style="margin-top:14px"><label for="rgTitle">Regular work</label><input id="rgTitle" maxlength="200" required value="${esc(w.title || '')}" placeholder="e.g. Client Platform Tickets"></div>
+      <div class="lrow"><div><label for="rgDur">Duration (working days)</label><input type="number" id="rgDur" min="0.5" max="365" step="0.5" value="${esc(w.duration || 1)}"></div>
+        <div><label for="rgFreq">Usually repeats</label><select id="rgFreq" style="width:100%">${freq(w.id ? w.recur : 'weekly')}</select></div></div>
+      <div style="margin-top:12px"><label for="rgDesc">Description</label><textarea id="rgDesc" maxlength="10000" placeholder="What it involves">${esc(w.description || '')}</textarea></div>
+      <div style="margin-top:12px"><label for="rgNote">Note</label><textarea id="rgNote" maxlength="10000" style="min-height:56px" placeholder="Anything to remember: access, contacts, where the queue is">${esc(w.note || '')}</textarea></div>
+      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Duration and how often are what it starts with when you give it to someone: you can change them for each person.</p>
+      <div class="notice" id="rgErr" hidden style="margin-top:12px"></div>
+      <div class="lact"><button class="btn primary small" value="save">${w.id ? 'Save' : 'Add regular work'}</button><button class="btn small" type="button" id="rgBack">${opts.edit && !w.id ? 'Cancel' : 'Back'}</button>
+        <span style="flex:1"></span>${w.id ? '<button class="btn small danger" type="button" id="rgDel">Delete</button>' : ''}</div>
+    </form>`;
+    const err = m => { $('rgErr').textContent = m; $('rgErr').hidden = !m; };
+    $('rgBack').onclick = () => opts.edit && !w.id ? d.close() : showList();
+    d.querySelector('form').onsubmit = async e => {
+      if (e.submitter?.value !== 'save') return;
+      e.preventDefault();
+      const body = { title: $('rgTitle').value, duration: Math.max(0.5, Math.round((Number($('rgDur').value) || 1) * 2) / 2), recur: $('rgFreq').value,
+                     description: $('rgDesc').value, note: $('rgNote').value };
+      try {
+        const r = await send(w.id ? `regular-work/${w.id}` : 'regular-work', body, w.id ? 'PATCH' : 'POST');
+        await done(r);
+        if (!w.id && opts.then) { d.close(); opts.then(r.added); return; }
+        showList();
+      } catch (x) { err(x.message); }
+    };
+    $('rgDel')?.addEventListener('click', async () => {
+      const n = ((CAL_ALL || CAL)?.regularSlots || []).filter(s => s.workId === w.id).length;
+      if (!(await cp.confirm({ title: `Delete ${w.title}?`, message: n ? `It comes off the timeline for the ${n} ${n === 1 ? 'person' : 'people'} it's given to.` : 'Nobody has it yet.', confirm: 'Delete', danger: true }))) return;
+      try { await done(await send(`regular-work/${w.id}`, null, 'DELETE')); showList(); } catch (x) { err(x.message); }
+    });
+    $('rgTitle').focus();
+  };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  if (opts.edit) showForm(opts.edit); else showList();
+}
+
+/** Give regular work to someone (or change or remove it): first day, how long, how often and until when, a note. */
+function slotDialog(s) {
+  document.querySelector('dialog.leavedlg')?.remove();
+  const d = document.createElement('dialog');
+  d.className = 'leavedlg regdlg';
+  const freq = `<option value="">Doesn't repeat</option>` + Object.entries(ME.recur || {}).map(([k, t]) => `<option value="${k}" ${k === s.recur ? 'selected' : ''}>${esc(t)}</option>`).join('');
+  d.innerHTML = `<form method="dialog">
+      <h2>↻ ${esc(s.title)} · ${esc(s.name || personName(s.email))}</h2>
+      <p class="muted" style="margin:0">Regular work: it shows on their row of the timeline, like leave.</p>
+      <div class="lrow"><div><label for="slStart">First day</label><input type="date" id="slStart" value="${esc(s.start)}" required></div>
+        <div><label for="slDur">Duration (working days)</label><input type="number" id="slDur" min="0.5" max="365" step="0.5" value="${esc(s.duration || 1)}"></div></div>
+      <div class="lrow"><div><label for="slFreq">Repeats</label><select id="slFreq" style="width:100%">${freq}</select></div>
+        <div><label for="slUntil">Until <span class="muted" style="font-weight:400">(optional)</span></label><input type="date" id="slUntil" value="${esc(s.recurUntil || '')}"></div></div>
+      <div style="margin-top:12px"><label for="slNote">Note <span class="muted" style="font-weight:400">(optional)</span></label><input id="slNote" maxlength="200" value="${esc(s.note || '')}" placeholder="e.g. Mornings only, cover for Amy"></div>
+      <div class="notice" id="slErr" hidden style="margin-top:12px"></div>
+      <div class="lact"><button class="btn primary small" value="save">${s.id ? 'Save' : 'Add'}</button><button class="btn small" value="cancel" formnovalidate>Cancel</button>
+        <span style="flex:1"></span>${s.id ? '<button class="btn small danger" type="button" id="slDel">Remove</button>' : ''}</div>
+    </form>`;
+  document.body.append(d);
+  const err = m => { $('slErr').textContent = m; $('slErr').hidden = !m; };
+  const untilOn = () => { $('slUntil').disabled = !$('slFreq').value; };
+  $('slFreq').onchange = untilOn; untilOn();
+  d.querySelector('form').onsubmit = async e => {
+    if (e.submitter?.value !== 'save') return;
+    e.preventDefault();
+    const body = { workId: s.workId, email: s.email, start: $('slStart').value, duration: Math.max(0.5, Math.round((Number($('slDur').value) || 1) * 2) / 2),
+                   recur: $('slFreq').value, recurUntil: $('slFreq').value ? $('slUntil').value : '', note: $('slNote').value };
+    try { await send(s.id ? `regular-slots/${s.id}` : 'regular-slots', body, s.id ? 'PATCH' : 'POST'); d.close(); loadCal(); }
+    catch (x) { err(x.message); }
+  };
+  $('slDel')?.addEventListener('click', async () => {
+    if (!(await cp.confirm({ title: `Remove ${s.title}?`, message: `It comes off ${s.name || personName(s.email)}'s timeline${s.recur ? ', with every repeat' : ''}. The regular work itself stays.`, confirm: 'Remove', danger: true }))) return;
+    try { await send(`regular-slots/${s.id}`, null, 'DELETE'); d.close(); loadCal(); } catch (x) { err(x.message); }
+  });
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  $('slStart').focus();
+}
+
 /** Add or change someone's leave: first and last day, and a short note. Shown on their timeline row only. */
 function leaveDialog(lv) {
   document.querySelector('dialog.leavedlg')?.remove();
@@ -1667,7 +1800,10 @@ function planMenu(e, email, day) {
   const who = j => (j.people || []).length ? (j.people || []).map(x => x.name || personName(x.email)).join(', ') : 'Unassigned';
   const m = document.createElement('div');
   m.className = 'planmenu'; m.setAttribute('role', 'menu');
-  m.innerHTML = (email ? `<button type="button" role="menuitem" class="pmleave" data-leave>🌴 Add leave for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</button>` : '') +
+  const regs = (CAL_ALL || CAL)?.regular || [];
+  m.innerHTML = (email ? `<button type="button" role="menuitem" class="pmleave" data-leave>🌴 Add leave for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</button>` +
+      regs.map(w => `<button type="button" role="menuitem" class="pmreg" data-reg="${esc(w.id)}" data-find="${esc(w.title.toLowerCase())}">↻ ${esc(w.title)}<span class="pmm" style="font-weight:400">Regular work · ${esc(days(w.duration))}${w.recur ? ' · ' + esc(recurWord(w).toLowerCase()) : ''}</span></button>`).join('') +
+      `<button type="button" role="menuitem" class="pmreg new" data-regnew>↻ New regular work…</button>` : '') +
     (plans.length ? `<div class="g">Schedule a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</div>` : '') +
     (total > 6 ? `<input type="search" class="pmq" placeholder="Find a job or plan" aria-label="Find a job or plan">` : '') +
     (reuse.length ? `<div class="pmplan pmreuse"><div class="pmhead"><span class="pmt">Reusable jobs: add a copy</span></div>` +
@@ -1709,6 +1845,9 @@ function planMenu(e, email, day) {
     m.querySelector('.pmnone').hidden = any;
   };
   m.querySelector('[data-leave]')?.addEventListener('click', () => { close(); leaveDialog({ email, start: day || today(), end: day || today(), note: '' }); });
+  const giveTo = w => slotDialog({ workId: w.id, title: w.title, email, start: workday(day || today()), duration: w.duration, recur: w.recur, recurUntil: '', note: '' });
+  m.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => { close(); giveTo(regs.find(w => w.id === b.dataset.reg)); });
+  m.querySelector('[data-regnew]')?.addEventListener('click', () => { close(); regularDialog({ edit: {}, then: giveTo }); });
   m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
   m.querySelectorAll('[data-reuse]').forEach(b => b.onclick = async () => {
     const r = reuse.find(x => x.id === b.dataset.reuse);
@@ -1739,6 +1878,7 @@ function wireTimeline() {
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
   g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob, b.dataset.rstart); });
+  g.querySelectorAll('.tlreg').forEach(b => b.onclick = e => { e.stopPropagation(); const s = (CAL.regularSlots || []).find(x => x.id === b.dataset.slot); if (s) slotDialog(s); });
   g.querySelectorAll('.tlleave').forEach(b => b.onclick = e => { e.stopPropagation(); const l = (CAL.leave || []).find(x => x.id === b.dataset.leave); if (l) leaveDialog(l); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
@@ -1867,6 +2007,7 @@ async function addJobOn(pid, day, assignee = '') {
   $('actModal').addEventListener('click', e => { if (e.target === $('actModal')) closeActivity(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACT_OPEN && !document.querySelector('.cp-mention:not([hidden]), dialog[open]')) closeActivity(); });
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
+  $('regBtn').onclick = () => regularDialog(); $('regBtn2').onclick = () => regularDialog();
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
     RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = WEEKS = false; RE = RS;
   }

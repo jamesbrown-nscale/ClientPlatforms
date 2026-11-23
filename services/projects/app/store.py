@@ -66,6 +66,14 @@ class Store:
                 id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT DEFAULT '', start TEXT NOT NULL, end TEXT NOT NULL,
                 note TEXT DEFAULT '', created_by TEXT, created_at TEXT, updated_at TEXT);
             CREATE INDEX IF NOT EXISTS leave_when ON team_leave(end, start);
+            CREATE TABLE IF NOT EXISTS regular_work (
+                id TEXT PRIMARY KEY, title TEXT NOT NULL, duration REAL DEFAULT 1, recur TEXT DEFAULT '',
+                description TEXT DEFAULT '', note TEXT DEFAULT '', created_by TEXT, created_at TEXT, updated_at TEXT);
+            CREATE TABLE IF NOT EXISTS regular_slots (
+                id TEXT PRIMARY KEY, work_id TEXT NOT NULL REFERENCES regular_work(id) ON DELETE CASCADE,
+                email TEXT NOT NULL, name TEXT DEFAULT '', start TEXT NOT NULL, duration REAL DEFAULT 1, recur TEXT DEFAULT '',
+                recur_until TEXT DEFAULT '', note TEXT DEFAULT '', created_by TEXT, created_at TEXT, updated_at TEXT);
+            CREATE INDEX IF NOT EXISTS regular_slots_work ON regular_slots(work_id);
             CREATE TABLE IF NOT EXISTS pipeline_jobs (
                 id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, position INTEGER DEFAULT 0,
                 title TEXT NOT NULL, description TEXT DEFAULT '', note TEXT DEFAULT '', start TEXT DEFAULT '',
