@@ -93,7 +93,7 @@
   .pgroup .trow:last-child { border-bottom: 0; }
   .empty { color: var(--text2); text-align: center; padding: 40px 16px; }
 
-  .detail { padding: 20px; position: sticky; top: 16px; }
+  .detail { padding: 20px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; overscroll-behavior: contain; }
   .detail .tref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text2); }
   .titlein { width: 100%; font-size: 20px; font-weight: 600; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; margin: 2px -6px 8px; background: transparent; outline: none; }
   .titlein:hover:not(:disabled) { border-color: var(--surface); }
@@ -417,7 +417,7 @@
   .tlnone { color: var(--muted); font-size: 13px; font-style: italic; }
   .tlempty { padding: 50px 16px; text-align: center; color: var(--text2); }
 
-  @media (max-width: 1000px) { main, main.cal.withdetail { grid-template-columns: 1fr; } .detail { position: static; } }
+  @media (max-width: 1000px) { main, main.cal.withdetail { grid-template-columns: 1fr; } .detail { position: static; max-height: none; overflow: visible; } }
   @media (max-width: 700px) { main { padding: 14px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; } .modes span { display: none; }
     .tlrange span { display: none; }
     .fields { grid-template-columns: 1fr 1fr; } .fields .wide, .fields .two { grid-column: span 2; } }
@@ -1365,7 +1365,8 @@ function setMode(m) {
 }
 
 let LEFT = (() => { try { return Math.min(560, Math.max(200, Number(localStorage.getItem('cp.tl.left')) || 280)); } catch { return 280; } })();
-const ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60];
+const ZOOMS = [6, 9, 13, 18, 26, 34, 46, 60, 80, 110, 150];
+const maxDW = () => Math.max(60, Math.floor(avail() / 7));   // the closest zoom: one week fills the width
 const between = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
 const dmy = s => s ? new Date(s + 'T00:00:00').toLocaleDateString() : '';
 const said = st => st === 'To do' ? 'Not started' : st;
@@ -1439,7 +1440,8 @@ function threeWeeks() {
 
 function zoom(dir) {
   const n = between(RS, RE) + 1, mid = addDays(RS, Math.floor(n / 2));
-  const i = ZOOMS.findIndex(z => z >= DW), next = dir > 0 ? ZOOMS.find(z => z > DW) : [...ZOOMS].reverse().find(z => z < DW);
+  const top = maxDW(), steps = [...ZOOMS.filter(z => z < top), top];
+  const next = dir > 0 ? steps.find(z => z > DW) : [...steps].reverse().find(z => z < DW);
   if (!next) return;
   DW = next; const m = Math.ceil(avail() / DW);
   RS = addDays(mid, -Math.floor(m / 2)); RE = addDays(RS, m - 1); FIT = WEEKS = false; drawCal(); save();
@@ -1463,9 +1465,9 @@ function drawCal() {
   if (FIT) fitRange();   // also when the space changes, e.g. a plan opens beside the timeline
   else if (WEEKS) threeWeeks();
   const n = Math.max(between(RS, RE) + 1, Math.ceil(avail() / DW)), end = addDays(RS, n - 1), W = n * DW, t0 = today();
-  const scale = DW >= 18 ? 'days' : DW >= 9 ? 'weeks' : 'months';
+  const scale = DW >= maxDW() ? 'days (1 week)' : DW >= 18 ? 'days' : DW >= 9 ? 'weeks' : 'months';
   $('calTitle').innerHTML = `${esc(rangeLabel(RS, end))} <span>· ${scale}${FIT ? ' (fit to plan)' : WEEKS ? ' (3 weeks)' : ''}</span>`;
-  $('zoomIn').disabled = DW >= ZOOMS[ZOOMS.length - 1]; $('zoomOut').disabled = DW <= ZOOMS[0];
+  $('zoomIn').disabled = DW >= maxDW(); $('zoomOut').disabled = DW <= ZOOMS[0];
   const x = d => between(RS, d) * DW;   // left edge of a day
 
   // Header: months, then days; weekend columns and the today line behind everything.
@@ -2011,7 +2013,7 @@ async function addJobOn(pid, day, assignee = '') {
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
   $('regBtn').onclick = () => regularDialog(); $('regBtn2').onclick = () => regularDialog();
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
-    RS = fromHash.get('from'); DW = ZOOMS.includes(Number(fromHash.get('zoom'))) ? Number(fromHash.get('zoom')) : 34; FIT = WEEKS = false; RE = RS;
+    RS = fromHash.get('from'); const z = Number(fromHash.get('zoom')); DW = z >= ZOOMS[0] && z <= 400 ? z : 34; FIT = WEEKS = false; RE = RS;
   }
   wirePanning();
   $('calPrev').onclick = () => shift(-1); $('calNext').onclick = () => shift(1);
