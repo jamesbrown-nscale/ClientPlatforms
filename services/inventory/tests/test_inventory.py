@@ -648,3 +648,21 @@ def test_a_device_on_either_list_is_not_a_mismatch(c):
     c.post("/users-ct/api/match-devices", headers=CE)
     d2 = next(d for d in c.get("/devices/api/devices", headers=DV).json()["items"] if d["id"] == "jamf:c2")
     assert d2["primaryFor"][0]["list"] == "Users - CT" and d2["primaryFor"][0]["url"] == "/users-ct/"
+
+
+def test_mismatches_csv(c):
+    main.store.replace_devices("Jamf", [
+        {"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "name": "NS-Mac", "serial": "S1", "os": "macOS", "os_version": "27.2",
+         "user_email": "aplunkett@nscale.com", "user_name": "Aarika Plunkett", "last_seen": "2026-11-23T10:00:00Z"}])
+    c.post("/users/api/users", headers=UE, json={"email": "aarika.plunkett@nscale.com", "name": "Aarika Plunkett"})
+    r = c.get("/users/api/mismatches.csv?tab=devices", headers=UV)
+    assert r.status_code == 200 and "mismatches-devices-" in r.headers["content-disposition"]
+    lines = r.text.lstrip("﻿").splitlines()
+    assert lines[0].startswith("Device email,Name in Jamf / Intune,Device,Serial")
+    assert lines[1].startswith("aplunkett@nscale.com,Aarika Plunkett,NS-Mac,S1,Jamf,,macOS 27.2,") and "aarika.plunkett@nscale.com,Aarika Plunkett,Same name" in lines[1]
+    u = c.get("/users/api/mismatches.csv?tab=users", headers=UV).text
+    assert "aarika.plunkett@nscale.com" in u and "<aplunkett@nscale.com> (Same name)" in u
+    c.post("/users/api/links", headers=UE, json={"fromEmail": "aplunkett@nscale.com", "toEmail": "aarika.plunkett@nscale.com"})
+    assert "aplunkett@nscale.com,aarika.plunkett@nscale.com,Aarika Plunkett,1," in c.get("/users/api/mismatches.csv?tab=links", headers=UV).text
+    assert c.get("/users/api/mismatches.csv?tab=x", headers=UV).status_code == 422
+    assert "users-ct-mismatches-devices-" in c.get("/users-ct/api/mismatches.csv", headers=who("users-ct", "view")).headers["content-disposition"]

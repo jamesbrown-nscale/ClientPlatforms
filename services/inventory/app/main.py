@@ -987,15 +987,49 @@ def mismatches_page(request: Request):
     return FileResponse(STATIC / "mismatches.html", headers={"Cache-Control": "no-store"})
 
 
+def _link_list() -> list[dict]:
+    names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in book.users()}
+    devs = book.devices()
+    return [{"fromEmail": r["from_email"], "toEmail": r["to_email"], "toName": names.get(r["to_email"], ""),
+             "gone": r["to_email"] not in names, "createdAt": r["created_at"], "createdBy": r["created_by"],
+             "devices": sum(d["user_email"] == r["from_email"] for d in devs)}
+            for r in book.link_rows()]
+
+
 @users_app.get("/api/mismatches")
 def get_mismatches(user: User = Depends(auth.users_viewer)):
-    m = mismatches()
-    names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in book.users()}
-    links = [{"fromEmail": r["from_email"], "toEmail": r["to_email"], "toName": names.get(r["to_email"], ""),
-              "gone": r["to_email"] not in names, "createdAt": r["created_at"], "createdBy": r["created_by"],
-              "devices": sum(d["user_email"] == r["from_email"] for d in book.devices())}
-             for r in book.link_rows()]
-    return {**m, "links": links}
+    return {**mismatches(), "links": _link_list()}
+
+
+@users_app.get("/api/mismatches.csv")
+def mismatches_csv(tab: str = "devices", user: User = Depends(auth.users_viewer)):
+    """One tab of Mismatches as a CSV: devices (a row per device), users or links."""
+    stamp = f"{datetime.now(timezone.utc):%Y%m%d-%H%M}"
+    prefix = "users-ct-" if auth.LIST.get() == USERS_CT else ""
+    sug = lambda ss: "; ".join(f"{x['name'] or x['email']} <{x['email']}> ({x['why']})" for x in ss)
+    if tab == "users":
+        rows = [{**u, "suggest": sug(u["suggestions"])} for u in mismatches()["users"]]
+        cols = [("email", "Email"), ("name", "Name"), ("department", "Department"), ("type", "User type"),
+                ("suggest", "Device emails that may be theirs")]
+        return _csv(cols, rows, f"{prefix}mismatches-users-{stamp}.csv")
+    if tab == "links":
+        cols = [("fromEmail", "Device email"), ("toEmail", "Linked to"), ("toName", "Name"), ("devices", "Devices"),
+                ("createdAt", "Linked at"), ("createdBy", "Linked by")]
+        return _csv(cols, _link_list(), f"{prefix}mismatches-links-{stamp}.csv")
+    if tab != "devices":
+        raise HTTPException(422, "tab is devices, users or links.")
+    rows = []
+    for m in mismatches()["devices"]:
+        first = (m["suggestions"] or [{}])[0]
+        for d in m["devices"]:
+            rows.append({"email": m["email"], "name": m["name"], "device": d["name"] or d["serial"], "serial": d["serial"],
+                         "managedBy": d["platform"], "model": d["model"], "os": " ".join(filter(None, [d["os"], d["osVersion"]])),
+                         "lastSeen": d["lastSeen"], "s1": first.get("email", ""), "s1name": first.get("name", ""),
+                         "s1why": first.get("why", ""), "more": sug(m["suggestions"][1:])})
+    cols = [("email", "Device email"), ("name", "Name in Jamf / Intune"), ("device", "Device"), ("serial", "Serial"),
+            ("managedBy", "Managed by"), ("model", "Model"), ("os", "OS"), ("lastSeen", "Last check-in"),
+            ("s1", "Best suggestion"), ("s1name", "Suggested name"), ("s1why", "Why"), ("more", "Other suggestions")]
+    return _csv(cols, rows, f"{prefix}mismatches-devices-{stamp}.csv")
 
 
 @users_app.post("/api/links")

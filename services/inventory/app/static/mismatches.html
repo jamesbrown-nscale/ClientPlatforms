@@ -47,7 +47,7 @@
       <h1>Mismatches</h1>
       <p class="sub">A device is someone's when the email Jamf or Intune gives is their email on Users. When it isn't (an alias, an old surname, a sign-in name), link the two: the link stays across syncs and imports.</p>
     </div>
-    <div class="acts"><a class="btn" href="./" id="backBtn">Back to Users</a></div>
+    <div class="acts"><a class="btn" id="csv" href="api/mismatches.csv?tab=devices" download title="This tab as a CSV">Download CSV</a> <a class="btn" href="./" id="backBtn">Back to Users</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="rtabs" role="tablist" id="tabs">
@@ -114,6 +114,7 @@ function draw() {
   $('n-links').textContent = DATA.links.length.toLocaleString();
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.k === KIND)));
   $('onlyWrap').hidden = KIND === 'links';
+  $('csv').href = 'api/mismatches.csv?tab=' + KIND;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   const hit = text => words.every(w => text.toLowerCase().includes(w));
   let rows, html;
