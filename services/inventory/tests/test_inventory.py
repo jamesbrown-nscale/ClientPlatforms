@@ -666,3 +666,39 @@ def test_mismatches_csv(c):
     assert "aplunkett@nscale.com,aarika.plunkett@nscale.com,Aarika Plunkett,1," in c.get("/users/api/mismatches.csv?tab=links", headers=UV).text
     assert c.get("/users/api/mismatches.csv?tab=x", headers=UV).status_code == 422
     assert "users-ct-mismatches-devices-" in c.get("/users-ct/api/mismatches.csv", headers=who("users-ct", "view")).headers["content-disposition"]
+
+
+def test_suggestions_are_word_by_word():
+    from app.main import suggest
+    P = [{"email": "agnethe.vandam@nscale.com", "name": "Agnethe van Dam"}, {"email": "adam.bullington@nscale.com", "name": "Adam Bullington"},
+         {"email": "adam.smith@nscale.com", "name": "Adam Smith"}, {"email": "jonathan.ward@nscale.com", "name": "Jonathan Ward"},
+         {"email": "mary-kate.o'neil@nscale.com", "name": "Mary-Kate O'Neil"}]
+    best = lambda e, n="": (suggest(e, n, P) or [{}])[0]
+    # The screenshot: "dam" inside "adam" is not Agnethe van Dam; the .ct tag is ignored.
+    s = suggest("adam.bullington.ct@nscale.com", "Adam Bullington", P)
+    assert [x["email"] for x in s] == ["adam.bullington@nscale.com"] and s[0]["why"] == "Same email (without “ct”)"
+    assert suggest("adam.bullington.ct@nscale.com", "Adam Bullington", [P[0]]) == []
+    assert best("abullington@nscale.com")["email"] == "adam.bullington@nscale.com"
+    assert best("bullington.adam@nscale.com")["email"] == "adam.bullington@nscale.com"
+    assert best("adam.bullington2@nscale.com")["email"] == "adam.bullington@nscale.com"
+    assert best("adam.bullington@nscale.onmicrosoft.com")["why"] == "Same before the @"
+    assert best("a.vandam@nscale.com")["email"] == "agnethe.vandam@nscale.com"
+    assert best("agnethe.dam@nscale.com")["email"] == "agnethe.vandam@nscale.com"
+    assert best("xyz@nscale.com", "Jon Ward")["email"] == "jonathan.ward@nscale.com"     # Similar name
+    assert best("mkoneil@nscale.com", "Mary-Kate O'Neil")["why"] == "Same name"
+    assert suggest("adam@nscale.com", "", P) == []                                     # a first name alone isn't enough
+    assert suggest("dam.ops@nscale.com", "", P) == []
+
+
+def test_suggestions_from_the_other_list(c):
+    CE, CV = who("users-ct", "edit"), who("users-ct", "view")
+    main.store.replace_devices("Intune", [{"id": "intune:1", "platform": "Intune", "kind": "computer", "os": "Windows",
+                                           "user_email": "adam.bullington.ct@nscale.com", "user_name": "Adam Bullington"}])
+    c.post("/users-ct/api/users", headers=CE, json={"email": "adam.bullington@nscale.com", "name": "Adam Bullington"})
+    s = c.get("/users/api/mismatches", headers=UV).json()["devices"][0]["suggestions"][0]
+    assert (s["email"], s["list"], s["listName"], s["linkUrl"]) == ("adam.bullington@nscale.com", "users-ct", "Users - CT", "/users-ct/api/links")
+    assert c.get("/users/api/mismatches", headers=UV).json()["users"] == []
+    assert "Same email (without “ct”) (on Users - CT)" in c.get("/users/api/mismatches.csv", headers=UV).text
+    assert c.post(s["linkUrl"], headers=CE, json={"fromEmail": "adam.bullington.ct@nscale.com", "toEmail": s["email"]}).status_code == 200
+    assert c.get("/users/api/mismatches", headers=UV).json()["devices"] == []        # matched on the other list
+    assert c.get("/users-ct/api/users", headers=CV).json()["items"][0]["platform"] == "Windows"

@@ -918,34 +918,71 @@ def _tokens(s: str) -> list[str]:
     return re.sub(r"[^a-z0-9]+", " ", s).split()
 
 
-def _local(email: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())
+# Tags people add to an email that aren't part of the name: adam.bullington.ct@, jo.smith-adm@, …
+EMAIL_TAGS = {"ct", "ext", "external", "adm", "admin", "contractor", "contract", "temp", "tmp", "test", "old", "svc", "x"}
+
+
+def _email_words(email: str) -> tuple[list[str], list[str]]:
+    """The words before the @ (digits dropped), and which of them were tags like "ct"."""
+    words = [re.sub(r"\d+", "", w) for w in _tokens(email.split("@")[0])]
+    words = [w for w in words if w]
+    core = [w for w in words if w not in EMAIL_TAGS]
+    return (core or words), [w for w in words if w in EMAIL_TAGS and core]
+
+
+def _name_forms(ut: list[str]) -> set[str]:
+    """How a name is written as one word before the @: adambullington, abullington, bullingtona, …
+    A surname of several words (van Dam) is written joined (vandam), or by its last word."""
+    if len(ut) < 2:
+        return set()
+    first, lasts = ut[0], {ut[-1], "".join(ut[1:])}
+    out = set()
+    for last in lasts:
+        out |= {first + last, last + first}
+        if len(last) >= 4:   # an initial with a short surname is too easily something else (a + dam = adam)
+            out |= {first[0] + last, last + first[0]}
+    return out
+
+
+def _score(email: str, name: str, u: dict) -> tuple[int, str]:
+    """How likely the device email (and the name Jamf or Intune gives with it) is this person. 0 = no."""
+    core, tags = _email_words(email)
+    tagged = f" (without “{'.'.join(tags)}”)" if tags else ""
+    ucore, _ = _email_words(u["email"])
+    ut, dn = _tokens(u["name"]), _tokens(name)
+    if core and core == ucore:
+        return 5, ("Same before the @" if email.split("@")[-1] != u["email"].split("@")[-1] else "Same email") + tagged
+    if dn and ut and dn == ut:
+        return 4, "Same name"
+    joined = "".join(core)
+    if len(ut) >= 2:
+        first, lasts = ut[0], {ut[-1], "".join(ut[1:])}
+        # every word of their name in the email, in order: adam.bullington, adam.j.bullington, bullington.adam
+        if len(core) >= 2 and ((core[0] == first and (core[-1] in lasts or "".join(core[1:]) in lasts))
+                               or (core[-1] == first and core[0] in lasts)):
+            return 4, "Their name in the email" + tagged
+        if joined in _name_forms(ut) or (len(core) == 2 and len(core[0]) == 1 and core[0] == first[0] and core[1] in lasts):
+            return 3, "Their name in the email" + tagged
+    if len(dn) >= 2 and len(ut) >= 2 and dn[0] == ut[0] and dn[-1] == ut[-1]:
+        return 3, "Same first and last name"
+    if len(dn) >= 2 and len(ut) >= 2 and len(ut[-1]) >= 3 and dn[-1] == ut[-1] and (dn[0].startswith(ut[0]) or ut[0].startswith(dn[0])):
+        return 2, "Similar name"   # Jon / Jonathan Smith
+    return 0, ""
 
 
 def suggest(email: str, name: str, people: list[dict]) -> list[dict]:
-    """Who on Users a device email (and the name Jamf or Intune gives with it) is most likely to be."""
-    local, dn = _local(email), _tokens(name)
+    """Who a device email (and the name Jamf or Intune gives with it) is most likely to be: the best
+    three, strongest first. people may carry "list" (another list's people: say so)."""
     out = []
     for u in people:
         if u["email"] == email:
             continue
-        ut = _tokens(u["name"])
-        why, score = "", 0
-        if dn and ut and dn == ut:
-            why, score = "Same name", 4
-        elif local and local == _local(u["email"]):
-            why, score = "Same before the @", 4
-        elif len(dn) >= 2 and len(ut) >= 2 and dn[0] == ut[0] and dn[-1] == ut[-1]:
-            why, score = "Same first and last name", 3
-        elif len(ut) >= 2 and local in {ut[0][0] + ut[-1], ut[0] + ut[-1], ut[0] + ut[-1][0], ut[-1] + ut[0], ut[-1] + ut[0][0], ut[0][0] + ut[1][0] + ut[-1]}:
-            why, score = "Their name in the email", 3
-        elif len(ut) >= 2 and len(ut[-1]) >= 3 and ut[-1] in local and (ut[0] in local or local.startswith(ut[0][0])):
-            why, score = "Their name in the email", 2
-        elif len(dn) >= 2 and len(ut) >= 2 and dn[-1] == ut[-1] and dn[0][0] == ut[0][0]:
-            why, score = "Similar name", 1
+        score, why = _score(email, name, u)
         if score:
-            out.append({"email": u["email"], "name": u["name"], "why": why, "score": score})
+            out.append({**u, "why": why, "score": score})
     out.sort(key=lambda x: (-x["score"], x["name"].lower()))
+    if out and out[0]["score"] >= 4:   # a strong match: don't crowd it with weak ones
+        out = [x for x in out if x["score"] >= 3]
     return out[:3]
 
 
@@ -960,13 +997,19 @@ def mismatches(items: list[dict] | None = None) -> dict:
     for d in book.devices():
         if d["user_email"] and owner_email(d, links) not in on_users and d["user_email"] not in elsewhere:
             by_email.setdefault(d["user_email"], []).append(d)
-    people = [{"email": u["email"], "name": u["name"]} for u in items]
+    here = auth.LIST.get()
+    people = [{"email": u["email"], "name": u["name"], "list": here} for u in items]
+    for key, ls in all_lists():   # someone on the other list may be who it is (link it there)
+        if key != here:
+            people += [{"email": u["email"], "name": u["name"] or access.display_name(u["email"]), "list": key} for u in ls.users()]
     devices, maybe = [], {}
     for email, ds in sorted(by_email.items()):
         name = next((d["user_name"] for d in ds if d["user_name"]), "")
-        sug = suggest(email, name, people)
+        sug = [{**x, "listName": LISTS[x["list"]][0], "linkUrl": f"/{x['list']}/api/links"} for x in suggest(email, name, people)]
         devices.append({"email": email, "name": name, "devices": [_device_view(d) for d in by_check_in(ds)], "suggestions": sug})
         for s_ in sug:
+            if s_["list"] != here:
+                continue
             maybe.setdefault(s_["email"], []).append({"email": email, "name": name, "why": s_["why"], "score": s_["score"],
                                                       "devices": len(ds)})
     users = [{"email": u["email"], "name": u["name"], "department": u["department"], "type": u["type"],
@@ -1006,7 +1049,7 @@ def mismatches_csv(tab: str = "devices", user: User = Depends(auth.users_viewer)
     """One tab of Mismatches as a CSV: devices (a row per device), users or links."""
     stamp = f"{datetime.now(timezone.utc):%Y%m%d-%H%M}"
     prefix = "users-ct-" if auth.LIST.get() == USERS_CT else ""
-    sug = lambda ss: "; ".join(f"{x['name'] or x['email']} <{x['email']}> ({x['why']})" for x in ss)
+    sug = lambda ss: "; ".join(f"{x['name'] or x['email']} <{x['email']}> ({x['why']}{', on ' + x['listName'] if x.get('listName') and x.get('list') != auth.LIST.get() else ''})" for x in ss)
     if tab == "users":
         rows = [{**u, "suggest": sug(u["suggestions"])} for u in mismatches()["users"]]
         cols = [("email", "Email"), ("name", "Name"), ("department", "Department"), ("type", "User type"),
@@ -1025,7 +1068,8 @@ def mismatches_csv(tab: str = "devices", user: User = Depends(auth.users_viewer)
             rows.append({"email": m["email"], "name": m["name"], "device": d["name"] or d["serial"], "serial": d["serial"],
                          "managedBy": d["platform"], "model": d["model"], "os": " ".join(filter(None, [d["os"], d["osVersion"]])),
                          "lastSeen": d["lastSeen"], "s1": first.get("email", ""), "s1name": first.get("name", ""),
-                         "s1why": first.get("why", ""), "more": sug(m["suggestions"][1:])})
+                         "s1why": first.get("why", "") + (f" (on {first['listName']})" if first.get("list") and first["list"] != auth.LIST.get() else ""),
+                         "more": sug(m["suggestions"][1:])})
     cols = [("email", "Device email"), ("name", "Name in Jamf / Intune"), ("device", "Device"), ("serial", "Serial"),
             ("managedBy", "Managed by"), ("model", "Model"), ("os", "OS"), ("lastSeen", "Last check-in"),
             ("s1", "Best suggestion"), ("s1name", "Suggested name"), ("s1why", "Why"), ("more", "Other suggestions")]
