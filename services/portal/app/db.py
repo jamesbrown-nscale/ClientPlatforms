@@ -40,6 +40,8 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Team plans of scheduled jobs: assign work, plan start dates and durations on a timeline, ask questions and post updates."},
     {"id": "users", "group": "People", "name": "Users", "icon": "users", "url": "/users/",
      "about": "The people we look after, imported from a CSV: department and division, line manager, user type and their primary devices."},
+    {"id": "users-ct", "group": "People", "name": "Users - CT", "icon": "users", "url": "/users-ct/",
+     "about": "A second list of people, kept apart from Users: the same CSV import, review, tags and device matching."},
     {"id": "org", "group": "People", "name": "Org chart", "icon": "org", "url": "/org/",
      "about": "Who reports to whom, from the line managers on Users."},
     {"id": "departments", "group": "People", "name": "Departments", "icon": "building", "url": "/departments/",
@@ -108,6 +110,7 @@ class DB:
         self._migrate()
         self.bin = Bin(self._db, self._lock)   # deleted people, kept 30 days (recycle.py; Settings → Recycle bin)
         self._copy_levels("users", ["org", "departments"], "pages-from-users")
+        self._copy_levels("users", ["users-ct"], "users-ct-from-users")   # a clone of Users: the same people can use it
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)

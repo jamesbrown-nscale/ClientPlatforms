@@ -51,7 +51,7 @@ def add(c, email, tools=(), admin=False, password="a-good-password", level="edit
     return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
 
 
-TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "users", "org", "departments", "team"]
+TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "users", "users-ct", "org", "departments", "team"]
 
 
 def test_first_admin_and_sign_in(c):
@@ -412,3 +412,16 @@ def test_team_members_get_a_sign_in(c):
     fay = TestClient(main.app)
     sign_in(fay, "fay@nscale.com", "a-good-password")
     assert fay.post("/api/people/from-team-list", headers=H, json={"people": []}).status_code == 403
+
+
+def test_users_ct_gets_users_levels_once(tmp_path):
+    """Users - CT began as a clone of Users: roles with Users get the same level on it, once."""
+    import json as j, sqlite3
+    path = str(tmp_path / "p.db")
+    d = db_mod.DB(path)
+    con = sqlite3.connect(path)
+    con.execute("INSERT INTO roles (id, name, levels, perms, system) VALUES ('u', 'Users viewer', ?, '[]', 0)", (j.dumps({"users": "view"}),))
+    con.execute("DELETE FROM settings WHERE key = 'migrated:users-ct-from-users'")
+    con.commit()
+    db_mod.DB(path)
+    assert {r["id"]: r["levels"] for r in d.roles()}["u"]["users-ct"] == "view"

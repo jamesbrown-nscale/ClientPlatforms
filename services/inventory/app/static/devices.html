@@ -249,7 +249,7 @@ function openDevice(id) {
       <dt>Synced</dt><dd>${esc(full(d.syncedAt) || '—')}</dd>
     </dl>
     <h3>Primary device of</h3>
-    ${d.primaryFor.length ? d.primaryFor.map(o => `<div style="margin-bottom:6px"><a href="/users/#${encodeURIComponent(o.email)}">${esc(o.name)}</a> <span class="muted">${esc(o.email)}</span>${o.type === 'VIP' ? ' <span class="badge b-vip">VIP</span>' : ''}</div>`).join('')
+    ${d.primaryFor.length ? d.primaryFor.map(o => `<div style="margin-bottom:6px"><a href="${esc(o.url || '/users/')}#${encodeURIComponent(o.email)}">${esc(o.name)}</a> <span class="muted">${esc(o.email)}</span>${o.list && o.list !== 'Users' ? ` <span class="badge b-team">${esc(o.list)}</span>` : ''}${o.type === 'VIP' ? ' <span class="badge b-vip">VIP</span>' : ''}</div>`).join('')
       : '<p class="muted" style="margin:0">Nobody yet. Set it on the Users page.</p>'}`;
   $('panel').hidden = $('scrim').hidden = false;
   $('p-close').focus();

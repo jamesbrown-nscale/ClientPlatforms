@@ -37,7 +37,7 @@
   <div class="bar">
     <img src="static/nscale-wordmark.svg" alt="Nscale">
     <span class="app">Client Platforms</span>
-    <a class="home" href="./">← Users</a>
+    <a class="home" href="./" id="backTop">← Users</a>
     <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
   </div>
 </header>
@@ -47,7 +47,7 @@
       <h1>Mismatches</h1>
       <p class="sub">A device is someone's when the email Jamf or Intune gives is their email on Users. When it isn't (an alias, an old surname, a sign-in name), link the two: the link stays across syncs and imports.</p>
     </div>
-    <div class="acts"><a class="btn" href="./">Back to Users</a></div>
+    <div class="acts"><a class="btn" href="./" id="backBtn">Back to Users</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="rtabs" role="tablist" id="tabs">
@@ -189,6 +189,10 @@ $('only').addEventListener('change', draw);
 (async () => {
   try {
     ME = await api('api/me'); $('who').textContent = ME.email;
+    if (ME.list && ME.list !== 'users') {
+      $('backTop').textContent = '← ' + ME.listName; $('backBtn').textContent = 'Back to ' + ME.listName;
+      document.title = document.title.replace('· Users ·', `· ${ME.listName} ·`);
+    }
     await load();
   } catch (e) { note(e.message); $('list').innerHTML = ''; }
 })();

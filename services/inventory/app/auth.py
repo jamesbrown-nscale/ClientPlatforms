@@ -7,6 +7,7 @@ vouches for the person on every request, with their level on that tool; access.p
     edit    import and tag users, sync devices now
     admin   also the Jamf and Intune connections (Devices admins; Settings → Connections)
 """
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request
@@ -15,6 +16,9 @@ from . import access
 
 DEVICES = "devices"
 USERS = "users"
+USERS_CT = "users-ct"        # Users - CT: a second list of users, its own access
+# Which list of users this request is for: set where the app is mounted (/users or /users-ct).
+LIST: ContextVar[str] = ContextVar("users_list", default=USERS)
 ORG = "org"                  # Org chart: its own access, read only
 DEPARTMENTS = "departments"  # Departments: its own access, read only
 RANK = {"view": 1, "edit": 2, "admin": 3}
@@ -67,11 +71,11 @@ def devices_admin(request: Request) -> User:
 
 
 def users_viewer(request: Request) -> User:
-    return _require(request, USERS)
+    return _require(request, LIST.get())
 
 
 def users_editor(request: Request) -> User:
-    return _require(request, USERS, "edit")
+    return _require(request, LIST.get(), "edit")
 
 
 def org_viewer(request: Request) -> User:

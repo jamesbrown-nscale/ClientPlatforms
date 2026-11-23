@@ -303,7 +303,7 @@ def test_csv_import(c, fake):
         "department": "Engineering", "division": "Platform", "manager": "sam.lee@nscale.com", "managerName": "Sam Lee"}
     assert c.get("/internal/users/ghost@nscale.com").status_code == 404
     devs = {d["serial"]: d for d in c.get("/devices/api/devices", headers=DV).json()["items"]}
-    assert devs["C02AAA"]["primaryFor"] == [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "type": "Standard"}]
+    assert devs["C02AAA"]["primaryFor"] == [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "type": "Standard", "list": "Users", "url": "/users/"}]
 
 
 def test_tags(c, fake):
@@ -590,3 +590,61 @@ def test_mismatches_and_links(c):
     assert len(c.get("/users/api/mismatches", headers=UV).json()["devices"]) == 1
     assert c.delete("/users/api/links/aplunkett@nscale.com", headers=UE).status_code == 404
     assert "Mismatches" in c.get("/users/mismatches", headers=UV).text
+
+
+def test_users_ct_is_its_own_list(c):
+    """Users - CT (/users-ct/): the same page and options as Users, its own people, access, review and links."""
+    CE, CV = who("users-ct", "edit"), who("users-ct", "view")
+    main.store.replace_devices("Jamf", [
+        {"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "name": "NS-Mac", "os": "macOS", "user_email": "cara@nscale.com",
+         "user_name": "Cara Doyle", "last_seen": "2026-11-23T10:00:00Z"},
+        {"id": "jamf:c2", "platform": "Jamf", "kind": "computer", "name": "NS-Mac2", "os": "macOS", "user_email": "cdoyle@nscale.com",
+         "user_name": "Cara Doyle", "last_seen": "2026-11-22T10:00:00Z"}])
+    # Its own access: a Users token doesn't open it, nor a Users - CT token Users.
+    assert c.get("/users-ct/api/users", headers=UV).status_code == 401 and c.get("/users/api/users", headers=CV).status_code == 401
+    assert c.get("/users-ct/api/me", headers=CV).json()["listName"] == "Users - CT"
+    assert "Users" in c.get("/users-ct/", headers=CV).text
+    assert c.post("/users-ct/api/import", headers=CV, json={"csv": "Email\na@nscale.com\n"}).status_code == 403   # view only
+
+    r = c.post("/users-ct/api/import", headers=CE, json={"csv": "Email,Name\ncara@nscale.com,Cara Doyle\n"}).json()
+    assert r["review"]["new"] == 1
+    assert c.get("/users/api/review", headers=UV).json()["items"] == []          # Users' review is untouched
+    ids = [i["id"] for i in c.get("/users-ct/api/review", headers=CV).json()["items"]]
+    assert c.post("/users-ct/api/review/act", headers=CE, json={"ids": ids, "action": "accept"}).json()["added"] == 1
+    ct = c.get("/users-ct/api/users", headers=CV).json()
+    assert [u["email"] for u in ct["items"]] == ["cara@nscale.com"] and c.get("/users/api/users", headers=UV).json()["items"] == []
+    assert ct["items"][0]["platform"] == "Mac" and ct["items"][0]["devices"] == 1   # matched to the same devices
+    assert c.post("/users-ct/api/match-devices", headers=CE).json()["matched"] == 1
+
+    # Mismatches and links are its own too.
+    m = c.get("/users-ct/api/mismatches", headers=CV).json()
+    assert [d["email"] for d in m["devices"]] == ["cdoyle@nscale.com"] and m["devices"][0]["suggestions"][0]["email"] == "cara@nscale.com"
+    assert c.post("/users-ct/api/links", headers=CE, json={"fromEmail": "cdoyle@nscale.com", "toEmail": "cara@nscale.com"}).status_code == 200
+    assert c.get("/users-ct/api/users", headers=CV).json()["items"][0]["devices"] == 2
+    assert main.store.links() == {} and c.get("/users-ct/api/mismatches", headers=CV).json()["links"][0]["toEmail"] == "cara@nscale.com"
+    # A Users - CT user can't be linked from Users (she isn't on it).
+    assert c.post("/users/api/links", headers=UE, json={"fromEmail": "cdoyle@nscale.com", "toEmail": "cara@nscale.com"}).status_code == 404
+
+    # Deleting goes to the shared recycle bin, marked as from Users - CT, and comes back to it.
+    assert c.delete("/users-ct/api/users/cara@nscale.com", headers=CE).status_code == 200
+    assert c.get("/users-ct/api/users", headers=CV).json()["items"] == []
+    with sqlite3.connect(main.store.path) as db:
+        assert db.execute("SELECT kind, tool FROM recycle_bin").fetchall() == [("User (CT)", "users-ct")]
+    # Org chart and Departments stay with Users.
+    assert c.get("/org/api/org", headers=who("org", "view")).status_code in (200, 404)
+
+
+def test_a_device_on_either_list_is_not_a_mismatch(c):
+    CE, CV = who("users-ct", "edit"), who("users-ct", "view")
+    main.store.replace_devices("Jamf", [
+        {"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "user_email": "amy@nscale.com", "user_name": "Amy"},
+        {"id": "jamf:c2", "platform": "Jamf", "kind": "computer", "os": "macOS", "user_email": "cara@nscale.com", "user_name": "Cara"},
+        {"id": "jamf:c3", "platform": "Jamf", "kind": "computer", "os": "macOS", "user_email": "nobody@nscale.com"}])
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy"})
+    c.post("/users-ct/api/users", headers=CE, json={"email": "cara@nscale.com", "name": "Cara"})
+    assert [d["email"] for d in c.get("/users/api/mismatches", headers=UV).json()["devices"]] == ["nobody@nscale.com"]
+    assert [d["email"] for d in c.get("/users-ct/api/mismatches", headers=CV).json()["devices"]] == ["nobody@nscale.com"]
+    assert [d["id"] for d in c.get("/devices/api/devices", headers=DV).json()["items"] if d["notOnUsers"]] == ["jamf:c3"]
+    c.post("/users-ct/api/match-devices", headers=CE)
+    d2 = next(d for d in c.get("/devices/api/devices", headers=DV).json()["items"] if d["id"] == "jamf:c2")
+    assert d2["primaryFor"][0]["list"] == "Users - CT" and d2["primaryFor"][0]["url"] == "/users-ct/"

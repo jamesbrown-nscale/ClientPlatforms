@@ -42,7 +42,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import access, auth, connectors, recycle
-from .auth import DEPARTMENTS, DEVICES, ORG, USERS, User
+from .auth import DEPARTMENTS, DEVICES, ORG, USERS, USERS_CT, User
 from .connectors import PLATFORMS, SyncError
 from .store import Store, clean_email, now
 
@@ -64,6 +64,46 @@ log.propagate = False
 
 auth.check_settings()
 store = Store(os.environ.get("DATABASE_PATH", "/data/inventory.db"), access.AUTH_SECRET)
+
+# The lists of users: each its own page, access and tables; the same devices.
+#   tool: (name on the site, table prefix, what a deleted one is called in the recycle bin)
+LISTS = {USERS: ("Users", "", "User"), USERS_CT: ("Users - CT", "ct_", "User (CT)")}
+
+
+def users_store() -> Store:
+    """The Store for the list this request is for (Users unless it came in at /users-ct)."""
+    key = auth.LIST.get()
+    if key == USERS:
+        return store
+    name, prefix, kind = LISTS[key]
+    return store.sibling(prefix, key, kind)
+
+
+def all_lists() -> list[tuple[str, Store]]:
+    return [(key, store if key == USERS else store.sibling(prefix, key, kind)) for key, (_, prefix, kind) in LISTS.items()]
+
+
+def known_owners(skip: str = "") -> dict[str, str]:
+    """Device email → whose it is on any list (but `skip`): their own email, or the one it's linked to."""
+    out: dict[str, str] = {}
+    for key, ls in all_lists():
+        if key == skip:
+            continue
+        for u in ls.users():
+            out.setdefault(u["email"], u["email"])
+        for src, dst in ls.links().items():
+            out.setdefault(src, dst)
+    return out
+
+
+class _Book:
+    """`book` is whichever list of users this request is for: the users section uses it in place of
+    `store`. Org chart, Departments and the Team tool always read Users (`store`)."""
+    def __getattr__(self, name):
+        return getattr(users_store(), name)
+
+
+book = _Book()
 
 
 def make_client() -> httpx.Client:
@@ -245,18 +285,18 @@ def devices_me(user: User = Depends(auth.devices_viewer)):
 
 def _devices_with_owners() -> list[dict]:
     owners: dict[str, list[dict]] = {}
-    for u in store.users():
-        if u["primary_device"]:
-            owners.setdefault(u["primary_device"], []).append({"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
-                                                               "type": u["user_type"]})
-    on_users = {u["email"] for u in store.users()}
-    links = store.links()
+    for key, ls in all_lists():
+        for u in ls.users():
+            if u["primary_device"]:
+                owners.setdefault(u["primary_device"], []).append({"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
+                                                                   "type": u["user_type"], "list": LISTS[key][0], "url": f"/{key}/"})
+    known = known_owners()
     out = []
     for d in store.devices():
-        who = owner_email(d, links) if d["user_email"] else ""
+        who = known.get(d["user_email"], "") if d["user_email"] else ""
         out.append({**_device_view(d), "primaryFor": owners.get(d["id"], []),
-                    # Assigned in Jamf or Intune to an email that isn't on Users (nor linked to someone who is)
-                    "notOnUsers": bool(who) and who not in on_users, "linkedTo": who if who != d["user_email"] else ""})
+                    # Assigned in Jamf or Intune to an email that isn't on Users or Users - CT (nor linked to someone who is)
+                    "notOnUsers": bool(d["user_email"]) and not who, "linkedTo": who if who and who != d["user_email"] else ""})
     return out
 
 
@@ -363,7 +403,7 @@ users_app.add_exception_handler(ValueError, _value_error)
 
 def _bin_admin(request: Request) -> str:
     """The recycle bin's deleted users are for Users admins."""
-    user = auth.current_user(request, USERS)
+    user = auth.current_user(request, auth.LIST.get())
     if not user:
         raise HTTPException(401, access.sign_in_message())
     if user.level != "admin":
@@ -371,12 +411,12 @@ def _bin_admin(request: Request) -> str:
     return user.email
 
 
-users_app.include_router(recycle.router(lambda: store.bin, _bin_admin))
+users_app.include_router(recycle.router(lambda: book.bin, _bin_admin))
 
 
 @users_app.get("/")
 def users_page(request: Request):
-    if not auth.current_user(request, USERS):
+    if not auth.current_user(request, auth.LIST.get()):
         return _page(access.sign_in_message(), 403)
     return FileResponse(STATIC / "users.html", headers={"Cache-Control": "no-store"})
 
@@ -390,7 +430,9 @@ def _moved(request: Request):
 
 @users_app.get("/api/me")
 def users_me(user: User = Depends(auth.users_viewer)):
-    return {"email": user.email, "name": user.name, "level": user.level, "canEdit": user.can_edit, "portalUrl": PORTAL_URL}
+    key = auth.LIST.get()
+    return {"email": user.email, "name": user.name, "level": user.level, "canEdit": user.can_edit, "portalUrl": PORTAL_URL,
+            "list": key, "listName": LISTS[key][0]}
 
 
 def os_family(os_name: str) -> str:
@@ -460,11 +502,11 @@ def owner_email(d: dict, links: dict[str, str]) -> str:
 
 
 def _users() -> list[dict]:
-    rows = store.users()
-    devs = store.devices()
+    rows = book.users()
+    devs = book.devices()
     devices = {d["id"]: d for d in devs}
     assigned: dict[str, list] = {}
-    links = store.links()
+    links = book.links()
     for d in devs:
         if d["user_email"]:
             assigned.setdefault(owner_email(d, links), []).append(d)
@@ -485,7 +527,7 @@ def users_payload() -> dict:
     # VIP first, then the others A-Z, Standard last: each but Standard gets a tile on the page.
     types = [{"name": t, "count": counts.get(t, 0)}
              for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
-    stats = {"users": len(items), "review": store.review_count(), "mismatches": len(mismatches(items)["devices"]), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
+    stats = {"users": len(items), "review": book.review_count(), "mismatches": len(mismatches(items)["devices"]), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
     return {"items": items, "departments": departments(items), "types": types, "stats": stats}
@@ -535,7 +577,7 @@ def users_template(user: User = Depends(auth.users_viewer)):
 @users_app.get("/api/devices")
 def pick_devices(user: User = Depends(auth.users_viewer)):
     """Devices to pick a primary device from (the same devices as the Devices page)."""
-    return {"items": [_device_view(d) for d in store.devices()]}
+    return {"items": [_device_view(d) for d in book.devices()]}
 
 
 def _resolve_manager(v: str, by_name: dict[str, str], email: str = "") -> str:
@@ -554,12 +596,12 @@ def _resolve_manager(v: str, by_name: dict[str, str], email: str = "") -> str:
 
 
 def _names() -> dict[str, str]:
-    return {(u["name"] or "").lower(): u["email"] for u in store.users() if u["name"]}
+    return {(u["name"] or "").lower(): u["email"] for u in book.users() if u["name"]}
 
 
 def known_types() -> dict[str, str]:
     """Every user type in use, by its lower-case name, so "contractor" finds "Contractor"."""
-    return {t.lower(): t for t in [*TYPES, *(u["user_type"] for u in store.users() if u["user_type"])]}
+    return {t.lower(): t for t in [*TYPES, *(u["user_type"] for u in book.users() if u["user_type"])]}
 
 
 def _type(v: str, known: dict[str, str] | None = None) -> str:
@@ -653,7 +695,7 @@ def _fields(body: BaseModel, email: str) -> dict:
     if "platform" in d:
         out["platform_tag"] = _platform(d["platform"])
     if "primaryDevice" in d:
-        out["primary_device"] = DeviceIndex(store.devices()).find(d["primaryDevice"])
+        out["primary_device"] = DeviceIndex(book.devices()).find(d["primaryDevice"])
     return out
 
 
@@ -666,24 +708,24 @@ def add_user(body: UserIn, user: User = Depends(auth.users_editor)):
     email = clean_email(body.email)
     if not EMAIL.match(email):
         raise ValueError("Enter a valid email address.")
-    if store.user(email):
+    if book.user(email):
         raise HTTPException(409, f"{email} is already a user.")
-    store.save_users([{"email": email, **_fields(body, email)}], user.email)
+    book.save_users([{"email": email, **_fields(body, email)}], user.email)
     return _one(email)
 
 
 @users_app.patch("/api/users/{email}")
 def change_user(email: str, body: UserChange, user: User = Depends(auth.users_editor)):
     email = email.lower()
-    if not store.user(email):
+    if not book.user(email):
         raise HTTPException(404, "User not found.")
-    store.save_users([{"email": email, **_fields(body, email)}], user.email)
+    book.save_users([{"email": email, **_fields(body, email)}], user.email)
     return _one(email)
 
 
 @users_app.delete("/api/users/{email}")
 def delete_user(email: str, user: User = Depends(auth.users_editor)):
-    if not store.delete_users([email.lower()], by=user.email):
+    if not book.delete_users([email.lower()], by=user.email):
         raise HTTPException(404, "User not found.")
     log.info(json.dumps({"severity": "NOTICE", "message": "user removed", "user": email.lower(), "by": user.email}))
     return {"ok": True}
@@ -751,7 +793,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
                 r[k] = v.strip()
         raw.append((n, r))
 
-    devices = DeviceIndex(store.devices())
+    devices = DeviceIndex(book.devices())
     types = known_types()   # new types in this file are added as they come, so their case stays the same
     by_name = _names()
     for _, r in raw:   # managers named in this same file count too
@@ -788,7 +830,7 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
 
 def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
     """What each row changes: [{email, name, new, fields: [{field, from, to}]}], only rows that change something."""
-    devices = {d["id"]: d for d in store.devices()}
+    devices = {d["id"]: d for d in book.devices()}
     names = {e: (u["name"] or access.display_name(e)) for e, u in existing.items()}
     names |= {r["email"]: r["name"] for r in rows if r.get("name")}
 
@@ -824,7 +866,7 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
     changes go to Review (/users/review), where each is accepted or not. With dryRun, says what would go
     there. Either way the answer lists, per person, what changes (old → new)."""
     rows, problems, unused, columns = parse_csv(body.csv)
-    existing = {u["email"]: u for u in store.users()}
+    existing = {u["email"]: u for u in book.users()}
     in_file = {r["email"] for r in rows}
     left = sorted((e for e in existing if e not in in_file), key=lambda e: (existing[e]["name"] or e).lower()) if body.everyone else []
     new = [r for r in rows if r["email"] not in existing]
@@ -856,7 +898,7 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
         u = existing[e]
         items.append({"id": uuid.uuid4().hex, "kind": "left", "email": e, "name": u["name"] or access.display_name(e),
                       "changes": [{"field": k, "from": u[f] or "", "to": ""} for f, k in (("department", "Department"), ("division", "Division"), ("title", "Job title")) if u.get(f)]})
-    store.replace_review(items, user.email)
+    book.replace_review(items, user.email)
     log.info(json.dumps({"severity": "NOTICE", "message": "users import sent to review", "by": user.email, "new": added,
                          "changed": updated, "left": len(left), "columns": [c["field"] for c in columns if c["field"]]}))
     return {**report, "review": {"new": added, "changed": updated, "left": len(left)}}
@@ -908,14 +950,15 @@ def suggest(email: str, name: str, people: list[dict]) -> list[dict]:
 
 
 def mismatches(items: list[dict] | None = None) -> dict:
-    """devices: each email Jamf or Intune gives that isn't on Users (nor linked), with its devices and
+    """devices: each email Jamf or Intune gives that isn't on this list or the other one (nor linked), with its devices and
     who it may be. users: everyone on Users with no device, with any device emails that may be theirs."""
     items = items if items is not None else _users()
     on_users = {u["email"] for u in items}
-    links = store.links()
+    links = book.links()
+    elsewhere = known_owners(skip=auth.LIST.get())   # someone on the other list: not a mismatch here
     by_email: dict[str, list[dict]] = {}
-    for d in store.devices():
-        if d["user_email"] and owner_email(d, links) not in on_users:
+    for d in book.devices():
+        if d["user_email"] and owner_email(d, links) not in on_users and d["user_email"] not in elsewhere:
             by_email.setdefault(d["user_email"], []).append(d)
     people = [{"email": u["email"], "name": u["name"]} for u in items]
     devices, maybe = [], {}
@@ -939,7 +982,7 @@ class LinkIn(BaseModel):
 
 @users_app.get("/mismatches")
 def mismatches_page(request: Request):
-    if not auth.current_user(request, USERS):
+    if not auth.current_user(request, auth.LIST.get()):
         return _page(access.sign_in_message(), 403)
     return FileResponse(STATIC / "mismatches.html", headers={"Cache-Control": "no-store"})
 
@@ -947,11 +990,11 @@ def mismatches_page(request: Request):
 @users_app.get("/api/mismatches")
 def get_mismatches(user: User = Depends(auth.users_viewer)):
     m = mismatches()
-    names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in store.users()}
+    names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in book.users()}
     links = [{"fromEmail": r["from_email"], "toEmail": r["to_email"], "toName": names.get(r["to_email"], ""),
               "gone": r["to_email"] not in names, "createdAt": r["created_at"], "createdBy": r["created_by"],
-              "devices": sum(d["user_email"] == r["from_email"] for d in store.devices())}
-             for r in store.link_rows()]
+              "devices": sum(d["user_email"] == r["from_email"] for d in book.devices())}
+             for r in book.link_rows()]
     return {**m, "links": links}
 
 
@@ -962,25 +1005,25 @@ def add_link(body: LinkIn, user: User = Depends(auth.users_editor)):
         raise ValueError("Both need to be email addresses.")
     if src == dst:
         raise ValueError("That's the same email.")
-    if not store.user(dst):
+    if not book.user(dst):
         raise HTTPException(404, f"{dst} isn't on Users.")
-    if store.user(src):
+    if book.user(src):
         raise ValueError(f"{src} is on Users itself, so its devices are already theirs.")
-    store.add_link(src, dst, user.email)
+    book.add_link(src, dst, user.email)
     log.info(json.dumps({"severity": "NOTICE", "message": "email linked", "from": src, "to": dst, "by": user.email}))
     # Someone with no primary device gets the one that checked in last of their devices now.
-    u = store.user(dst)
-    ids = {d["id"] for d in store.devices()}
+    u = book.user(dst)
+    ids = {d["id"] for d in book.devices()}
     if not (u["primary_device"] and u["primary_device"] in ids):
-        links = store.links()
-        if pick := pick_primary([d for d in store.devices() if d["user_email"] and owner_email(d, links) == dst]):
-            store.save_users([{"email": dst, "primary_device": pick["id"]}], user.email)
+        links = book.links()
+        if pick := pick_primary([d for d in book.devices() if d["user_email"] and owner_email(d, links) == dst]):
+            book.save_users([{"email": dst, "primary_device": pick["id"]}], user.email)
     return {"ok": True}
 
 
 @users_app.delete("/api/links/{email}")
 def drop_link(email: str, user: User = Depends(auth.users_editor)):
-    if not store.drop_link(clean_email(email)):
+    if not book.drop_link(clean_email(email)):
         raise HTTPException(404, "No such link.")
     log.info(json.dumps({"severity": "NOTICE", "message": "email unlinked", "from": email, "by": user.email}))
     return {"ok": True}
@@ -988,14 +1031,14 @@ def drop_link(email: str, user: User = Depends(auth.users_editor)):
 
 @users_app.get("/review")
 def review_page(request: Request):
-    if not auth.current_user(request, USERS):
+    if not auth.current_user(request, auth.LIST.get()):
         return _page(access.sign_in_message(), 403)
     return FileResponse(STATIC / "review.html", headers={"Cache-Control": "no-store"})
 
 
 @users_app.get("/api/review")
 def get_review(user: User = Depends(auth.users_viewer)):
-    items = store.review()
+    items = book.review()
     counts = {k: sum(i["kind"] == k for i in items) for k in ("new", "changed", "left")}
     first = items[0] if items else {}
     return {"items": items, "counts": counts, "importedAt": first.get("created_at"), "importedBy": first.get("created_by", "")}
@@ -1012,8 +1055,8 @@ def act_on_review(body: ReviewAct, user: User = Depends(auth.users_editor)):
     delete: new → don't add them; changed or left → delete the user (into the recycle bin).
     keep:   leave Users as it is and take it off the list."""
     want = set(body.ids)
-    items = [i for i in store.review() if i["id"] in want]
-    existing = {u["email"] for u in store.users()}
+    items = [i for i in book.review() if i["id"] in want]
+    existing = {u["email"] for u in book.users()}
     save, remove = [], []
     for i in items:
         if body.action == "accept":
@@ -1023,12 +1066,12 @@ def act_on_review(body: ReviewAct, user: User = Depends(auth.users_editor)):
                 save.append({"email": i["email"], **i["fields"]})
         elif body.action == "delete" and i["kind"] != "new":
             remove.append(i["email"])
-    added, updated = store.save_users(save, user.email) if save else (0, 0)
-    deleted = store.delete_users(remove, by=user.email) if remove else 0
-    store.drop_review([i["id"] for i in items])
+    added, updated = book.save_users(save, user.email) if save else (0, 0)
+    deleted = book.delete_users(remove, by=user.email) if remove else 0
+    book.drop_review([i["id"] for i in items])
     log.info(json.dumps({"severity": "NOTICE", "message": f"users review: {body.action}", "by": user.email,
                          "items": len(items), "added": added, "updated": updated, "deleted": deleted}))
-    return {"done": len(items), "added": added, "updated": updated, "deleted": deleted, "left": store.review_count()}
+    return {"done": len(items), "added": added, "updated": updated, "deleted": deleted, "left": book.review_count()}
 
 
 @users_app.post("/api/match-devices")
@@ -1037,13 +1080,13 @@ def match_devices(user: User = Depends(auth.users_editor)):
     computer that checked in most recently (or, with no computer, the device that did). Their other
     devices are listed with them anyway (see _user_view)."""
     mine: dict[str, list[dict]] = {}
-    links = store.links()
-    for d in store.devices():
+    links = book.links()
+    for d in book.devices():
         if d["user_email"]:
             mine.setdefault(owner_email(d, links), []).append(d)
     ids = {d["id"] for ds in mine.values() for d in ds}
     rows, several = [], 0
-    for u in store.users():
+    for u in book.users():
         if u["primary_device"] and u["primary_device"] in ids:
             continue
         ds = mine.get(u["email"], [])
@@ -1051,7 +1094,7 @@ def match_devices(user: User = Depends(auth.users_editor)):
         if pick:
             rows.append({"email": u["email"], "primary_device": pick["id"]})
             several += len(ds) > 1
-    _, updated = store.save_users(rows, user.email)
+    _, updated = book.save_users(rows, user.email)
     return {"matched": updated, "several": several}
 
 
@@ -1109,6 +1152,18 @@ def _healthz():
     return {"ok": True}
 
 
-for _path, _sub in (("/devices", devices_app), ("/users", users_app), ("/org", org_app), ("/departments", departments_app)):
+def _for_list(sub, key: str):
+    """The users app, for one list: every request through it reads and writes that list."""
+    async def asgi(scope, receive, send):
+        token = auth.LIST.set(key)
+        try:
+            await sub(scope, receive, send)
+        finally:
+            auth.LIST.reset(token)
+    return asgi
+
+
+for _path, _sub in (("/devices", devices_app), ("/users", _for_list(users_app, USERS)), ("/users-ct", _for_list(users_app, USERS_CT)),
+                    ("/org", org_app), ("/departments", departments_app)):
     app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
     app.mount(_path, _sub)

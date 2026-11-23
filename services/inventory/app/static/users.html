@@ -21,7 +21,7 @@
 <main>
   <div class="head">
     <div>
-      <h1>Users</h1>
+      <h1 id="listName">Users</h1>
       <p class="sub">The people we look after: their department and division, line manager, whether they're a VIP, and their primary device from Devices.</p>
     </div>
     <div class="acts">
@@ -395,7 +395,7 @@ async function openUser(email) {
   $('p-title').textContent = u ? u.name : 'Add user';
   $('p-sub').textContent = u ? u.email + (u.updatedAt ? ` · changed ${full(u.updatedAt)}${u.updatedBy ? ' by ' + u.updatedBy : ''}` : '') : 'They can be tagged once added.';
   $('emailWrap').hidden = !!u;
-  $('p-org').hidden = !u; if (u) $('p-org').href = '/org/#' + encodeURIComponent(u.email);
+  if ($('p-org')) { $('p-org').hidden = !u; if (u) $('p-org').href = '/org/#' + encodeURIComponent(u.email); }
   $('f-email').value = u ? u.email : ''; $('f-email').required = !u;
   $('f-name').value = u?.name || ''; $('f-title').value = u?.title || ''; $('f-div').value = u?.division || '';
   $('f-dept').value = u?.department || ''; divisionList(); $('f-manager').value = u?.manager || ''; $('f-devq').value = '';
@@ -598,6 +598,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN !== n
 
 (async () => {
   try { ME = await api('api/me'); $('who').textContent = ME.email; } catch { return; }
+  if (ME.list && ME.list !== 'users') {   // Users - CT: the same page for another list (no Org chart: that's from Users)
+    $('listName').textContent = ME.listName; document.title = `${ME.listName} · Nscale Client Platforms`;
+    $('p-org').remove();
+  }
   ['addBtn', 'importBtn', 'matchBtn'].forEach(id => $(id).hidden = !ME.canEdit);
   await load();
   const want = decodeURIComponent(location.hash.slice(1));

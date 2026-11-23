@@ -33,7 +33,7 @@
   <div class="bar">
     <img src="static/nscale-wordmark.svg" alt="Nscale">
     <span class="app">Client Platforms</span>
-    <a class="home" href="./">← Users</a>
+    <a class="home" href="./" id="backTop">← Users</a>
     <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
   </div>
 </header>
@@ -43,7 +43,7 @@
       <h1>Review</h1>
       <p class="sub" id="sub">What the last CSV import would change on Users. Nothing has changed until you accept it.</p>
     </div>
-    <div class="acts"><a class="btn" href="./">Back to Users</a></div>
+    <div class="acts"><a class="btn" href="./" id="backBtn">Back to Users</a></div>
   </div>
   <div class="notice" id="notice" hidden></div>
   <div class="rtabs" role="tablist" id="tabs">
@@ -151,6 +151,10 @@ $('q').addEventListener('input', draw);
 (async () => {
   try {
     ME = await api('api/me'); $('who').textContent = ME.email;
+    if (ME.list && ME.list !== 'users') {
+      $('backTop').textContent = '← ' + ME.listName; $('backBtn').textContent = 'Back to ' + ME.listName;
+      document.title = document.title.replace('· Users ·', `· ${ME.listName} ·`);
+    }
     const r = await api('api/review');
     ITEMS = r.items;
     if (r.importedAt) $('sub').textContent = `From the CSV imported ${full(r.importedAt)}${r.importedBy ? ' by ' + r.importedBy : ''}. Nothing on Users has changed until you accept it.`;

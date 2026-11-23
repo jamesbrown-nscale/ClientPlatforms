@@ -43,9 +43,13 @@ def now() -> str:
 
 
 class Store:
-    def __init__(self, path: str, secret: str = ""):
-        self.path = path
-        self._lock = threading.Lock()
+    def __init__(self, path: str, secret: str = "", prefix: str = "", tool: str = "users", kind: str = "User", lock=None):
+        """prefix: whose list of users this is ("" for Users, "ct_" for Users - CT). Every list has its
+        own users, review and email links tables in the same file; devices and connections are shared."""
+        self.path, self.secret_ = path, secret
+        self.prefix, self.tool, self.kind = prefix, tool, kind
+        self.U, self.R, self.L = prefix + "users", prefix + "user_review", prefix + "email_links"
+        self._lock = lock or threading.Lock()
         key = hashlib.sha256(b"cp-inventory-connections." + (secret or "dev-only").encode()).digest()
         self._fernet = Fernet(base64.urlsafe_b64encode(key))
         with self._db() as db:
@@ -57,46 +61,55 @@ class Store:
                     synced_at TEXT);
                 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_email);
                 CREATE INDEX IF NOT EXISTS devices_serial ON devices(serial);
-                CREATE TABLE IF NOT EXISTS users (
-                    email TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', team TEXT DEFAULT '', manager TEXT DEFAULT '',
-                    user_type TEXT DEFAULT 'Standard', primary_device TEXT DEFAULT '', title TEXT DEFAULT '',
-                    department TEXT DEFAULT '', created_at TEXT, updated_at TEXT, updated_by TEXT DEFAULT '');
-                CREATE TABLE IF NOT EXISTS user_review (
-                    id TEXT PRIMARY KEY, kind TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '',
-                    fields TEXT NOT NULL DEFAULT '{}', changes TEXT NOT NULL DEFAULT '[]', created_at TEXT, created_by TEXT DEFAULT '');
-                CREATE TABLE IF NOT EXISTS email_links (
-                    from_email TEXT PRIMARY KEY, to_email TEXT NOT NULL, created_at TEXT, created_by TEXT DEFAULT '');
                 CREATE TABLE IF NOT EXISTS connections (
                     kind TEXT PRIMARY KEY, settings TEXT NOT NULL DEFAULT '{}', secret TEXT DEFAULT '',
                     enabled INTEGER NOT NULL DEFAULT 1, last_sync TEXT, last_ok TEXT, last_error TEXT DEFAULT '',
                     last_count INTEGER, last_note TEXT DEFAULT '', updated_at TEXT, updated_by TEXT DEFAULT '');
             """)
-            have = {r[1] for r in db.execute("PRAGMA table_info(users)")}
+            U, R, L = self.U, self.R, self.L
+            db.executescript(f"""
+                CREATE TABLE IF NOT EXISTS {U} (
+                    email TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', team TEXT DEFAULT '', manager TEXT DEFAULT '',
+                    user_type TEXT DEFAULT 'Standard', primary_device TEXT DEFAULT '', title TEXT DEFAULT '',
+                    department TEXT DEFAULT '', created_at TEXT, updated_at TEXT, updated_by TEXT DEFAULT '');
+                CREATE TABLE IF NOT EXISTS {R} (
+                    id TEXT PRIMARY KEY, kind TEXT NOT NULL, email TEXT NOT NULL, name TEXT DEFAULT '',
+                    fields TEXT NOT NULL DEFAULT '{{}}', changes TEXT NOT NULL DEFAULT '[]', created_at TEXT, created_by TEXT DEFAULT '');
+                CREATE TABLE IF NOT EXISTS {L} (
+                    from_email TEXT PRIMARY KEY, to_email TEXT NOT NULL, created_at TEXT, created_by TEXT DEFAULT '');
+            """)
+            have = {r[1] for r in db.execute(f"PRAGMA table_info({U})")}
             if "division" not in have:
                 # A user's team is now their Division (within their Department): the old free-text
                 # Team tag moves across.
-                db.execute("ALTER TABLE users ADD COLUMN division TEXT DEFAULT ''")
-                db.execute("UPDATE users SET division = team WHERE COALESCE(team, '') != ''")
+                db.execute(f"ALTER TABLE {U} ADD COLUMN division TEXT DEFAULT ''")
+                db.execute(f"UPDATE {U} SET division = team WHERE COALESCE(team, '') != ''")
             if "platform_tag" not in have:   # Mac, Windows or Linux set by hand ("" = from their devices)
-                db.execute("ALTER TABLE users ADD COLUMN platform_tag TEXT DEFAULT ''")
+                db.execute(f"ALTER TABLE {U} ADD COLUMN platform_tag TEXT DEFAULT ''")
             self._clean_emails(db)
+        self._siblings: dict[str, "Store"] = {}
         self.bin = Bin(self._db, self._lock)   # deleted users, kept 30 days (recycle.py; Settings → Recycle bin)
 
-    @staticmethod
-    def _clean_emails(db) -> None:
+    def sibling(self, prefix: str, tool: str, kind: str) -> "Store":
+        """Another list of users in the same file (sharing its devices and connections)."""
+        if prefix not in self._siblings:
+            self._siblings[prefix] = Store(self.path, self.secret_, prefix, tool, kind, self._lock)
+        return self._siblings[prefix]
+
+    def _clean_emails(self, db) -> None:
         """Emails saved before clean_email: tidied in place, so they match their devices. A tidied
         email that another user already has is left alone (both show; delete the one you don't want)."""
         for r in db.execute("SELECT id, user_email FROM devices").fetchall():
             if (c := clean_email(r["user_email"])) != r["user_email"]:
                 db.execute("UPDATE devices SET user_email = ? WHERE id = ?", (c, r["id"]))
-        for r in db.execute("SELECT email, manager FROM users").fetchall():
+        for r in db.execute(f"SELECT email, manager FROM {self.U}").fetchall():
             e = clean_email(r["email"])
-            if e != r["email"] and not db.execute("SELECT 1 FROM users WHERE email = ?", (e,)).fetchone():
-                db.execute("UPDATE users SET email = ? WHERE email = ?", (e, r["email"]))
-                db.execute("UPDATE users SET manager = ? WHERE manager = ?", (e, r["email"]))
+            if e != r["email"] and not db.execute(f"SELECT 1 FROM {self.U} WHERE email = ?", (e,)).fetchone():
+                db.execute(f"UPDATE {self.U} SET email = ? WHERE email = ?", (e, r["email"]))
+                db.execute(f"UPDATE {self.U} SET manager = ? WHERE manager = ?", (e, r["email"]))
             m = r["manager"] or ""
             if "@" in m and (c := clean_email(m)) != m:
-                db.execute("UPDATE users SET manager = ? WHERE manager = ?", (c, m))
+                db.execute(f"UPDATE {self.U} SET manager = ? WHERE manager = ?", (c, m))
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -141,11 +154,11 @@ class Store:
 
     def users(self) -> list[dict]:
         with self._db() as db:
-            return [dict(r) for r in db.execute("SELECT * FROM users ORDER BY name COLLATE NOCASE, email")]
+            return [dict(r) for r in db.execute(f"SELECT * FROM {self.U} ORDER BY name COLLATE NOCASE, email")]
 
     def user(self, email: str) -> dict | None:
         with self._db() as db:
-            r = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            r = db.execute(f"SELECT * FROM {self.U} WHERE email = ?", (email,)).fetchone()
             return dict(r) if r else None
 
     def save_users(self, rows: list[dict], by: str) -> tuple[int, int]:
@@ -154,16 +167,16 @@ class Store:
         added = updated = 0
         with self._lock, self._db() as db:
             for u in rows:
-                old = db.execute("SELECT * FROM users WHERE email = ?", (u["email"],)).fetchone()
+                old = db.execute(f"SELECT * FROM {self.U} WHERE email = ?", (u["email"],)).fetchone()
                 fields = {f: u[f] for f in USER_FIELDS if f in u}
                 if old is None:
                     full = {f: "" for f in USER_FIELDS} | {"user_type": "Standard"} | fields
-                    db.execute(f"INSERT INTO users (email, {', '.join(USER_FIELDS)}, created_at, updated_at, updated_by) "
+                    db.execute(f"INSERT INTO {self.U} (email, {', '.join(USER_FIELDS)}, created_at, updated_at, updated_by) "
                                f"VALUES (?, {', '.join('?' * len(USER_FIELDS))}, ?, ?, ?)",
                                (u["email"], *[full[f] for f in USER_FIELDS], t, t, by))
                     added += 1
                 elif any((old[f] or "") != (v or "") for f, v in fields.items()):
-                    db.execute(f"UPDATE users SET {', '.join(f'{f} = ?' for f in fields)}, updated_at = ?, updated_by = ? WHERE email = ?",
+                    db.execute(f"UPDATE {self.U} SET {', '.join(f'{f} = ?' for f in fields)}, updated_at = ?, updated_by = ? WHERE email = ?",
                                (*fields.values(), t, by, u["email"]))
                     updated += 1
         return added, updated
@@ -174,32 +187,32 @@ class Store:
             n = 0
             for e in emails:
                 if by:
-                    r = db.execute("SELECT name FROM users WHERE email = ?", (e,)).fetchone()
+                    r = db.execute(f"SELECT name FROM {self.U} WHERE email = ?", (e,)).fetchone()
                     if r:
-                        self.bin.put(db, kind="User", label=r["name"] or e, context=e, table="users", where={"email": e},
-                                     by=by, tool="users")
-                n += db.execute("DELETE FROM users WHERE email = ?", (e,)).rowcount
+                        self.bin.put(db, kind=self.kind, label=r["name"] or e, context=e, table=self.U, where={"email": e},
+                                     by=by, tool=self.tool)
+                n += db.execute(f"DELETE FROM {self.U} WHERE email = ?", (e,)).rowcount
             return n
 
     # ----- email links: devices under one email belong to a user with another (Users → Mismatches) -----
 
     def links(self) -> dict[str, str]:
         with self._db() as db:
-            return {r["from_email"]: r["to_email"] for r in db.execute("SELECT from_email, to_email FROM email_links")}
+            return {r["from_email"]: r["to_email"] for r in db.execute(f"SELECT from_email, to_email FROM {self.L}")}
 
     def link_rows(self) -> list[dict]:
         with self._db() as db:
-            return [dict(r) for r in db.execute("SELECT * FROM email_links ORDER BY from_email")]
+            return [dict(r) for r in db.execute(f"SELECT * FROM {self.L} ORDER BY from_email")]
 
     def add_link(self, from_email: str, to_email: str, by: str) -> None:
         with self._lock, self._db() as db:
-            db.execute("INSERT INTO email_links (from_email, to_email, created_at, created_by) VALUES (?, ?, ?, ?) "
+            db.execute(f"INSERT INTO {self.L} (from_email, to_email, created_at, created_by) VALUES (?, ?, ?, ?) "
                        "ON CONFLICT(from_email) DO UPDATE SET to_email = excluded.to_email, created_at = excluded.created_at, "
                        "created_by = excluded.created_by", (from_email, to_email, now(), by))
 
     def drop_link(self, from_email: str) -> bool:
         with self._lock, self._db() as db:
-            return db.execute("DELETE FROM email_links WHERE from_email = ?", (from_email,)).rowcount > 0
+            return db.execute(f"DELETE FROM {self.L} WHERE from_email = ?", (from_email,)).rowcount > 0
 
     # ----- review: what a CSV import would change, waiting for someone to accept it -----
     #   new      in the file, not on Users          fields: everything the file gives them
@@ -208,25 +221,25 @@ class Store:
 
     def review(self) -> list[dict]:
         with self._db() as db:
-            rows = db.execute("SELECT * FROM user_review ORDER BY kind, name COLLATE NOCASE, email").fetchall()
+            rows = db.execute(f"SELECT * FROM {self.R} ORDER BY kind, name COLLATE NOCASE, email").fetchall()
         return [{**dict(r), "fields": json.loads(r["fields"]), "changes": json.loads(r["changes"])} for r in rows]
 
     def review_count(self) -> int:
         with self._db() as db:
-            return db.execute("SELECT COUNT(*) FROM user_review").fetchone()[0]
+            return db.execute(f"SELECT COUNT(*) FROM {self.R}").fetchone()[0]
 
     def replace_review(self, items: list[dict], by: str) -> None:
         """A new import replaces whatever was still waiting from the last one."""
         t = now()
         with self._lock, self._db() as db:
-            db.execute("DELETE FROM user_review")
-            db.executemany("INSERT INTO user_review (id, kind, email, name, fields, changes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            db.execute(f"DELETE FROM {self.R}")
+            db.executemany(f"INSERT INTO {self.R} (id, kind, email, name, fields, changes, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                            [(i["id"], i["kind"], i["email"], i.get("name", ""), json.dumps(i.get("fields", {})),
                              json.dumps(i.get("changes", [])), t, by) for i in items])
 
     def drop_review(self, ids: list[str]) -> None:
         with self._lock, self._db() as db:
-            db.executemany("DELETE FROM user_review WHERE id = ?", [(i,) for i in ids])
+            db.executemany(f"DELETE FROM {self.R} WHERE id = ?", [(i,) for i in ids])
 
     # ----- connections -----
 
