@@ -439,3 +439,21 @@ def test_half_day_jobs(c):
     assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"duration": 0.75}).status_code == 422
     j = c.patch(f"{J}/{j['id']}", headers=AMY, json={"duration": 2}).json()["jobs"][0]
     assert j["duration"] == 2 and isinstance(j["duration"], int)
+
+
+def test_reusable_jobs(c):
+    """A job marked Reusable is offered (to people who can see its plan) as a starting point for new jobs."""
+    t = new(c, title="Business as usual")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    j = c.post(J, headers=AMY, json={"title": "Client Platform Tickets", "duration": 1, "description": "The Jira queue",
+                                     "reusable": True}).json()["jobs"][0]
+    assert j["reusable"] is True
+    c.post(J, headers=AMY, json={"title": "One-off"})
+    items = c.get("/tasks/api/reusable-jobs", headers=AMY).json()["items"]
+    assert [(i["title"], i["description"], i["planId"], i["planRef"]) for i in items] == \
+        [("Client Platform Tickets", "The Jira queue", t["id"], t["ref"])]
+    # A copy is an ordinary job: not reusable itself unless ticked.
+    copy = c.post(J, headers=AMY, json={"title": items[0]["title"], "description": items[0]["description"], "duration": 1}).json()["jobs"]
+    assert [x["reusable"] for x in copy] == [True, False, False]
+    assert c.patch(f"{J}/{j['id']}", headers=AMY, json={"reusable": False}).json()["jobs"][0]["reusable"] is False
+    assert c.get("/tasks/api/reusable-jobs", headers=AMY).json()["items"] == []

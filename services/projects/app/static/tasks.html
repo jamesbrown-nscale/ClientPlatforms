@@ -227,6 +227,8 @@
   .jb .recur #jRecurBox[hidden] { display: none; }
   .jb .recur select, .jb .recur input[type=date] { height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; background: #fff; width: auto; }
   .jb .recur #jRecurHint { flex-basis: 100%; }
+  .jb .reuse { background: var(--surface); border-radius: 8px; padding: 10px 12px; }
+  .jb .reuse select { width: 100%; height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px; background: #fff; margin-bottom: 4px; }
   .jb .recur .runtil { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 400; color: var(--text2); }
   .rbar { position: absolute; top: 50%; transform: translateY(-50%); height: 22px; border-radius: 6px; border: 1.5px dashed var(--c, #0F41F3);
     background: color-mix(in srgb, var(--c, #0F41F3) 12%, transparent); color: var(--text2); font-size: 11.5px; line-height: 19px; padding: 0 6px;
@@ -380,6 +382,7 @@
   .planmenu .pmq { width: calc(100% - 12px); margin: 2px 6px 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13px; background: #fff; }
   .planmenu .pmq:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.15); }
   .planmenu .pmplan { padding: 2px 0 4px; }
+  .planmenu .pmreuse .pmhead { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   .planmenu .pmplan + .pmplan { border-top: 1px solid var(--surface); }
   .planmenu .pmhead { display: flex; gap: 8px; align-items: center; padding: 8px 8px 4px; font-weight: 600; font-size: 13.5px; }
   .planmenu .pmt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -471,7 +474,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const TABS = [['mine', 'Mine'], ['asked', 'I asked'], ['waiting', 'Waiting on me'], ['mentioned', 'Mentions'], ['all', 'All open'], ['done', 'Done']];
 let ME = null, PEOPLE = [], PROJECTS = [], TASKS = [], COUNTS = {}, VIEW = 'mine', OPEN = null, KIND = 'comment', ANSWERING = null, MENTION = null;
 let JM = {};   // @mention pickers on the job form's description and note
-let MODE = 'list', ALLJOBS = null, CAL = null, CAL_ALL = null, CAL_HIDDEN = 0, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
+let MODE = 'list', ALLJOBS = null, CAL = null, CAL_ALL = null, REUSE = [], CAL_HIDDEN = 0, JOBOPEN = null, NEWSTART = '', NEWASSIGNEE = '';
 let GROUP = (() => { try { return localStorage.getItem('cp.tl.group') === 'plan' ? 'plan' : 'person'; } catch { return 'person'; } })();   // timeline rows: by person or by plan
 let RS = null, RE = null, DW = 34, FIT = false, WEEKS = true;   // timeline: first and last day shown, day width in px; fitted to the plans, or this week and the next two (the default)
 const EMPTY_DETAIL = '<div class="empty">Pick a plan to see it here, or create a new one.</div>';
@@ -998,6 +1001,10 @@ function jobText(j) {
   </div>`;
 }
 
+/** Jobs marked Reusable (any plan you can see), to start a new job from. */
+async function reusableJobs() {
+  try { return (await api('reusable-jobs')).items; } catch { return []; }
+}
 const recurWord = j => (ME.recur || {})[j.recur] || '';
 const recurTxt = j => j.recur ? ` · ↻ ${recurWord(j)}` : '';
 /** A job's priority: its place in its plan (1 is the top). Drag a job up or down the plan to change it. */
@@ -1006,6 +1013,8 @@ const jnum = j => j.priority ? `<span class="jnum" title="Priority ${j.priority}
 function jobForm(t, j) {
   const opt = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
   return `<div class="jb"><div class="fields">
+      ${j.id ? '' : `<div class="wide reuse" id="jFromBox" hidden><label for="jFrom">Start from a reusable job</label><select id="jFrom"><option value="">— A new job —</option></select>
+        <span class="muted">Fills in its title, duration, description and note. Who, when and status are this job's own.</span></div>`}
       <div class="wide"><label for="jTitle">Job</label><input id="jTitle" value="${esc(j.title)}" maxlength="200" placeholder="What needs doing"></div>
       ${j.id ? `<div class="wide"><label for="jPlan">Plan</label><select id="jPlan" class="jplan"><option value="${esc(t.id)}">${esc(t.ref)} ${esc(t.title)}</option></select>
         <span class="muted" id="jPlanHint" hidden>Saving moves the job, with its dates, people, sub jobs and notes, to the end of that plan.</span></div>` : ''}
@@ -1016,6 +1025,8 @@ function jobForm(t, j) {
         <span id="jRecurBox" ${j.recur ? '' : 'hidden'}><select id="jFreq" aria-label="How often">${Object.entries(ME.recur || {}).map(([k, v]) => `<option value="${k}" ${k === (j.recur || 'weekly') ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>
           <label class="runtil">until <input type="date" id="jUntil" value="${esc(j.recurUntil || '')}" aria-label="Repeat until (optional)"></label>
           <span class="muted" id="jRecurHint"></span></span></div>
+      <div class="wide recur"><label class="rchk"><input type="checkbox" id="jReuse" ${j.reusable ? 'checked' : ''}> Reusable</label>
+        <span class="muted">Offer it as a starting point when adding a job</span></div>
       <div class="two"><label for="jWho">Assigned to</label><div class="pplpick" id="jPeople"><span id="jChips"></span><input id="jWho" list="people" placeholder="Add someone: name or email" autocomplete="off"></div></div>
       <div class="two"><label for="jStatus">Status</label><div class="stp"><select id="jStatus">${opt(ME.statuses, j.status)}</select>
         <span class="pctin" id="jPctBox" ${j.status === 'In progress' ? '' : 'hidden'}><input type="number" id="jPct" min="0" max="100" step="5" value="${esc(j.progress || 0)}" aria-label="Per cent complete"><span>% complete</span>
@@ -1097,6 +1108,20 @@ function wireJobs() {
     $('jCancel').onclick = () => { JOBOPEN = null; NEWSTART = ''; drawDetail(); save(); };
     $('jTitle').onkeydown = e => { if (e.key === 'Enter') $('jSave').click(); };
     // Plan: any plan you can change; picking another one moves the job there when you save.
+    if ($('jFrom')) {
+      // A new job can start as a copy of a reusable one.
+      reusableJobs().then(items => {
+        if (!$('jFrom') || !items.length) return;
+        $('jFrom').insertAdjacentHTML('beforeend', items.map(r => `<option value="${esc(r.id)}">${esc(r.title)} (${esc(r.planRef)} ${esc(r.planTitle)})</option>`).join(''));
+        $('jFromBox').hidden = false;
+        $('jFrom').onchange = () => {
+          const r = items.find(x => x.id === $('jFrom').value);
+          if (!r) return;
+          $('jTitle').value = r.title; $('jDur').value = r.duration; $('jDesc').value = r.description; $('jNote').value = r.note;
+          $('jDur').dispatchEvent(new Event('input'));
+        };
+      });
+    }
     if ($('jPlan')) {
       api('timeline').then(r => {
         if (!$('jPlan')) return;
@@ -1109,7 +1134,7 @@ function wireJobs() {
       if ($('jWho').value.trim()) { addWho(); if ($('jWho').value.trim()) return $('jWho').focus(); }   // someone typed but not added
       const body = { title: $('jTitle').value, start: $('jStart').value, duration: Math.max(0.5, Math.round((Number($('jDur').value) || 1) * 2) / 2),
                      recur: $('jRecur').checked ? $('jFreq').value : '', recurUntil: $('jRecur').checked ? $('jUntil').value : '',
-                     status: $('jStatus').value, ...($('jStatus').value === 'In progress' ? { progress: pct() } : {}), description: $('jDesc').value, note: $('jNote').value, people: JPEOPLE,
+                     reusable: $('jReuse').checked, status: $('jStatus').value, ...($('jStatus').value === 'In progress' ? { progress: pct() } : {}), description: $('jDesc').value, note: $('jNote').value, people: JPEOPLE,
                      mentions: [...new Set([...(JM.desc?.picked() || []), ...(JM.note?.picked() || [])])] };
       $('jSave').disabled = true;
       try {
@@ -1362,6 +1387,7 @@ async function loadCal() {
   try {
     CAL_ALL = await api('timeline?' + new URLSearchParams({ project: $('calProj').value, mine: $('calWho').value === 'mine' }));
     recentOnly();
+    reusableJobs().then(r => { REUSE = r; });   // for the + beside a person
     if (!RS) threeWeeks();
     drawCal();
   } catch (e) { $('calGrid').innerHTML = `<div class="notice" style="margin:16px">${esc(e.message)}</div>`; }
@@ -1630,12 +1656,13 @@ function planMenu(e, email, day) {
   document.querySelector('.planmenu')?.remove();
   const plans = (CAL_ALL || CAL).plans.filter(p => p.canChange);   // every job, including the ones the timeline leaves off
   if (!plans.length && !email) { cp.alert('Create a plan first, then add jobs to it.'); return; }
+  const reuse = REUSE.filter(r => plans.some(p => p.id === r.planId));   // a copy goes in its own plan, so one you can change
   const name = email ? personName(email) : 'nobody yet';
   const open = p => (p.jobs || []).filter(j => j.status !== 'Done' && !(email && (j.people || []).some(x => x.email === email)));
-  if (!email && plans.length === 1 && !open(plans[0]).length) return addJobOn(plans[0].id, day, email);
+  if (!email && plans.length === 1 && !open(plans[0]).length && !reuse.length) return addJobOn(plans[0].id, day, email);
   const first = OPEN && plans.find(p => p.id === OPEN.id);
   const list = first ? [first, ...plans.filter(p => p !== first)] : plans;
-  const total = list.reduce((n, p) => n + open(p).length, 0);
+  const total = list.reduce((n, p) => n + open(p).length, 0) + reuse.length;
   const when = j => j.start ? `${shortDay(j.start)}${j.end && j.end !== j.start ? ' – ' + shortDay(j.end) : ''}` : 'Not scheduled';
   const who = j => (j.people || []).length ? (j.people || []).map(x => x.name || personName(x.email)).join(', ') : 'Unassigned';
   const m = document.createElement('div');
@@ -1643,6 +1670,9 @@ function planMenu(e, email, day) {
   m.innerHTML = (email ? `<button type="button" role="menuitem" class="pmleave" data-leave>🌴 Add leave for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</button>` : '') +
     (plans.length ? `<div class="g">Schedule a job for ${esc(name)}${day ? ' from ' + esc(shortDay(day)) : ''}</div>` : '') +
     (total > 6 ? `<input type="search" class="pmq" placeholder="Find a job or plan" aria-label="Find a job or plan">` : '') +
+    (reuse.length ? `<div class="pmplan pmreuse"><div class="pmhead"><span class="pmt">Reusable jobs: add a copy</span></div>` +
+      reuse.map(r => `<button type="button" role="menuitem" class="pmjob" data-reuse="${esc(r.id)}" data-find="${esc((r.title + ' ' + r.planTitle + ' ' + r.planRef).toLowerCase())}">
+        <span class="pmt">↺ ${esc(r.title)}</span><span class="pmm">${esc(days(r.duration))} · new job in ${esc(r.planRef)} ${esc(r.planTitle)}</span></button>`).join('') + '</div>' : '') +
     list.map(p => {
       const jobs = open(p);
       return `<div class="pmplan" data-plan="${esc(p.id)}">
@@ -1680,6 +1710,14 @@ function planMenu(e, email, day) {
   };
   m.querySelector('[data-leave]')?.addEventListener('click', () => { close(); leaveDialog({ email, start: day || today(), end: day || today(), note: '' }); });
   m.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { close(); addJobOn(b.dataset.pick, day, email); });
+  m.querySelectorAll('[data-reuse]').forEach(b => b.onclick = async () => {
+    const r = reuse.find(x => x.id === b.dataset.reuse);
+    close();
+    const body = { title: r.title, duration: r.duration, description: r.description, note: r.note, start: workday(day || today()),
+                   people: email ? [{ email, name: personName(email) }] : [] };
+    try { await send(`tasks/${r.planId}/jobs`, body); afterJobChange(r.planId); }
+    catch (err) { cp.alert(err.message); }
+  });
   m.querySelectorAll('[data-job]').forEach(b => b.onclick = async () => {
     const plan = (CAL_ALL || CAL).plans.find(p => p.id === b.closest('.pmplan').dataset.plan), job = plan.jobs.find(j => j.id === b.dataset.job);
     close();

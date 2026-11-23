@@ -664,6 +664,7 @@ def _job(r) -> dict:
             "assigneeName": r["assignee_name"], "people": _people_of(r), "status": r["status"],
             "progress": progress, "subs": subs, "subsDone": done, "createdAt": r["created_at"], "updatedAt": r["updated_at"],
             "recur": recur, "recurUntil": until, "priority": None,   # its place in the plan: set by ranked()
+            "reusable": bool(r["reusable"]) if "reusable" in keys else False,
             # A finished recurring job stops repeating.
             "repeats": [] if r["status"] == "Done" else repeats(r["start"], r["duration"], recur, until)}
 
@@ -718,6 +719,7 @@ class JobIn(BaseModel):
     mentions: list[str] = Field(default_factory=list, max_length=50)   # picked from the @ list in the note or description
     recur: str | None = Field(default=None, max_length=20)             # "" (doesn't repeat), weekly, biweekly, monthly, quarterly, yearly
     recurUntil: str | None = Field(default=None, max_length=10)        # last day it can repeat on; "" for no end
+    reusable: bool | None = None                                        # offered to copy when adding a job (Add job, the + beside a person)
 
 
 class OrderIn(BaseModel):
@@ -755,6 +757,8 @@ def _clean_job(body: JobIn) -> dict:
         if body.duration * 2 != int(body.duration * 2):
             raise HTTPException(422, "Duration is in whole or half days: 0.5, 1, 1.5 …")
         out["duration"] = int(body.duration) if body.duration == int(body.duration) else body.duration
+    if body.reusable is not None:
+        out["reusable"] = 1 if body.reusable else 0
     if body.recur is not None:
         if body.recur and body.recur not in RECUR:
             raise HTTPException(422, f"How often must be one of: {', '.join(RECUR.values())}.")
@@ -849,11 +853,11 @@ def add_job(tid: str, body: JobIn, user: User = Depends(require_task_user)):
     with store().lock, store().db() as db:
         pos = db.execute("SELECT COALESCE(MAX(position), -1) + 1 AS n FROM pipeline_jobs WHERE task_id = ?", (tid,)).fetchone()["n"]
         db.execute("INSERT INTO pipeline_jobs (id, task_id, position, title, description, note, start, duration, assignee, "
-                   "assignee_name, people, status, progress, recur, recur_until, created_by, created_at, updated_at) "
-                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   "assignee_name, people, status, progress, recur, recur_until, reusable, created_by, created_at, updated_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (jid, tid, pos, f["title"], f.get("description", ""), f.get("note", ""), f.get("start", ""),
                     f.get("duration", 1), f.get("assignee", ""), f.get("assignee_name", ""), f.get("people", "[]"), f.get("status", "To do"),
-                    f.get("progress", 0), f.get("recur", ""), f.get("recur_until", ""), user.email, stamp, stamp))
+                    f.get("progress", 0), f.get("recur", ""), f.get("recur_until", ""), f.get("reusable", 0), user.email, stamp, stamp))
     _add_activity(tid, "change", user, data={"field": "job", "action": "added", "to": f["title"]})
     j = _job_row(tid, jid)
     _tell_job_assignee(t, j, user)
@@ -1125,6 +1129,19 @@ def delete_leave(lid: str, user: User = Depends(require_task_user)):
     with store().lock, store().db() as db:
         db.execute("DELETE FROM team_leave WHERE id = ?", (lid,))
     return {"ok": True}
+
+
+@router.get("/api/reusable-jobs")
+def reusable_jobs(user: User = Depends(require_task_user)):
+    """Jobs marked Reusable, in plans you can see (finished plans too): the starting points Add job offers.
+    A copy takes the title, duration, description and note; who, when and its status are its own."""
+    plans = {t["id"]: t for t in visible_tasks(user)}
+    with store().db() as db:
+        rows = db.execute("SELECT * FROM pipeline_jobs WHERE reusable = 1 ORDER BY title COLLATE NOCASE").fetchall()
+    return {"items": [{"id": r["id"], "planId": r["task_id"], "planRef": plans[r["task_id"]]["ref"],
+                       "planTitle": plans[r["task_id"]]["title"], "title": r["title"], "duration": r["duration"],
+                       "description": r["description"] or "", "note": r["note"] or ""}
+                      for r in rows if r["task_id"] in plans]}
 
 
 @router.get("/api/timeline")

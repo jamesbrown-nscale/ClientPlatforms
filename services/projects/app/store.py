@@ -79,6 +79,7 @@ class Store:
                                                     "subs": "TEXT DEFAULT '[]'",       # its checklist: [{id, title, email, name, done}]
                                                     "recur": "TEXT DEFAULT ''",        # repeats: weekly, biweekly, monthly, quarterly, yearly
                                                     "recur_until": "TEXT DEFAULT ''",  # last day it can repeat on ('' = no end)
+                                                    "reusable": "INTEGER DEFAULT 0",   # offered as a starting point when adding a job
                                                     "priority": "INTEGER"})            # 1 (most important) to 99; NULL = none
             # Jobs from before a job could have several people: their one assignee becomes the list.
             db.execute("UPDATE pipeline_jobs SET people = json_array(json_object('email', assignee, 'name', assignee_name)) "
