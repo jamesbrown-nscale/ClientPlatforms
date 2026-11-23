@@ -407,3 +407,17 @@ def test_move_job_to_another_plan(c):
     assert [x["title"] for x in left["jobs"]] == ["Keep me"]
     assert any((x.get("data") or {}).get("action") == "moved_out" for x in left["activity"])
     assert c.post(f"/tasks/api/tasks/{b['id']}/jobs/{j['id']}/move", headers=AMY, json={"plan": b["id"]}).json()["id"] == b["id"]   # same plan: nothing
+
+
+def test_job_priority(c):
+    """A job's priority is its place in the plan: 1, 2, 3 … Reordering renumbers them."""
+    t = new(c, title="Windows Devices")
+    J = f"/tasks/api/tasks/{t['id']}/jobs"
+    for title in ("Windows App Standardisation", "Removal of Un-Approved Applications", "Create and Build Windows apps"):
+        jobs = c.post(J, headers=AMY, json={"title": title}).json()["jobs"]
+    assert [(x["priority"], x["title"][:6]) for x in jobs] == [(1, "Window"), (2, "Remova"), (3, "Create")]
+    ids = [x["id"] for x in jobs]
+    jobs = c.post(f"{J}/order", headers=AMY, json={"ids": [ids[2], ids[0], ids[1]]}).json()["jobs"]
+    assert [(x["priority"], x["title"][:6]) for x in jobs] == [(1, "Create"), (2, "Window"), (3, "Remova")]
+    plan = next(p for p in c.get("/tasks/api/timeline", headers=AMY).json()["plans"] if p["id"] == t["id"])
+    assert [x["priority"] for x in plan["jobs"]] == [1, 2, 3]

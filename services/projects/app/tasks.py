@@ -661,15 +661,23 @@ def _job(r) -> dict:
             "end": end_of(r["start"], r["duration"]) if r["start"] else "", "assignee": r["assignee"],
             "assigneeName": r["assignee_name"], "people": _people_of(r), "status": r["status"],
             "progress": progress, "subs": subs, "subsDone": done, "createdAt": r["created_at"], "updatedAt": r["updated_at"],
-            "recur": recur, "recurUntil": until,
+            "recur": recur, "recurUntil": until, "priority": None,   # its place in the plan: set by ranked()
             # A finished recurring job stops repeating.
             "repeats": [] if r["status"] == "Done" else repeats(r["start"], r["duration"], recur, until)}
+
+
+def ranked(jobs: list[dict]) -> list[dict]:
+    """A plan's jobs in its order, each with its priority: its place in that order (1 is the top).
+    Dragging a job up or down the plan changes it."""
+    for i, j in enumerate(jobs, start=1):
+        j["priority"] = i
+    return jobs
 
 
 def jobs_of(tid: str) -> list[dict]:
     with store().db() as db:
         rows = db.execute("SELECT * FROM pipeline_jobs WHERE task_id = ? ORDER BY position, created_at", (tid,)).fetchall()
-    return [_job(r) for r in rows]
+    return ranked([_job(r) for r in rows])
 
 
 def _job_summary(user: User) -> dict:
@@ -1128,7 +1136,7 @@ def timeline(project: str = "", mine: bool = False, done: bool = False, user: Us
         by_plan.setdefault(r["task_id"], []).append(_job(r))
     out = []
     for t in plans:
-        jobs = by_plan.get(t["id"], [])
+        jobs = ranked(by_plan.get(t["id"], []))   # numbered before "mine" leaves some out
         if mine:
             jobs = [j for j in jobs if user.email in {p["email"] for p in j["people"]}]
             if not jobs and t["assignee"] != user.email:

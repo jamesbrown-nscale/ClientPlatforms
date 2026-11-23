@@ -233,6 +233,12 @@
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; box-sizing: border-box; }
   .rbar:hover { background: color-mix(in srgb, var(--c, #0F41F3) 22%, transparent); }
   .jrec { color: var(--text2); white-space: nowrap; }
+  .jnum { flex: 0 0 auto; min-width: 22px; text-align: right; font-weight: 700; font-size: 15px; color: var(--primary); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  .jnum.sm { min-width: 0; font-size: 12px; margin-right: 6px; }
+  .jnum.sm:empty { display: none; }
+  .trow.ind[draggable="true"] { cursor: grab; }
+  .trow.ind.dragging { opacity: .5; }
+  .trow.ind.over { box-shadow: inset 0 2px 0 var(--primary); }
   .pplpick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; padding: 4px 6px; background: #fff; border: 1px solid var(--border); border-radius: 8px; cursor: text; }
   .pplpick:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
   .pplpick #jChips { display: contents; }
@@ -587,6 +593,7 @@ function toggleSub(key, el) {
 function byPlan(jobs) {
   const m = new Map();
   jobs.forEach(({ p, j }) => { if (!m.has(p.id)) m.set(p.id, { p, jobs: [] }); m.get(p.id).jobs.push(j); });
+  for (const g of m.values()) g.jobs.sort((a, b) => (a.priority || 999) - (b.priority || 999));   // 1, 2, 3 …: the plan's order
   return [...m.values()];
 }
 
@@ -620,8 +627,8 @@ function drawPeople() {
         subCount(j),
         j.note ? '<span title="Has a note">📝 Note</span>' : '',
       ].filter(Boolean).join('');
-      return `<div class="trow ind ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
-        <button type="button" class="check ${done ? 'done' : ''}" data-pdone="${esc(j.id)}" data-pplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+      return `<div class="trow ind ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0" ${p.canChange ? 'draggable="true"' : ''}>
+        ${jnum(j)}<button type="button" class="check ${done ? 'done' : ''}" data-pdone="${esc(j.id)}" data-pplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
         <div class="tmain"><div class="ttitle">${esc(j.title)}</div><div class="tmeta">${meta}</div></div></div>`;
       }).join('');
     }).join('') || '<div class="trow" style="cursor:default"><span class="muted" style="font-style:italic;padding-left:30px">Nothing planned</span></div>';
@@ -645,6 +652,24 @@ function drawPeople() {
     catch (err) { cp.alert(err.message); }
   });
   $('rows').querySelectorAll('[data-addp]').forEach(b => b.onclick = e => { e.stopPropagation(); planMenu(e, b.dataset.addp, ''); });
+  // Drag a job up or down among its plan's jobs: the plan's order (its priorities) changes to match.
+  let dragged = null;
+  $('rows').querySelectorAll('.trow.ind[draggable="true"]').forEach(el => {
+    el.addEventListener('dragstart', e => { dragged = el; el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); $('rows').querySelectorAll('.over').forEach(x => x.classList.remove('over')); });
+    el.addEventListener('dragover', e => { if (!dragged || dragged === el || dragged.dataset.plan !== el.dataset.plan) return; e.preventDefault(); el.classList.add('over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', async e => {
+      e.preventDefault(); el.classList.remove('over');
+      if (!dragged || dragged === el || dragged.dataset.plan !== el.dataset.plan) return;
+      const plan = CAL.plans.find(p => p.id === el.dataset.plan);
+      const ids = plan.jobs.map(j => j.id).filter(id => id !== dragged.dataset.job);
+      ids.splice(ids.indexOf(el.dataset.job) + (e.offsetY > el.offsetHeight / 2 ? 1 : 0), 0, dragged.dataset.job);
+      dragged = null;
+      try { const r = await send(`tasks/${plan.id}/jobs/order`, { ids }); if (OPEN?.id === r.id) { OPEN = r; drawDetail(); } load(); }
+      catch (err) { cp.alert(err.message); }
+    });
+  });
 }
 
 /* ---------- All Tasks: every job in every plan, in one list ---------- */
@@ -678,7 +703,7 @@ function drawAllJobs() {
     const state = pct != null ? `<span class="jpct" title="In progress · ${pct}% complete"><span class="pbar"><i style="width:${pct}%"></i></span>${pct}%</span>`
                 : j.status !== 'To do' ? statusChip(j.status) : '';
     return `<div class="trow ajob ${done ? 'isdone' : ''}" data-plan="${esc(p.id)}" data-job="${esc(j.id)}" aria-current="${sel}" tabindex="0">
-      <button type="button" class="check ${done ? 'done' : ''}" data-adone="${esc(j.id)}" data-aplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+      ${jnum(j)}<button type="button" class="check ${done ? 'done' : ''}" data-adone="${esc(j.id)}" data-aplan="${esc(p.id)}" ${p.canChange ? '' : 'disabled'} title="${done ? 'Reopen' : 'Mark done'}" aria-label="${done ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
       <div class="tmain"><div class="ttitle">${esc(j.title)}</div>
         <div class="tmeta"><span class="aplan"><span class="sq" style="background:${colourOf(p.id)[0]}"></span><b>${esc(p.ref)}</b> ${esc(p.title)}${p.status === 'Done' ? ' <i>(plan done)</i>' : ''}</span>${when}</div></div>
       <div class="aside">${subCount(j)}${state}${avatars(j)}</div></div>`;
@@ -874,7 +899,7 @@ function jobRow(t, j) {
   return `<div class="job ${open ? 'open' : ''} ${isDone ? 'isdone' : ''}" data-job="${esc(j.id)}" ${t.canChange ? 'draggable="true"' : ''}>
     <div class="jh" data-toggle="${esc(j.id)}">
       ${t.canChange ? '<span class="grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>' : ''}
-      <button type="button" class="check ${isDone ? 'done' : ''}" data-jdone="${esc(j.id)}" ${t.canChange ? '' : 'disabled'} title="${isDone ? 'Reopen' : 'Mark done'}" aria-label="${isDone ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
+      ${jnum(j)}<button type="button" class="check ${isDone ? 'done' : ''}" data-jdone="${esc(j.id)}" ${t.canChange ? '' : 'disabled'} title="${isDone ? 'Reopen' : 'Mark done'}" aria-label="${isDone ? 'Reopen' : 'Mark done'}: ${esc(j.title)}">✓</button>
       <span class="jt">${esc(j.title)}</span>${t.canChange && !(j.subs || []).length && !open && !SUBADD.has(j.id) ? `<button type="button" class="jsadd" data-sfirst="${esc(j.id)}" title="Break this job into a checklist">+ Sub job</button>` : ''}${(j.subs || []).length ? `<span class="jsubn ${j.subsDone === j.subs.length ? 'all' : ''}" title="Sub jobs done">${j.subsDone} of ${j.subs.length}</span>` : ''}${pctOf(j) != null ? `<span class="jpct" title="In progress · ${pctOf(j)}% complete"><span class="pbar"><i style="width:${pctOf(j)}%"></i></span>${pctOf(j)}%</span>` : j.status !== 'To do' && !isDone ? statusChip(j.status) : ''}${when}${who}
     </div>
     ${subsBlock(t, j, open)}
@@ -973,6 +998,8 @@ function jobText(j) {
 
 const recurWord = j => (ME.recur || {})[j.recur] || '';
 const recurTxt = j => j.recur ? ` · ↻ ${recurWord(j)}` : '';
+/** A job's priority: its place in its plan (1 is the top). Drag a job up or down the plan to change it. */
+const jnum = j => j.priority ? `<span class="jnum" title="Priority ${j.priority} in its plan: drag it up or down to change">${j.priority}</span>` : '';
 
 function jobForm(t, j) {
   const opt = (list, v) => list.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
@@ -1120,7 +1147,7 @@ function wireJobs() {
       const at = ids.indexOf(el.dataset.job), below = e.offsetY > el.offsetHeight / 2;
       ids.splice(at + (below ? 1 : 0), 0, dragged.dataset.job);
       dragged = null;
-      try { OPEN = await send(`tasks/${t.id}/jobs/order`, { ids }); drawDetail(); } catch (err) { cp.alert(err.message); }
+      try { OPEN = await send(`tasks/${t.id}/jobs/order`, { ids }); drawDetail(); load(); if (MODE === 'timeline') loadCal(); } catch (err) { cp.alert(err.message); }
     });
   });
 }
@@ -1420,7 +1447,7 @@ function drawCal() {
       `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1) * DW - 2}px;${cv}" data-ropen="${esc(p.id)}" data-rjob="${esc(j.id)}" data-rstart="${esc(r.start)}"
         title="${esc(j.title)} (${esc(p.ref)} ${esc(p.title)})\nRepeats ${esc(recurWord(j).toLowerCase())}: ${esc(span(r.start, r.end))}${who ? '\n' + esc(jobNames(j)) : ''}\nChange it on the first one">↻ ${esc(j.title)}</div>`).join('');
     return `<div class="tlrow tljob ${byPerson ? 'ind' : ''} ${isDone ? 'isdone' : ''} ${sel ? 'sel' : ''}"${owner !== null ? ` data-grp="${esc(owner)}"` : ''} style="min-height:${byPerson ? 44 : 48}px">
-      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn">${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
+      <div class="tllab" style="width:${LEFT}px" data-open="${esc(p.id)}" data-job="${esc(j.id)}" title="${esc(j.title)}"><span class="jn"><span class="jnum sm">${j.priority || ''}</span>${esc(j.title)}</span><span class="js">${esc(sub)}</span></div>
       <div class="tltrack ${!j.start && p.canChange ? 'pick' : ''}" style="width:${W}px" ${!j.start && p.canChange ? `data-sched="${esc(j.id)}" data-plan="${esc(p.id)}" title="Click a day to schedule this job"` : ''}>${bar}${reps}</div></div>`;
   };
   const anyChange = CAL.plans.some(p => p.canChange);

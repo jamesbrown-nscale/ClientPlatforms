@@ -197,6 +197,8 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 
 **Sub jobs.** A job can be broken into a checklist: open the job (or hover it and choose **+ Sub job**), type each one and press Enter, optionally with who it's for. Tick them off, click one's title to rename it, click its person to change or clear it, or × to remove it. The job shows "2 of 4", and its % complete follows the ticks. Ticking the first one moves a job that hadn't started to *In progress*. Someone given a sub job is notified.
 
+**Job priority.** A job's priority is its place in its plan: 1 is the top. The number shows on the left of every job (in the plan, List by person, All Tasks and the timeline), and each plan's jobs are listed in that order. Drag a job up or down, in the plan or in List by person, and the plan's jobs are renumbered. A job moved to another plan goes to the bottom of it.
+
 **Moving a job.** A job's **Plan** box lists every plan you can change; pick another and save to move the job there (to the end), with its dates, people, sub jobs, note and repeats. Both plans' activity says it moved.
 
 **Leave.** On the timeline by person, a person's **+** (or a click on their row) has **🌴 Add leave**: first and last day and an optional note (e.g. *Holiday*). It shows as a striped block on that person's own row, not as a job under them, and only on the timeline. A job on a leave day turns their busy line red. Click the block to change the dates or remove it. Anyone who can change Team Planning can add leave for anyone.
