@@ -357,6 +357,7 @@
   .pav.me { background: var(--ok-fill); color: var(--ok-text); }
   .pav.none { background: var(--grey-fill); color: var(--muted); }
   .tlgroup .tllab .cnt { font-weight: 400; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .tlbusy.reg { background: #5B7BE0; opacity: .35; }
   .tlbusy { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--violet); opacity: .25; }
   .tlbusy.over { background: #E5484D; opacity: .55; }
   .tlleave { position: absolute; top: 4px; bottom: 4px; border-radius: 6px; background: repeating-linear-gradient(135deg, #FFF1D6 0 6px, #FFE6B3 6px 12px);
@@ -1482,6 +1483,20 @@ function drawCal() {
   const grid = DW >= 9 ? `background-image:repeating-linear-gradient(to right, transparent 0 ${DW - 1}px, #ECEFF5 ${DW - 1}px ${DW}px)` : '';
   const todayLine = t0 >= RS && t0 <= end ? `<div class="tltoday" style="left:${LEFT + x(t0) + DW / 2 - 1}px"></div>` : '';
 
+  // A person's regular work, as a row like a job's: drag it along, by its right edge, or onto someone else.
+  const slotRow = (s, g) => {
+    const cv = '--c:#5B7BE0;--f:#E6EDFF;--t:#1F3C9A', half = isHalf(s.duration);
+    const sub = `${dmy(s.start)} – ${dmy(s.end)} · ${days(s.duration)}${s.recur ? ' · ↻ ' + recurWord(s) : ''}${s.recurUntil ? ' until ' + dmy(s.recurUntil) : ''}`;
+    const bar = s.end >= RS && s.start <= end
+      ? `<div class="gbar can" style="left:${x(s.start) + 1}px;width:${(between(s.start, s.end) + 1 - (half ? 0.5 : 0)) * DW - 2}px;${cv}"
+          data-slot="${esc(s.id)}" data-owner="${esc(g.email)}" data-label="${esc('↻ ' + s.title)}" data-pc="" title="${esc(s.title)}: ${esc(span(s.start, s.end))} (${days(s.duration)})${s.note ? '\n' + esc(s.note) : ''}\nDrag to move; drag its right edge to change how long; drag onto someone else to give it to them">${barPieces(s.start, s.end, '↻ ' + s.title, '', true, half)}</div>` : '';
+    const reps = (s.repeats || []).filter(r => r.end >= RS && r.start <= end).map(r =>
+      `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1 - (half ? 0.5 : 0)) * DW - 2}px;${cv}" data-rslot="${esc(s.id)}"
+        title="${esc(s.title)}\nRepeats ${esc(recurWord(s).toLowerCase())}: ${esc(span(r.start, r.end))}\nMove the first one to move them all">↻ ${esc(s.title)}</div>`).join('');
+    return `<div class="tlrow tljob ind" data-grp="${esc(g.email)}" style="min-height:44px">
+      <div class="tllab" style="width:${LEFT}px" data-slotlab="${esc(s.id)}" title="${esc(s.title)}${s.note ? ' · ' + esc(s.note) : ''}"><span class="jn">${esc(s.title)}</span><span class="js">${esc(sub)}</span></div>
+      <div class="tltrack" style="width:${W}px">${bar}${reps}</div></div>`;
+  };
   const jobRow = (p, j, byPerson, owner = null) => {
     const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
     const dates = j.start ? `${dmy(j.start)} – ${dmy(j.end)}` : 'Not scheduled';
@@ -1533,14 +1548,12 @@ function drawCal() {
         busy += `<div class="tlleave" data-leave="${esc(l.id)}" style="left:${x(a) + 1}px;width:${(between(a, b) + 1) * DW - 2}px"
           title="${esc(l.name || g.name)} on leave: ${esc(span(l.start, l.end))}${l.note ? '\n' + esc(l.note) : ''}\nClick to change or remove">${DW * (between(a, b) + 1) > 60 ? '🌴 ' + esc(l.note || 'Leave') : '🌴'}</div>`;
       }
-      // Their regular work: blocks on their own row like leave; later repeats dashed.
-      for (const s of (CAL.regularSlots || []).filter(s => g.email && s.email === g.email)) {
-        [{ start: s.start, end: s.end }, ...(s.repeats || [])].forEach((o, k) => {
-          if (o.end < RS || o.start > end) return;
-          const a = o.start < RS ? RS : o.start, b = o.end > end ? end : o.end, w = (between(a, b) + 1) * DW;
-          busy += `<div class="tlreg ${k ? 'rep' : ''}" data-slot="${esc(s.id)}" style="left:${x(a) + 1}px;width:${w - 2}px"
-            title="${esc(s.title)}: ${esc(s.name || g.name)}, ${esc(span(o.start, o.end))}${s.recur ? '\nRepeats ' + esc(recurWord(s).toLowerCase()) : ''}${s.note ? '\n' + esc(s.note) : ''}\nClick to change or remove">${w > 44 ? '↻ ' + esc(s.title) : '↻'}</div>`;
-        });
+      // Their regular work: a faint blue line on their own row where it falls; a row each underneath.
+      const slots = (CAL.regularSlots || []).filter(s => g.email && s.email === g.email);
+      for (const s of slots) for (const o of [{ start: s.start, end: s.end }, ...(s.repeats || [])]) {
+        if (o.end < RS || o.start > end) continue;
+        for (const [a, b] of workRuns(o.start < RS ? RS : o.start, o.end > end ? end : o.end))
+          busy += `<div class="tlbusy reg" style="left:${x(a)}px;width:${(between(a, b) + 1) * DW}px" title="${esc(s.title)}: ${esc(span(o.start, o.end))}"></div>`;
       }
       const open = g.jobs.filter(({ j }) => j.status !== 'Done').length;
       const av = g.email ? `<span class="pav ${g.email === ME.email ? 'me' : ''}">${esc(initials(g.name))}</span>` : '<span class="pav none">–</span>';
@@ -1548,7 +1561,13 @@ function drawCal() {
         <div class="tllab" style="width:${LEFT}px;cursor:default" title="${esc(g.name)}${g.email ? ' · ' + esc(g.email) : ''}">${av}<span class="gt">${esc(g.name)}${g.email === ME.email ? ' (you)' : ''}</span><span class="cnt">${open} open</span>
           ${anyChange ? `<button type="button" class="tladd" data-addp="${esc(g.email)}" title="Add a job for ${esc(g.name)}" aria-label="Add a job for ${esc(g.name)}">+</button>` : ''}</div>
         <div class="tltrack ${anyChange ? 'pick' : ''}" style="width:${W}px" data-person="${esc(g.email)}" ${anyChange ? `title="Click a day to add a job for ${esc(g.name)} starting then"` : ''}>${busy}</div></div>`;
-      if (!g.jobs.length) rows += `<div class="tlrow tljob" data-grp="${esc(g.email)}" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+      if (!g.jobs.length && !slots.length) rows += `<div class="tlrow tljob" data-grp="${esc(g.email)}" style="min-height:40px"><div class="tllab" style="width:${LEFT}px;cursor:default"><span class="tlnone">Nothing planned</span></div><div class="tltrack" style="width:${W}px"></div></div>`;
+      if (slots.length) {
+        rows += `<div class="tlrow tlsub" data-grp="${esc(g.email)}" style="min-height:34px">
+          <div class="tllab" style="width:${LEFT}px;cursor:default"><span class="chev" style="visibility:hidden">▶</span><span class="sq" style="background:#5B7BE0"></span><span class="gt">Regular work</span></div>
+          <div class="tltrack" style="width:${W}px"></div></div>`;
+        for (const s of slots) rows += slotRow(s, g);
+      }
       // Each plan they have jobs in is a sub-heading, with its span of their jobs; their jobs in it underneath.
       for (const { p, jobs: js } of byPlan(g.jobs)) {
         const dated = js.filter(j => j.start), a = dated.map(j => j.start).sort()[0], b = dated.map(j => j.end).sort().pop();
@@ -1882,7 +1901,8 @@ function wireTimeline() {
   });
   g.querySelectorAll('[data-add]').forEach(b => b.onclick = e => { e.stopPropagation(); addJobOn(b.dataset.add, ''); });
   g.querySelectorAll('.rbar').forEach(b => b.onclick = e => { e.stopPropagation(); openTask(b.dataset.ropen, b.dataset.rjob, b.dataset.rstart); });
-  g.querySelectorAll('.tlreg').forEach(b => b.onclick = e => { e.stopPropagation(); const s = (CAL.regularSlots || []).find(x => x.id === b.dataset.slot); if (s) slotDialog(s); });
+  const slotOf = id => (CAL.regularSlots || []).find(x => x.id === id);
+  g.querySelectorAll('[data-slotlab], [data-rslot]').forEach(b => b.onclick = e => { e.stopPropagation(); const s = slotOf(b.dataset.slotlab || b.dataset.rslot); if (s) slotDialog(s); });
   g.querySelectorAll('.tlleave').forEach(b => b.onclick = e => { e.stopPropagation(); const l = (CAL.leave || []).find(x => x.id === b.dataset.leave); if (l) leaveDialog(l); });
   g.querySelectorAll('.tlgroup .tltrack.pick[data-plan]').forEach(t => t.onclick = e => { if (!e.target.closest('.diamond')) addJobOn(t.dataset.plan, dayAt(t, e)); });
   g.querySelectorAll('.tllab[data-sub]').forEach(l => {
@@ -1900,7 +1920,9 @@ function wireTimeline() {
   g.querySelectorAll('.gbar').forEach(bar => {
     bar.onpointerdown = e => {
       if (e.button !== 0) return;
-      const plan = CAL.plans.find(p => p.id === bar.dataset.plan), job = plan.jobs.find(j => j.id === bar.dataset.job);
+      // A bar is a job, or someone's regular work (which anyone can move, like leave).
+      const slot = bar.dataset.slot ? slotOf(bar.dataset.slot) : null;
+      const plan = slot ? { canChange: true } : CAL.plans.find(p => p.id === bar.dataset.plan), job = slot || plan.jobs.find(j => j.id === bar.dataset.job);
       const resize = !!e.target.closest('.rh'), x0 = e.clientX, left0 = bar.offsetLeft, w0 = bar.offsetWidth;
       const len0 = job.duration || 1;
       let dd = 0, moved = false, s = job.start, len = len0;
@@ -1927,7 +1949,7 @@ function wireTimeline() {
           if (target !== owner) {
             if (!tip) { tip = document.createElement('div'); tip.className = 'droptip'; document.body.append(tip); }
             const gname = g.querySelector(`.tlgroup[data-grp="${CSS.escape(target)}"]`)?.dataset.gname || 'Unassigned';
-            tip.textContent = target ? `Give to ${gname}` : 'Unassign';
+            tip.textContent = target ? `Give to ${gname}` : slot ? 'Regular work needs someone' : 'Unassign';
             tip.style.left = ev.pageX + 14 + 'px'; tip.style.top = ev.pageY + 14 + 'px';
           } else if (tip) { tip.remove(); tip = null; }
         }
@@ -1941,17 +1963,23 @@ function wireTimeline() {
         bar.innerHTML = barPieces(s, e, bar.dataset.label, bar.dataset.pc, true, isHalf(len));   // weekends stay empty while dragging too
         bar.title = `${span(s, e)} (${days(len)})`;
         const lab = bar.closest('.tlrow').querySelector('.js');
-        if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${said(job.status)}`;
+        if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${slot ? days(len) : said(job.status)}`;
       };
       bar.onpointerup = async () => {
         bar.onpointermove = bar.onpointerup = null;
         bar.style.pointerEvents = ''; bar.style.transform = ''; bar.parentElement.style.zIndex = '';
         tip?.remove(); mark(null);
-        if (!moved) { openTask(plan.id, job.id); return; }
+        if (!moved) { if (slot) slotDialog(slot); else openTask(plan.id, job.id); return; }
         bar.classList.remove('dragging');
-        const give = owner !== null && !resize && target !== owner;
+        const give = owner !== null && !resize && target !== owner && !(slot && !target);
         if (!give && (resize ? len === len0 : s === job.start)) return drawCal();
         const body = resize ? { duration: len } : s !== job.start ? { start: s } : {};
+        if (slot) {
+          if (give) body.email = target;
+          try { await send(`regular-slots/${slot.id}`, body, 'PATCH'); FIT = false; await loadCal(); }
+          catch (err) { cp.alert(err.message); drawCal(); }
+          return;
+        }
         if (give) {
           // Swap this person for the one it was dropped on; anyone else on the job stays.
           const keep = jobPeople(job).filter(x => x.email !== owner && x.email !== target).map(x => ({ email: x.email, name: x.name || personName(x.email) }));
