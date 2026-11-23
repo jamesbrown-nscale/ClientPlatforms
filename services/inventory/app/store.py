@@ -24,7 +24,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from .recycle import Bin
 
 DEVICE_FIELDS = ("platform", "kind", "name", "make", "model", "os", "os_version", "serial", "user_email", "user_name", "last_seen")
-USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title")
+USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title", "platform_tag")
 
 
 def now() -> str:
@@ -65,6 +65,8 @@ class Store:
                 # Team tag moves across.
                 db.execute("ALTER TABLE users ADD COLUMN division TEXT DEFAULT ''")
                 db.execute("UPDATE users SET division = team WHERE COALESCE(team, '') != ''")
+            if "platform_tag" not in have:   # Mac, Windows or Linux set by hand ("" = from their devices)
+                db.execute("ALTER TABLE users ADD COLUMN platform_tag TEXT DEFAULT ''")
         self.bin = Bin(self._db, self._lock)   # deleted users, kept 30 days (recycle.py; Settings → Recycle bin)
 
     def _db(self):

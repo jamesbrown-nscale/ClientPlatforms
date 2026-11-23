@@ -327,6 +327,12 @@ def test_tags(c, fake):
     assert next(u for u in got["items"] if u["email"] == "kai@nscale.com")["type"] == "Contractor"   # the same one
     assert got["types"] == [{"name": "VIP", "count": 0}, {"name": "Contractor", "count": 2}, {"name": "Standard", "count": 1}]
     c.delete("/users/api/users/kai@nscale.com", headers=UE)
+    auto = p({}).json()["platformAuto"]
+    u = p({"platform": "linux"}).json()                                       # tagged by hand
+    assert (u["platform"], u["platformSet"], u["platformAuto"]) == ("Linux", "Linux", auto)
+    assert p({"platform": "BeOS"}).status_code == 422
+    u = p({"platform": ""}).json()                                            # back to Automatic
+    assert (u["platform"], u["platformSet"]) == (auto, "")
     assert p({"primaryDevice": "C02ZZZ"}).status_code == 422
     did = next(d["id"] for d in c.get("/users/api/devices", headers=UV).json()["items"] if d["serial"] == "C02AAA")
     u = p({"primaryDevice": did, "type": "Standard", "division": ""}).json()

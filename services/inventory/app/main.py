@@ -411,11 +411,14 @@ def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigne
     dev = devices.get(pd)
     mgr = u["manager"] or ""
     mine = assigned.get(u["email"], [])
+    auto = platform_of(dev, [d for d in mine if d["id"] != pd])
+    tag = u.get("platform_tag") or ""
     return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
             "department": u["department"] or "", "division": u["division"] or "",
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
             "type": u["user_type"] or "Standard", "title": u["title"] or "",
-            "platform": platform_of(dev, [d for d in mine if d["id"] != pd]),
+            # Platform: set by hand if someone has, otherwise from their devices.
+            "platform": tag or auto, "platformSet": tag, "platformAuto": auto,
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
             # Everything else Jamf or Intune says is theirs, latest check-in first.
             "otherDevices": [_device_view(d) for d in by_check_in(assigned.get(u["email"], [])) if d["id"] != pd],
@@ -595,6 +598,7 @@ class UserIn(BaseModel):
     primaryDevice: str = Field("", max_length=200)
     title: str = Field("", max_length=200)
     department: str = Field("", max_length=200)
+    platform: str = Field("", max_length=20)   # Mac, Windows or Linux by hand; "" = from their devices
 
 
 class UserChange(BaseModel):
@@ -605,6 +609,20 @@ class UserChange(BaseModel):
     primaryDevice: str | None = Field(None, max_length=200)
     title: str | None = Field(None, max_length=200)
     department: str | None = Field(None, max_length=200)
+    platform: str | None = Field(None, max_length=20)
+
+
+PLATFORMS_OS = ("Mac", "Windows", "Linux")
+
+
+def _platform(v: str) -> str:
+    v = v.strip()
+    if not v or v.lower() in ("auto", "automatic"):
+        return ""
+    hit = next((p for p in PLATFORMS_OS if p.lower() == v.lower()), "")
+    if not hit:
+        raise ValueError("Platform is Mac, Windows or Linux (or empty to take it from their devices).")
+    return hit
 
 
 def _fields(body: BaseModel, email: str) -> dict:
@@ -617,6 +635,8 @@ def _fields(body: BaseModel, email: str) -> dict:
         out["manager"] = _resolve_manager(d["manager"], _names(), email)
     if "type" in d:
         out["user_type"] = _type(d["type"])
+    if "platform" in d:
+        out["platform_tag"] = _platform(d["platform"])
     if "primaryDevice" in d:
         out["primary_device"] = DeviceIndex(store.devices()).find(d["primaryDevice"])
     return out
