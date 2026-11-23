@@ -384,14 +384,38 @@ def users_me(user: User = Depends(auth.users_viewer)):
     return {"email": user.email, "name": user.name, "level": user.level, "canEdit": user.can_edit, "portalUrl": PORTAL_URL}
 
 
+def os_family(os_name: str) -> str:
+    """Mac, Windows or Linux from what Jamf or Intune calls the OS ("" for phones, tablets and the rest)."""
+    o = (os_name or "").lower()
+    if any(x in o for x in ("ios", "ipados", "iphone", "ipad", "tvos", "watchos", "android")):
+        return ""
+    if "mac" in o or "os x" in o:
+        return "Mac"
+    if "windows" in o:
+        return "Windows"
+    if any(x in o for x in ("linux", "ubuntu", "debian", "fedora", "red hat", "rhel", "centos", "suse")):
+        return "Linux"
+    return ""
+
+
+def platform_of(primary: dict | None, others: list[dict]) -> str:
+    """Their primary device's platform; if that's a phone or unknown, their latest computer's."""
+    for d in ([primary] if primary else []) + by_check_in(others):
+        if f := os_family(d["os"]):
+            return f
+    return ""
+
+
 def _user_view(u: dict, devices: dict[str, dict], names: dict[str, str], assigned: dict[str, list]) -> dict:
     pd = u["primary_device"]
     dev = devices.get(pd)
     mgr = u["manager"] or ""
+    mine = assigned.get(u["email"], [])
     return {"email": u["email"], "name": u["name"] or access.display_name(u["email"]),
             "department": u["department"] or "", "division": u["division"] or "",
             "manager": mgr, "managerName": names.get(mgr.lower(), "") if "@" in mgr else mgr,
             "type": u["user_type"] or "Standard", "title": u["title"] or "",
+            "platform": platform_of(dev, [d for d in mine if d["id"] != pd]),
             "primaryDevice": _device_view(dev) if dev else ({"id": pd, "missing": True} if pd else None),
             # Everything else Jamf or Intune says is theirs, latest check-in first.
             "otherDevices": [_device_view(d) for d in by_check_in(assigned.get(u["email"], [])) if d["id"] != pd],
@@ -476,8 +500,8 @@ def users_csv(user: User = Depends(auth.users_viewer)):
              "pdPlatform": (u["primaryDevice"] or {}).get("platform", ""),
              "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _users()]
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
-            ("manager", "Line manager"), ("type", "User type"), ("pd", "Primary device"), ("pdSerial", "Serial"),
-            ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Platform"), ("others", "Other devices")]
+            ("manager", "Line manager"), ("type", "User type"), ("platform", "Platform"), ("pd", "Primary device"), ("pdSerial", "Serial"),
+            ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Managed by"), ("others", "Other devices")]
     return _csv(cols, rows, f"users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 
 

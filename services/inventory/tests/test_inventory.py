@@ -506,3 +506,16 @@ def test_import_goes_to_review(c):
     c.post("/users/api/import", headers=UE, json={"csv": "Email,Department\nsam@nscale.com,Ops\n"})
     items = c.get("/users/api/review", headers=UV).json()["items"]
     assert [(i["kind"], i["email"]) for i in items] == [("changed", "sam@nscale.com")]
+
+
+def test_platform_from_devices():
+    from app.main import os_family, platform_of
+    assert os_family("macOS") == "Mac" and os_family("Mac OS X") == "Mac"
+    assert os_family("Windows") == "Windows" and os_family("Ubuntu") == "Linux" and os_family("Linux") == "Linux"
+    assert os_family("iOS") == "" and os_family("iPadOS") == "" and os_family("Android") == "" and os_family("") == ""
+    phone = {"os": "iOS", "last_seen": "2026-11-20T10:00:00Z"}
+    win = {"os": "Windows", "last_seen": "2026-11-01T10:00:00Z"}
+    mac = {"os": "macOS", "last_seen": "2026-11-10T10:00:00Z"}
+    assert platform_of(win, [mac]) == "Windows"          # the primary device decides
+    assert platform_of(phone, [win, mac]) == "Mac"       # a phone doesn't: their latest computer does
+    assert platform_of(None, []) == ""
