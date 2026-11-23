@@ -527,7 +527,7 @@ def users_payload() -> dict:
     # VIP first, then the others A-Z, Standard last: each but Standard gets a tile on the page.
     types = [{"name": t, "count": counts.get(t, 0)}
              for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
-    stats = {"users": len(items), "review": book.review_count(), "mismatches": len(mismatches(items)["devices"]), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
+    stats = {"users": len(items), "review": book.review_count(), "mismatches": len(_unmatched(items)), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
     return {"items": items, "departments": departments(items), "types": types, "stats": stats}
@@ -944,24 +944,29 @@ def _name_forms(ut: list[str]) -> set[str]:
     return out
 
 
-def _score(email: str, name: str, u: dict) -> tuple[int, str]:
-    """How likely the device email (and the name Jamf or Intune gives with it) is this person. 0 = no."""
+def _features(email: str, name: str) -> dict:
+    """What the matching looks at, worked out once per person (or device email)."""
     core, tags = _email_words(email)
-    tagged = f" (without “{'.'.join(tags)}”)" if tags else ""
-    ucore, _ = _email_words(u["email"])
-    ut, dn = _tokens(u["name"]), _tokens(name)
-    if core and core == ucore:
-        return 5, ("Same before the @" if email.split("@")[-1] != u["email"].split("@")[-1] else "Same email") + tagged
+    ut = _tokens(name)
+    return {"core": core, "tags": tags, "dom": email.split("@")[-1], "words": ut, "forms": _name_forms(ut),
+            "lasts": {ut[-1], "".join(ut[1:])} if len(ut) >= 2 else set()}
+
+
+def _score(e: dict, dn: list[str], p: dict) -> tuple[int, str]:
+    """How likely a device email (e: its features; dn: the name Jamf or Intune gives) is this person (p). 0 = no."""
+    core, ut = e["core"], p["words"]
+    tagged = f" (without “{'.'.join(e['tags'])}”)" if e["tags"] else ""
+    if core and core == p["core"]:
+        return 5, ("Same before the @" if e["dom"] != p["dom"] else "Same email") + tagged
     if dn and ut and dn == ut:
         return 4, "Same name"
-    joined = "".join(core)
     if len(ut) >= 2:
-        first, lasts = ut[0], {ut[-1], "".join(ut[1:])}
+        first, lasts = ut[0], p["lasts"]
         # every word of their name in the email, in order: adam.bullington, adam.j.bullington, bullington.adam
         if len(core) >= 2 and ((core[0] == first and (core[-1] in lasts or "".join(core[1:]) in lasts))
                                or (core[-1] == first and core[0] in lasts)):
             return 4, "Their name in the email" + tagged
-        if joined in _name_forms(ut) or (len(core) == 2 and len(core[0]) == 1 and core[0] == first[0] and core[1] in lasts):
+        if "".join(core) in p["forms"] or (len(core) == 2 and len(core[0]) == 1 and core[0] == first[0] and core[1] in lasts):
             return 3, "Their name in the email" + tagged
     if len(dn) >= 2 and len(ut) >= 2 and dn[0] == ut[0] and dn[-1] == ut[-1]:
         return 3, "Same first and last name"
@@ -970,26 +975,46 @@ def _score(email: str, name: str, u: dict) -> tuple[int, str]:
     return 0, ""
 
 
+class Matcher:
+    """Suggestions against a set of people. Each person's words are worked out once and indexed, so a
+    device email is only compared with people who share a word with it (every rule needs one)."""
+
+    def __init__(self, people: list[dict]):
+        self.people = people
+        self.feats = [_features(u["email"], u["name"]) for u in people]
+        self.index: dict[str, list[int]] = {}
+        for i, f in enumerate(self.feats):
+            for k in {*f["core"], *f["words"], *f["forms"], *f["lasts"]}:
+                self.index.setdefault(k, []).append(i)
+
+    def suggest(self, email: str, name: str) -> list[dict]:
+        """The best three, strongest first; people may carry "list" (another list's people: say so)."""
+        e, dn = _features(email, ""), _tokens(name)
+        seen, out = set(), []
+        for k in {*e["core"], "".join(e["core"]), *dn}:
+            for i in self.index.get(k, ()):
+                if i in seen:
+                    continue
+                seen.add(i)
+                u = self.people[i]
+                if u["email"] == email:
+                    continue
+                score, why = _score(e, dn, self.feats[i])
+                if score:
+                    out.append({**u, "why": why, "score": score})
+        out.sort(key=lambda x: (-x["score"], x["name"].lower()))
+        if out and out[0]["score"] >= 4:   # a strong match: don't crowd it with weak ones
+            out = [x for x in out if x["score"] >= 3]
+        return out[:3]
+
+
 def suggest(email: str, name: str, people: list[dict]) -> list[dict]:
-    """Who a device email (and the name Jamf or Intune gives with it) is most likely to be: the best
-    three, strongest first. people may carry "list" (another list's people: say so)."""
-    out = []
-    for u in people:
-        if u["email"] == email:
-            continue
-        score, why = _score(email, name, u)
-        if score:
-            out.append({**u, "why": why, "score": score})
-    out.sort(key=lambda x: (-x["score"], x["name"].lower()))
-    if out and out[0]["score"] >= 4:   # a strong match: don't crowd it with weak ones
-        out = [x for x in out if x["score"] >= 3]
-    return out[:3]
+    return Matcher(people).suggest(email, name)
 
 
-def mismatches(items: list[dict] | None = None) -> dict:
-    """devices: each email Jamf or Intune gives that isn't on this list or the other one (nor linked), with its devices and
-    who it may be. users: everyone on Users with no device, with any device emails that may be theirs."""
-    items = items if items is not None else _users()
+def _unmatched(items: list[dict]) -> dict[str, list[dict]]:
+    """Device email → its devices, for each email Jamf or Intune gives that isn't on this list or the
+    other one (nor linked)."""
     on_users = {u["email"] for u in items}
     links = book.links()
     elsewhere = known_owners(skip=auth.LIST.get())   # someone on the other list: not a mismatch here
@@ -997,15 +1022,24 @@ def mismatches(items: list[dict] | None = None) -> dict:
     for d in book.devices():
         if d["user_email"] and owner_email(d, links) not in on_users and d["user_email"] not in elsewhere:
             by_email.setdefault(d["user_email"], []).append(d)
+    return by_email
+
+
+def mismatches(items: list[dict] | None = None) -> dict:
+    """devices: each unmatched device email, with its devices and who it may be. users: everyone on
+    this list with no device, with any device emails that may be theirs."""
+    items = items if items is not None else _users()
+    by_email = _unmatched(items)
     here = auth.LIST.get()
     people = [{"email": u["email"], "name": u["name"], "list": here} for u in items]
     for key, ls in all_lists():   # someone on the other list may be who it is (link it there)
         if key != here:
             people += [{"email": u["email"], "name": u["name"] or access.display_name(u["email"]), "list": key} for u in ls.users()]
+    match = Matcher(people)
     devices, maybe = [], {}
     for email, ds in sorted(by_email.items()):
         name = next((d["user_name"] for d in ds if d["user_name"]), "")
-        sug = [{**x, "listName": LISTS[x["list"]][0], "linkUrl": f"/{x['list']}/api/links"} for x in suggest(email, name, people)]
+        sug = [{**x, "listName": LISTS[x["list"]][0], "linkUrl": f"/{x['list']}/api/links"} for x in match.suggest(email, name)]
         devices.append({"email": email, "name": name, "devices": [_device_view(d) for d in by_check_in(ds)], "suggestions": sug})
         for s_ in sug:
             if s_["list"] != here:
