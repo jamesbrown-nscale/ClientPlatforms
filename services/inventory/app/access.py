@@ -23,7 +23,7 @@ AUTH_MODE = os.environ.get("AUTH_MODE", "local").lower()
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "")
 DEV_USER = os.environ.get("DEV_USER", "").lower()
 HEADER = "x-cp-user"
-TOKEN_SECONDS = 120
+TOKEN_SECONDS = int(os.environ.get("CP_TOKEN_SECONDS") or 120)   # tests set it longer: a slow build mustn't expire them
 
 
 def check_settings() -> None:
