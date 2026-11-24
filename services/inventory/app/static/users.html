@@ -203,10 +203,13 @@ function deviceCell(u) {
   return html;
 }
 
+// Tagged with the "No Device" user type: they aren't meant to have one, so they aren't under No primary device.
+const noDeviceType = u => (u.type || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ') === 'no device';
+
 function matches(u) {
   if (FILTER.startsWith('type:') && u.type !== FILTER.slice(5)) return false;
   if (FILTER === 'device' && !hasDevice(u)) return false;
-  if (FILTER === 'nodevice' && hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
   if ($('dept').value && u.department !== ($('dept').value === '__none__' ? '' : $('dept').value)) return false;
   if ($('div').value && u.division !== $('div').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;

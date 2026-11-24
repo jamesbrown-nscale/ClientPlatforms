@@ -528,6 +528,16 @@ def list_users(user: User = Depends(auth.users_viewer)):
     return users_payload()
 
 
+def _no_device_type(u: dict) -> bool:
+    """Tagged with the "No Device" user type: they aren't meant to have one."""
+    return re.sub(r"[\s_-]+", " ", (u.get("type") or "").strip().lower()) == "no device"
+
+
+def _lacks_device(u: dict) -> bool:
+    """Counts under No primary device: no live primary device, and not tagged No Device."""
+    return (not u["primaryDevice"] or bool(u["primaryDevice"].get("missing"))) and not _no_device_type(u)
+
+
 def users_payload() -> dict:
     items = _users()
     counts: dict[str, int] = {}
@@ -538,7 +548,7 @@ def users_payload() -> dict:
              for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
     stats = {"users": len(items), "review": book.review_count(), "mismatches": len(_unmatched(items)), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
-             "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
+             "noDevice": sum(_lacks_device(u) for u in items)}
     # People on the other list, for the line manager picker and hint (a contractor's manager is an FTE).
     others = [{"email": u["email"], "name": u["name"] or access.display_name(u["email"]), "title": u["title"] or "",
                "listName": LISTS[k][0]} for k, ls in _other_lists() for u in ls.users()]
@@ -1342,7 +1352,7 @@ def all_list(user: User = Depends(auth.all_users_viewer)):
     stats = {"users": len(items), "users_fte": sum(u["list"] == USERS for u in items), "users_ct": sum(u["list"] == USERS_CT for u in items),
              "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
-             "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
+             "noDevice": sum(_lacks_device(u) for u in items)}
     return {"items": items, "types": types, "stats": stats, "departments": sorted({u["department"] for u in items if u["department"]}, key=str.lower)}
 
 

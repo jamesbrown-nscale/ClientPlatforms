@@ -116,13 +116,16 @@ function deviceCell(u) {
     ${cut(mm, 'muted')}${more ? `<div class="muted">+${more} more</div>` : ''}`;
 }
 
+// Tagged with the "No Device" user type: they aren't meant to have one, so they aren't under No primary device.
+const noDeviceType = u => (u.type || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ') === 'no device';
+
 function matches(u) {
   if (LIST && u.list !== LIST) return false;
   for (const col in COLF) if (COLF[col].size && !COLF[col].has(colVal(u, col))) return false;
   if (FILTER.startsWith('list:') && u.list !== FILTER.slice(5)) return false;
   if (FILTER === 'vip' && u.type !== 'VIP') return false;
   if (FILTER === 'device' && !hasDevice(u)) return false;
-  if (FILTER === 'nodevice' && hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
   if ($('dept').value && u.department !== $('dept').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);

@@ -849,3 +849,13 @@ def test_contractors_managers_are_found_on_the_other_list(c):
     assert by["zed.ct@nscale.com"]["manager"] == "grant.keith@nscale.com"            # a name in the CSV, found on Users - FTE
     assert ct["others"] == [{"email": "grant.keith@nscale.com", "name": "Grant Keith", "title": "Director", "listName": "Users - FTE"}]
     assert c.get("/users/api/users", headers=UV).json()["others"][0]["listName"] == "Users - CT"
+
+
+def test_no_device_type_is_not_missing_a_primary_device(c):
+    """Someone tagged with the No Device user type isn't counted under No primary device."""
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy"})
+    c.post("/users/api/users", headers=UE, json={"email": "bo@nscale.com", "name": "Bo", "type": "No Device"})
+    c.post("/users-ct/api/users", headers=who("users-ct", "edit"), json={"email": "cy.ct@nscale.com", "name": "Cy", "type": "no-device"})
+    assert c.get("/users/api/users", headers=UV).json()["stats"]["noDevice"] == 1
+    assert c.get("/users-ct/api/users", headers=who("users-ct", "view")).json()["stats"]["noDevice"] == 0
+    assert c.get("/all-users/api/users", headers=who("all-users", "view")).json()["stats"]["noDevice"] == 1
