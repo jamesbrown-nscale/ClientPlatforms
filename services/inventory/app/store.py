@@ -43,7 +43,7 @@ def now() -> str:
 
 
 class Store:
-    def __init__(self, path: str, secret: str = "", prefix: str = "", tool: str = "users", kind: str = "User", lock=None):
+    def __init__(self, path: str, secret: str = "", prefix: str = "", tool: str = "users", kind: str = "User (FTE)", lock=None):
         """prefix: whose list of users this is ("" for Users, "ct_" for Users - CT). Every list has its
         own users, review and email links tables in the same file; devices and connections are shared."""
         self.path, self.secret_ = path, secret

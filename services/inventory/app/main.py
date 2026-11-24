@@ -42,7 +42,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import access, auth, connectors, recycle
-from .auth import DEPARTMENTS, DEVICES, ORG, USERS, USERS_CT, User
+from .auth import ALL_USERS, DEPARTMENTS, DEVICES, ORG, USERS, USERS_CT, User
 from .connectors import PLATFORMS, SyncError
 from .store import Store, clean_email, now
 
@@ -67,7 +67,7 @@ store = Store(os.environ.get("DATABASE_PATH", "/data/inventory.db"), access.AUTH
 
 # The lists of users: each its own page, access and tables; the same devices.
 #   tool: (name on the site, table prefix, what a deleted one is called in the recycle bin)
-LISTS = {USERS: ("Users", "", "User"), USERS_CT: ("Users - CT", "ct_", "User (CT)")}
+LISTS = {USERS: ("Users - FTE", "", "User (FTE)"), USERS_CT: ("Users - CT", "ct_", "User (CT)")}
 
 
 def users_store() -> Store:
@@ -1238,6 +1238,64 @@ def _view_app(title: str, tool: str, page: str, viewer) -> FastAPI:
     return sub
 
 
+# ---------- All Users: both lists in one, read only (each person is edited on their own list) ----------
+
+def all_users() -> list[dict]:
+    out = []
+    for key, (name, _, _) in LISTS.items():
+        token = auth.LIST.set(key)   # each list's people, with their devices matched as on their own page
+        try:
+            out += [{**u, "list": key, "listName": name, "url": f"/{key}/"} for u in _users()]
+        finally:
+            auth.LIST.reset(token)
+    out.sort(key=lambda u: ((u["name"] or u["email"]).lower(), u["list"]))
+    return out
+
+
+all_app = FastAPI(title="Nscale All Users", docs_url=None, redoc_url=None, openapi_url=None)
+all_app.mount("/static", _Static(directory=STATIC), name="static")
+all_app.add_exception_handler(HTTPException, _http_error)
+
+
+@all_app.get("/")
+def all_page(request: Request):
+    if not auth.current_user(request, ALL_USERS):
+        return _page(access.sign_in_message(), 403)
+    return FileResponse(STATIC / "all.html", headers={"Cache-Control": "no-store"})
+
+
+@all_app.get("/api/me")
+def all_me(user: User = Depends(auth.all_users_viewer)):
+    return {"email": user.email, "name": user.name, "level": user.level,
+            "lists": [{"id": k, "name": v[0], "url": f"/{k}/"} for k, v in LISTS.items()]}
+
+
+@all_app.get("/api/users")
+def all_list(user: User = Depends(auth.all_users_viewer)):
+    items = all_users()
+    counts: dict[str, int] = {}
+    for u in items:
+        counts[u["type"]] = counts.get(u["type"], 0) + 1
+    types = [{"name": t, "count": counts.get(t, 0)}
+             for t in ["VIP", *sorted((t for t in counts if t not in TYPES), key=str.lower), "Standard"]]
+    stats = {"users": len(items), "users_fte": sum(u["list"] == USERS for u in items), "users_ct": sum(u["list"] == USERS_CT for u in items),
+             "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
+             "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
+             "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
+    return {"items": items, "types": types, "stats": stats, "departments": sorted({u["department"] for u in items if u["department"]}, key=str.lower)}
+
+
+@all_app.get("/api/users.csv")
+def all_csv(user: User = Depends(auth.all_users_viewer)):
+    rows = [{**u, "pd": (u["primaryDevice"] or {}).get("name", ""), "pdSerial": (u["primaryDevice"] or {}).get("serial", ""),
+             "pdModel": (u["primaryDevice"] or {}).get("model", ""),
+             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in all_users()]
+    cols = [("listName", "List"), ("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"),
+            ("division", "Division"), ("manager", "Line manager"), ("type", "User type"), ("platform", "Platform"),
+            ("pd", "Primary device"), ("pdSerial", "Serial"), ("pdModel", "Model"), ("others", "Other devices")]
+    return _csv(cols, rows, f"all-users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
+
+
 org_app = _view_app("Nscale Org chart", ORG, "org.html", auth.org_viewer)
 departments_app = _view_app("Nscale Departments", DEPARTMENTS, "departments.html", auth.departments_viewer)
 
@@ -1279,7 +1337,7 @@ def _for_list(sub, key: str):
     return asgi
 
 
-for _path, _sub in (("/devices", devices_app), ("/users", _for_list(users_app, USERS)), ("/users-ct", _for_list(users_app, USERS_CT)),
+for _path, _sub in (("/devices", devices_app), ("/all-users", all_app), ("/users", _for_list(users_app, USERS)), ("/users-ct", _for_list(users_app, USERS_CT)),
                     ("/org", org_app), ("/departments", departments_app)):
     app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
     app.mount(_path, _sub)

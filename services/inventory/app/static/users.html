@@ -21,7 +21,7 @@
 <main>
   <div class="head">
     <div>
-      <h1 id="listName">Users</h1>
+      <h1 id="listName">Users - FTE</h1>
       <p class="sub">The people we look after: their department and division, line manager, whether they're a VIP, and their primary device from Devices.</p>
     </div>
     <div class="acts">
@@ -603,10 +603,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN !== n
 
 (async () => {
   try { ME = await api('api/me'); $('who').textContent = ME.email; } catch { return; }
-  if (ME.list && ME.list !== 'users') {   // Users - CT: the same page for another list (no Org chart: that's from Users)
-    $('listName').textContent = ME.listName; document.title = `${ME.listName} · Nscale Client Platforms`;
-    $('p-org').remove();
-  }
+  if (ME.listName) { $('listName').textContent = ME.listName; document.title = `${ME.listName} · Nscale Client Platforms`; }
+  if (ME.list && ME.list !== 'users') $('p-org').remove();   // Users - CT: no Org chart (that's from Users - FTE)
   ['addBtn', 'importBtn', 'matchBtn'].forEach(id => $(id).hidden = !ME.canEdit);
   await load();
   const want = decodeURIComponent(location.hash.slice(1));

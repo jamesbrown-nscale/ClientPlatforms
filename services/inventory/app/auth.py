@@ -21,6 +21,7 @@ USERS_CT = "users-ct"        # Users - CT: a second list of users, its own acces
 LIST: ContextVar[str] = ContextVar("users_list", default=USERS)
 ORG = "org"                  # Org chart: its own access, read only
 DEPARTMENTS = "departments"  # Departments: its own access, read only
+ALL_USERS = "all-users"      # All Users: Users - FTE and Users - CT together, its own access, read only
 RANK = {"view": 1, "edit": 2, "admin": 3}
 
 
@@ -84,3 +85,7 @@ def org_viewer(request: Request) -> User:
 
 def departments_viewer(request: Request) -> User:
     return _require(request, DEPARTMENTS)
+
+
+def all_users_viewer(request: Request) -> User:
+    return _require(request, ALL_USERS)

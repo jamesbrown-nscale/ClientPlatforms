@@ -303,7 +303,7 @@ def test_csv_import(c, fake):
         "department": "Engineering", "division": "Platform", "manager": "sam.lee@nscale.com", "managerName": "Sam Lee"}
     assert c.get("/internal/users/ghost@nscale.com").status_code == 404
     devs = {d["serial"]: d for d in c.get("/devices/api/devices", headers=DV).json()["items"]}
-    assert devs["C02AAA"]["primaryFor"] == [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "type": "Standard", "list": "Users", "url": "/users/"}]
+    assert devs["C02AAA"]["primaryFor"] == [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "type": "Standard", "list": "Users - FTE", "url": "/users/"}]
 
 
 def test_tags(c, fake):
@@ -452,7 +452,7 @@ def test_deleted_users_go_to_the_recycle_bin(c):
     assert c.delete("/users/api/users/amy.chen@nscale.com", headers=UE).status_code == 200
     assert c.get("/users/api/bin", headers=UE).status_code == 403   # editors can delete, only admins see the bin
     item = c.get("/users/api/bin", headers=UA).json()["items"][0]
-    assert item["kind"] == "User" and item["label"] == "Amy Chen" and item["context"] == "amy.chen@nscale.com"
+    assert item["kind"] == "User (FTE)" and item["label"] == "Amy Chen" and item["context"] == "amy.chen@nscale.com"
     assert c.post(f"/users/api/bin/{item['id']}/restore", headers=UA).status_code == 200
     users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
     assert users["amy.chen@nscale.com"]["department"] == "IT"
@@ -722,3 +722,23 @@ def test_location(c):
     assert cols.index("Location") == cols.index("Line manager") + 1
     assert "Location" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]
 
+
+def test_all_users_shows_both_lists(c):
+    AV = who("all-users", "view")
+    main.store.replace_devices("Jamf", [{"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "name": "NS-Mac",
+                                         "user_email": "cara@nscale.com", "last_seen": "2026-11-23T10:00:00Z"}])
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy", "type": "VIP", "department": "Eng"})
+    c.post("/users-ct/api/users", headers=who("users-ct", "edit"), json={"email": "cara@nscale.com", "name": "Cara", "department": "Ops"})
+    assert c.get("/all-users/api/users", headers=UV).status_code == 401          # its own access
+    r = c.get("/all-users/api/users", headers=AV).json()
+    assert [(u["email"], u["list"], u["listName"], u["url"]) for u in r["items"]] == [
+        ("amy@nscale.com", "users", "Users - FTE", "/users/"), ("cara@nscale.com", "users-ct", "Users - CT", "/users-ct/")]
+    assert next(u for u in r["items"] if u["email"] == "cara@nscale.com")["platform"] == "Mac"   # matched on her own list
+    assert (r["stats"]["users"], r["stats"]["users_fte"], r["stats"]["users_ct"], r["stats"]["vip"]) == (2, 1, 1, 1)
+    assert r["departments"] == ["Eng", "Ops"]
+    assert c.get("/all-users/api/me", headers=AV).json()["lists"][0]["name"] == "Users - FTE"
+    assert "All Users" in c.get("/all-users/", headers=AV).text
+    csv_ = c.get("/all-users/api/users.csv", headers=AV).text.lstrip("﻿").splitlines()
+    assert csv_[0].startswith("List,Email,Name") and csv_[1].startswith("Users - FTE,amy@nscale.com") and csv_[2].startswith("Users - CT,cara@nscale.com")
+    assert c.post("/all-users/api/users", headers=AV, json={}).status_code == 405   # read only
+    assert c.get("/users/api/me", headers=UV).json()["listName"] == "Users - FTE"

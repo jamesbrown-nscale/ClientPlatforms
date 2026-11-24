@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>All Users · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/nav.js" defer></script>
+<style>
+  .b-fte { background: var(--surface); color: var(--primary); }
+  .b-ct { background: #F1E8FF; color: #5B2DA8; }
+  tr[data-url] { cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>All Users</h1>
+      <p class="sub">Everyone on Users - FTE and Users - CT in one list. Click someone to open them on their own list, where they're edited, imported and matched to devices.</p>
+    </div>
+    <div class="acts"><a class="btn" href="api/users.csv" download>Download CSV</a></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+
+  <div class="tiles" id="tiles" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+    <button class="tile" data-f="all"><b id="s-users">–</b><span>All users</span></button>
+    <button class="tile" data-f="list:users"><b id="s-users-fte">–</b><span>FTE</span></button>
+    <button class="tile" data-f="list:users-ct"><b id="s-users-ct">–</b><span>CT</span></button>
+    <button class="tile vip" data-f="vip"><b id="s-vip">–</b><span>VIPs</span></button>
+    <button class="tile" data-f="device"><b id="s-withDevice">–</b><span>With a primary device</span></button>
+    <button class="tile warn" data-f="nodevice"><b id="s-noDevice">–</b><span>No primary device</span></button>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search name, email, department, manager or device" aria-label="Search users">
+      <select id="dept" aria-label="Department"><option value="">Every department</option></select>
+      <select id="type" aria-label="User type"><option value="">Every user type</option></select>
+      <div class="pills" id="pills" role="group" aria-label="Which list">
+        <span class="thumb" aria-hidden="true"></span>
+        <button type="button" data-l="" aria-pressed="true">All</button>
+        <button type="button" data-l="users" aria-pressed="false">FTE <span class="pn" id="pn-users"></span></button>
+        <button type="button" data-l="users-ct" aria-pressed="false">CT <span class="pn" id="pn-users-ct"></span></button>
+      </div>
+      <span class="sp"></span>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablewrap"><table class="fit">
+      <colgroup><col style="width:23%"><col style="width:7%"><col style="width:19%"><col class="hide-sm" style="width:16%"><col style="width:9%"><col style="width:9%"><col style="width:17%"></colgroup>
+      <thead><tr>
+        <th data-sort="name"><button type="button">User</button></th>
+        <th data-sort="list"><button type="button">List</button></th>
+        <th data-sort="team"><button type="button">Department</button></th>
+        <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
+        <th data-sort="type"><button type="button">Type</button></th>
+        <th data-sort="platform"><button type="button">Platform</button></th>
+        <th data-sort="device"><button type="button">Primary device</button></th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const cut = (text, cls = '') => text ? `<div class="cut ${cls}" title="${esc(text)}">${esc(text)}</div>` : '';
+const typeBadge = t => `<span class="badge ${t === 'VIP' ? 'b-vip' : t === 'Standard' ? 'b-std' : 'b-type'}">${esc(t)}</span>`;
+const listBadge = u => `<span class="badge ${u.list === 'users-ct' ? 'b-ct' : 'b-fte'}" title="${esc(u.listName)}">${u.list === 'users-ct' ? 'CT' : 'FTE'}</span>`;
+const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
+let ALL = [], FILTER = 'all', SORT = { key: 'name', dir: 1 }, LIST = '';
+try { LIST = localStorage.getItem('cp-all-users-list') || ''; } catch {}
+
+async function api(path) {
+  const res = await fetch(path, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  if (res.status === 401) throw new Error('Your sign-in has expired. Reload the page to sign in again.');
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
+}
+function note(msg) { const n = $('notice'); n.textContent = msg; n.hidden = !msg; n.className = 'notice'; }
+
+function deviceCell(u) {
+  const d = u.primaryDevice, more = (u.otherDevices || []).length;
+  if (!d) return '<span class="muted">—</span>';
+  if (d.missing) return '<span class="badge b-gone">Device gone</span>';
+  const mm = [d.make, d.model].filter(Boolean).join(' ');
+  return `<div class="cutrow"><b class="cut" title="${esc(d.name || d.serial)}">${esc(d.name || d.serial)}</b><span class="badge b-${esc(d.platform.toLowerCase())}">${esc(d.platform)}</span></div>
+    ${cut(mm, 'muted')}${more ? `<div class="muted">+${more} more</div>` : ''}`;
+}
+
+function matches(u) {
+  if (LIST && u.list !== LIST) return false;
+  if (FILTER.startsWith('list:') && u.list !== FILTER.slice(5)) return false;
+  if (FILTER === 'vip' && u.type !== 'VIP') return false;
+  if (FILTER === 'device' && !hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && hasDevice(u)) return false;
+  if ($('dept').value && u.department !== $('dept').value) return false;
+  if ($('type').value && u.type !== $('type').value) return false;
+  const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const d = u.primaryDevice || {};
+  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.type, u.platform, u.listName, d.name, d.serial, d.model].join(' ').toLowerCase();
+  return words.every(w => hay.includes(w));
+}
+function sortVal(u, k) {
+  if (k === 'manager') return (u.managerName || u.manager || '~').toLowerCase();
+  if (k === 'device') return ((u.primaryDevice || {}).name || '~').toLowerCase();
+  if (k === 'type') return u.type === 'VIP' ? 0 : 1;
+  if (k === 'team') return `${u.department || '~'}\u0001${u.division || '~'}`.toLowerCase();
+  return String(u[k] || '~').toLowerCase();
+}
+
+function drawPills() {
+  for (const l of ['users', 'users-ct']) $('pn-' + l).textContent = ALL.filter(u => u.list === l).length.toLocaleString();
+  const box = $('pills');
+  box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.l === LIST)));
+  const on = box.querySelector(`button[data-l="${LIST}"]`), th = box.querySelector('.thumb');
+  if (on) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
+}
+
+function draw() {
+  const rows = ALL.filter(matches), k = SORT.key;
+  rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+  });
+  document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
+  $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} users` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
+  drawPills();
+  if (!ALL.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty"><b>No users yet</b>Import people on Users - FTE or Users - CT.</td></tr>'; return; }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No users match.</td></tr>'; return; }
+  $('rows').innerHTML = rows.slice(0, 3000).map(u => `<tr data-url="${esc(u.url)}#${encodeURIComponent(u.email)}" tabindex="0" title="Open on ${esc(u.listName)}">
+    <td><b class="cut" title="${esc(u.name)}">${esc(u.name)}</b>${cut(u.email, 'muted')}${cut(u.title, 'muted')}</td>
+    <td>${listBadge(u)}</td>
+    <td>${u.department ? cut(u.department) : '<span class="muted">—</span>'}${u.division ? `<div class="cut"><span class="badge b-team" title="${esc(u.division)}">${esc(u.division)}</span></div>` : ''}</td>
+    <td class="hide-sm">${u.manager ? `${cut(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? cut(u.manager, 'muted') : ''}` : '<span class="muted">—</span>'}</td>
+    <td>${typeBadge(u.type)}</td>
+    <td>${u.platform ? `<span class="badge b-os-${u.platform.toLowerCase()}">${esc(u.platform)}</span>` : '<span class="muted">—</span>'}</td>
+    <td>${deviceCell(u)}</td></tr>`).join('')
+    + (rows.length > 3000 ? '<tr><td colspan="7" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>' : '');
+}
+
+$('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-url]'); if (tr) location.href = tr.dataset.url; });
+$('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-url]'); if (tr && e.key === 'Enter') location.href = tr.dataset.url; });
+document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => { FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw(); }));
+document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
+  const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
+}));
+$('pills').addEventListener('click', e => {
+  const b = e.target.closest('button[data-l]'); if (!b) return;
+  LIST = b.dataset.l;
+  try { localStorage.setItem('cp-all-users-list', LIST); } catch {}
+  draw();
+});
+['q', 'dept', 'type'].forEach(id => $(id).addEventListener('input', draw));
+window.addEventListener('resize', drawPills);
+
+(async () => {
+  try {
+    const me = await api('api/me'); $('who').textContent = me.email;
+    const r = await api('api/users');
+    ALL = r.items;
+    const st = { users: r.stats.users, 'users-fte': r.stats.users_fte, 'users-ct': r.stats.users_ct, vip: r.stats.vip,
+                 withDevice: r.stats.withDevice, noDevice: r.stats.noDevice };
+    for (const [k, v] of Object.entries(st)) $('s-' + k).textContent = (v ?? 0).toLocaleString();
+    $('dept').innerHTML = '<option value="">Every department</option>' + r.departments.map(d => `<option>${esc(d)}</option>`).join('');
+    $('type').innerHTML = '<option value="">Every user type</option>' + r.types.map(t => `<option>${esc(t.name)}</option>`).join('');
+    draw();
+  } catch (e) { note(e.message); $('rows').innerHTML = ''; }
+})();
+</script>
+</body>
+</html>

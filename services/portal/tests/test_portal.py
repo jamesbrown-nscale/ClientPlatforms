@@ -51,7 +51,7 @@ def add(c, email, tools=(), admin=False, password="a-good-password", level="edit
     return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
 
 
-TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "users", "users-ct", "org", "departments", "team"]
+TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "all-users", "users", "users-ct", "org", "departments", "team"]
 
 
 def test_first_admin_and_sign_in(c):
@@ -463,3 +463,18 @@ def test_jira_integration(c, monkeypatch):
     assert c.get(J).status_code == 403 and c.delete(f"{J}/jira", headers=H).status_code == 403
     sign_in(c)
     assert c.delete(f"{J}/jira", headers=H).json()["jira"]["connected"] is False
+
+def test_all_users_and_users_fte(tmp_path):
+    import json as j, sqlite3
+    names = {t["id"]: t["name"] for t in db_mod.TOOLS}
+    assert names["users"] == "Users - FTE" and names["all-users"] == "All Users"
+    ids = [t["id"] for t in db_mod.TOOLS]
+    assert ids.index("all-users") == ids.index("users") - 1 and ids.index("users-ct") == ids.index("users") + 1
+    path = str(tmp_path / "p.db")
+    d = db_mod.DB(path)
+    con = sqlite3.connect(path)
+    con.execute("INSERT INTO roles (id, name, levels, perms, system) VALUES ('u', 'Users viewer', ?, '[]', 0)", (j.dumps({"users": "view"}),))
+    con.execute("DELETE FROM settings WHERE key = 'migrated:all-users-from-users'")
+    con.commit()
+    db_mod.DB(path)
+    assert {r["id"]: r["levels"] for r in d.roles()}["u"]["all-users"] == "view"

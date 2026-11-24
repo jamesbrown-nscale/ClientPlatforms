@@ -151,7 +151,7 @@ $('q').addEventListener('input', draw);
 (async () => {
   try {
     ME = await api('api/me'); $('who').textContent = ME.email;
-    if (ME.list && ME.list !== 'users') {
+    if (ME.listName) {
       $('backTop').textContent = '← ' + ME.listName; $('backBtn').textContent = 'Back to ' + ME.listName;
       document.title = document.title.replace('· Users ·', `· ${ME.listName} ·`);
     }
