@@ -742,3 +742,28 @@ def test_all_users_shows_both_lists(c):
     assert csv_[0].startswith("List,Email,Name") and csv_[1].startswith("Users - FTE,amy@nscale.com") and csv_[2].startswith("Users - CT,cara@nscale.com")
     assert c.post("/all-users/api/users", headers=AV, json={}).status_code == 405   # read only
     assert c.get("/users/api/me", headers=UV).json()["listName"] == "Users - FTE"
+
+
+def test_platform_in_csv_import(c):
+    """A Platform column sets it by hand; Automatic clears it; one their devices already show changes nothing."""
+    main.store.replace_devices("Jamf", [{"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "name": "NS-Mac",
+                                         "user_email": "amy@nscale.com", "last_seen": "2026-11-23T10:00:00Z"}])
+    imp = lambda text: (c.post("/users/api/import", headers=UE, json={"csv": text}).json(), accept_all(c))[0]
+    r = imp("Email,Name,Platform\namy@nscale.com,Amy,Mac\nsam@nscale.com,Sam,linux\npat@nscale.com,Pat,BeOS\n")
+    assert r["problems"][0]["email"] == "pat@nscale.com" and "isn't a platform" in r["problems"][0]["message"]
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert (users["amy@nscale.com"]["platform"], users["amy@nscale.com"]["platformSet"]) == ("Mac", "")   # her Mac already says so
+    assert (users["sam@nscale.com"]["platform"], users["sam@nscale.com"]["platformSet"]) == ("Linux", "Linux")
+    assert users["pat@nscale.com"]["platformSet"] == ""
+    # A downloaded CSV, imported back, changes nothing.
+    dl = c.get("/users/api/users.csv", headers=UV).text
+    assert imp(dl)["updated"] == 0
+    # Set by hand, then Automatic again; the change shows in Review as Automatic.
+    r = c.post("/users/api/import", headers=UE, json={"csv": "Email,OS\namy@nscale.com,Windows 11\n"}).json()
+    assert r["changes"][0]["fields"] == [{"field": "Platform", "from": "Automatic", "to": "Windows"}]
+    accept_all(c)
+    assert next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "amy@nscale.com")["platformSet"] == "Windows"
+    r = imp("Email,Platform\namy@nscale.com,Automatic\n")
+    assert r["changes"][0]["fields"] == [{"field": "Platform", "from": "Windows", "to": "Automatic"}]
+    assert next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "amy@nscale.com")["platformSet"] == ""
+    assert "Platform" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]

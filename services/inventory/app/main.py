@@ -568,9 +568,9 @@ def users_csv(user: User = Depends(auth.users_viewer)):
 @users_app.get("/api/template.csv")
 def users_template(user: User = Depends(auth.users_viewer)):
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
-            ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("pd", "Primary device")]
+            ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("platform", "Platform"), ("pd", "Primary device")]
     return _csv(cols, [{"email": "amy.chen@nscale.com", "name": "Amy Chen", "title": "Engineer", "department": "Engineering",
-                        "division": "Platform", "manager": "sam.lee@nscale.com", "location": "London", "type": "Standard", "pd": "C02XL0AAJGH5"}],
+                        "division": "Platform", "manager": "sam.lee@nscale.com", "location": "London", "type": "Standard", "platform": "", "pd": "C02XL0AAJGH5"}],
                 "users-template.csv")
 
 
@@ -747,6 +747,7 @@ COLUMNS = {   # a CSV heading (lower case, letters and digits only) → the fiel
     "jobtitle": "title", "title": "title", "department": "department",
     "location": "location", "officelocation": "location", "office": "location", "worklocation": "location", "site": "location",
     "city": "location", "officecity": "location", "basedin": "location", "workplace": "location",
+    "platform": "platform", "os": "platform", "operatingsystem": "platform", "computerplatform": "platform",
 }
 
 
@@ -758,9 +759,23 @@ class ImportIn(BaseModel):
 
 
 LABELS = {"email": "Email", "name": "Name", "first": "First name", "last": "Last name", "division": "Division",
-          "department": "Department", "title": "Job title", "manager": "Line manager", "location": "Location", "type": "User type", "device": "Primary device"}
+          "department": "Department", "title": "Job title", "manager": "Line manager", "location": "Location", "type": "User type", "device": "Primary device",
+          "platform": "Platform"}
 FIELD_LABELS = {"name": "Name", "title": "Job title", "department": "Department", "division": "Division", "manager": "Line manager",
-                "location": "Location", "user_type": "User type", "primary_device": "Primary device"}
+                "location": "Location", "user_type": "User type", "primary_device": "Primary device", "platform_tag": "Platform"}
+
+PLATFORM_WORDS = {"mac": "Mac", "macos": "Mac", "osx": "Mac", "macbook": "Mac", "apple": "Mac",
+                  "windows": "Windows", "win": "Windows", "pc": "Windows", "windows10": "Windows", "windows11": "Windows",
+                  "linux": "Linux", "ubuntu": "Linux", "debian": "Linux", "fedora": "Linux",
+                  "auto": "", "automatic": ""}
+
+
+def _csv_platform(v: str) -> str:
+    """A Platform cell: Mac, Windows or Linux (set by hand), or "" for Automatic (from their devices)."""
+    w = re.sub(r"[^a-z0-9]", "", v.lower())
+    if w not in PLATFORM_WORDS:
+        raise ValueError(f"\"{v}\" isn't a platform: Mac, Windows, Linux or Automatic.")
+    return PLATFORM_WORDS[w]
 
 
 def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
@@ -822,7 +837,8 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
                 u[k] = r[k][:200]
         for k, field, fn in (("manager", "manager", lambda v: _resolve_manager(v, by_name, email)),
                              ("type", "user_type", lambda v: _type(v, types)),
-                             ("device", "primary_device", devices.find)):
+                             ("device", "primary_device", devices.find),
+                             ("platform", "platform_tag", _csv_platform)):
             if r.get(k):
                 try:
                     u[field] = fn(r[k])
@@ -830,6 +846,28 @@ def parse_csv(text: str) -> tuple[list[dict], list[dict], list[str], list[dict]]
                     problems.append({"row": n, "email": email, "message": str(e) + " Left as it was."})
         out[email] = u
     return list(out.values()), problems, unused, columns
+
+
+def _drop_same_platform(rows: list[dict], existing: dict[str, dict]) -> None:
+    """A Platform the person's devices already show isn't a change (a downloaded CSV, imported back,
+    mustn't turn everyone's automatic platform into one set by hand)."""
+    if not any("platform_tag" in r for r in rows):
+        return
+    auto = {u["email"]: u["platformAuto"] for u in _users()}
+    links, mine = book.links(), {}
+    for d in book.devices():
+        if d["user_email"]:
+            mine.setdefault(owner_email(d, links), []).append(d)
+    for r in rows:
+        v = r.get("platform_tag")
+        if not v:
+            continue
+        old = existing.get(r["email"])
+        if old and old.get("platform_tag"):
+            continue   # set by hand already: the file's value is a real choice
+        a = auto[r["email"]] if r["email"] in auto else platform_of(None, mine.get(r["email"], []))
+        if v == a:
+            del r["platform_tag"]
 
 
 def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
@@ -848,6 +886,9 @@ def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
             return f"{names[v]} ({v})" if v in names else v
         return v
 
+    def shown(f, v):
+        return "Automatic" if f == "platform_tag" and not v else show(f, v)
+
     out = []
     for r in rows:
         old = existing.get(r["email"])
@@ -857,7 +898,7 @@ def _changes(rows: list[dict], existing: dict[str, dict]) -> list[dict]:
                 continue
             before = (old or {}).get(f) or ("Standard" if f == "user_type" and old else "")
             if (before or "") != (r[f] or ""):
-                fields.append({"field": label, "from": show(f, before), "to": show(f, r[f])})
+                fields.append({"field": label, "from": shown(f, before), "to": shown(f, r[f])})
         if fields or not old:
             out.append({"email": r["email"], "name": r.get("name") or (old or {}).get("name") or access.display_name(r["email"]),
                         "new": not old, "fields": fields})
@@ -871,6 +912,7 @@ def import_users(body: ImportIn, user: User = Depends(auth.users_editor)):
     there. Either way the answer lists, per person, what changes (old → new)."""
     rows, problems, unused, columns = parse_csv(body.csv)
     existing = {u["email"]: u for u in book.users()}
+    _drop_same_platform(rows, existing)
     in_file = {r["email"] for r in rows}
     left = sorted((e for e in existing if e not in in_file), key=lambda e: (existing[e]["name"] or e).lower()) if body.everyone else []
     new = [r for r in rows if r["email"] not in existing]

@@ -121,8 +121,8 @@
   <div class="in">
     <h2 id="impTitle">Import users from a CSV</h2>
     <p class="sub" style="margin:0">Each column is matched to Users by its heading, and only those fields change: a file with just Email and User type only changes user types. Empty cells leave what's there alone. Nothing changes straight away: the new people, changes and leavers go to <b>Review</b>, to accept or not.</p>
-    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>Location</span><span>User type</span><span>Primary device</span></div>
-    <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP, Standard or a type of your own. Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
+    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>Location</span><span>User type</span><span>Platform</span><span>Primary device</span></div>
+    <p class="hint">Division is their team within the department (a Team column works too). Line manager: an email or a name. User type: VIP, Standard or a type of your own. Platform: Mac, Windows or Linux to set it by hand, or Automatic to take it from their devices (one their devices already show changes nothing). Primary device: its serial or name, as in Devices. <a href="api/template.csv" download>Download a template</a>.</p>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
       <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
     <div id="impOut"></div>
