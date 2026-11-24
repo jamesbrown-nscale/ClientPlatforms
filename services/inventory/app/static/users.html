@@ -47,6 +47,7 @@
       <select id="div" aria-label="Division" hidden><option value="">Every division</option></select>
       <select id="type" aria-label="User type"><option value="">Every user type</option></select>
       <label class="grpby"><input type="checkbox" id="group"> Group by department</label>
+      <div class="pills" id="typePills" role="group" aria-label="User type"><span class="thumb" aria-hidden="true"></span></div>
       <span class="folds" id="folds" hidden><button class="btn small" type="button" id="expandAll">Expand all</button><button class="btn small" type="button" id="collapseAll">Collapse all</button></span>
       <span class="sp"></span>
       <span class="count" id="count"></span>
@@ -166,6 +167,17 @@ function drawTypeTiles() {
   const keep = $('type').value;
   $('type').innerHTML = '<option value="">Every user type</option>' + TYPES.map(t => `<option>${esc(t.name)}</option>`).join('');
   $('type').value = TYPES.some(t => t.name === keep) ? keep : '';
+  // The pill: All, VIP, Standard, then the other types A-Z. It and the user type list set the same filter.
+  const order = [...TYPES.filter(t => t.name === 'VIP'), ...TYPES.filter(t => t.name === 'Standard'),
+                 ...TYPES.filter(t => t.name !== 'VIP' && t.name !== 'Standard')];
+  $('typePills').innerHTML = '<span class="thumb" aria-hidden="true"></span><button type="button" data-ty="">All</button>'
+    + order.map(t => `<button type="button" data-ty="${esc(t.name)}">${esc(t.name)} <span class="pn">${t.count.toLocaleString()}</span></button>`).join('');
+}
+function drawTypePill() {
+  const box = $('typePills'), v = $('type').value;
+  box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ty === v)));
+  const on = [...box.querySelectorAll('button')].find(b => b.dataset.ty === v), th = box.querySelector('.thumb');
+  if (on && th) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
 }
 const osText = d => [d.os, d.osVersion].filter(Boolean).join(' ');
 const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
@@ -212,6 +224,7 @@ function sortVal(u, k) {
 }
 
 function draw() {
+  drawTypePill();
   const rows = ALL.filter(matches);
   const k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
@@ -568,6 +581,11 @@ document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListene
   const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
 }));
 ['q', 'div', 'type'].forEach(id => $(id).addEventListener('input', draw));
+$('typePills').addEventListener('click', e => {
+  const b = e.target.closest('button[data-ty]'); if (!b) return;
+  $('type').value = b.dataset.ty; draw();
+});
+window.addEventListener('resize', drawTypePill);
 try { $('group').checked = localStorage.getItem('cp-users-group') === '1'; } catch {}
 $('rows').addEventListener('click', e => {
   const m = e.target.closest('[data-more]');
