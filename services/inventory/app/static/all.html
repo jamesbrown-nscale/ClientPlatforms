@@ -11,6 +11,19 @@
   .b-fte { background: var(--surface); color: var(--primary); }
   .b-ct { background: #F1E8FF; color: #5B2DA8; }
   tr[data-url] { cursor: pointer; }
+  /* Column filters (Type, Platform): a funnel next to the heading opens the column's values to tick. */
+  th button.flt { margin-left: 6px; padding: 2px 4px; border-radius: 5px; vertical-align: -2px; color: var(--text2); opacity: .55; }
+  th button.flt:hover, th button.flt[aria-expanded="true"] { opacity: 1; background: var(--grey-fill); }
+  th button.flt.on { opacity: 1; color: #fff; background: var(--primary); }
+  th[aria-sort] button.flt::after { content: none; }
+  th button.flt svg { width: 13px; height: 13px; display: block; }
+  .fpop { position: absolute; z-index: 50; min-width: 210px; max-height: 340px; overflow: auto; background: var(--bg); border: 1px solid var(--border);
+          border-radius: 10px; box-shadow: 0 8px 28px rgba(4, 14, 39, .16); padding: 8px; font-size: 14px; }
+  .fpop .ft { font-weight: 600; padding: 4px 6px 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .fpop .ft button { all: unset; cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 500; }
+  .fpop label { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; cursor: pointer; }
+  .fpop label:hover { background: var(--grey-fill); }
+  .fpop label .c { margin-left: auto; color: var(--text2); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -56,14 +69,14 @@
       <span class="count" id="count"></span>
     </div>
     <div class="tablewrap"><table class="fit">
-      <colgroup><col style="width:23%"><col style="width:7%"><col style="width:19%"><col class="hide-sm" style="width:16%"><col style="width:9%"><col style="width:9%"><col style="width:17%"></colgroup>
+      <colgroup><col style="width:21%"><col style="width:7%"><col style="width:18%"><col class="hide-sm" style="width:15%"><col style="width:11%"><col style="width:11%"><col style="width:17%"></colgroup>
       <thead><tr>
         <th data-sort="name"><button type="button">User</button></th>
         <th data-sort="list"><button type="button">List</button></th>
         <th data-sort="team"><button type="button">Department</button></th>
         <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
-        <th data-sort="type"><button type="button">Type</button></th>
-        <th data-sort="platform"><button type="button">Platform</button></th>
+        <th data-sort="type"><button type="button">Type</button><button type="button" class="flt" data-col="type" aria-label="Filter by type" aria-expanded="false" title="Filter by type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button></th>
+        <th data-sort="platform"><button type="button">Platform</button><button type="button" class="flt" data-col="platform" aria-label="Filter by platform" aria-expanded="false" title="Filter by platform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button></th>
         <th data-sort="device"><button type="button">Primary device</button></th>
       </tr></thead>
       <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
@@ -79,6 +92,10 @@ const typeBadge = t => `<span class="badge ${t === 'VIP' ? 'b-vip' : t === 'Stan
 const listBadge = u => `<span class="badge ${u.list === 'users-ct' ? 'b-ct' : 'b-fte'}" title="${esc(u.listName)}">${u.list === 'users-ct' ? 'CT' : 'FTE'}</span>`;
 const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
 let ALL = [], FILTER = 'all', SORT = { key: 'name', dir: 1 }, LIST = '';
+// Column filters: the values ticked in the Type and Platform headings (empty = everything). '' = no platform.
+const COLF = { type: new Set(), platform: new Set() };
+const colVal = (u, col) => col === 'type' ? u.type : (u.platform || '');
+const colLabel = (col, v) => col === 'platform' && !v ? 'None' : v;
 try { LIST = localStorage.getItem('cp-all-users-list') || ''; } catch {}
 
 async function api(path) {
@@ -101,6 +118,7 @@ function deviceCell(u) {
 
 function matches(u) {
   if (LIST && u.list !== LIST) return false;
+  for (const col in COLF) if (COLF[col].size && !COLF[col].has(colVal(u, col))) return false;
   if (FILTER.startsWith('list:') && u.list !== FILTER.slice(5)) return false;
   if (FILTER === 'vip' && u.type !== 'VIP') return false;
   if (FILTER === 'device' && !hasDevice(u)) return false;
@@ -130,6 +148,7 @@ function drawPills() {
 }
 
 function draw() {
+  drawFltButtons();
   const rows = ALL.filter(matches), k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
   document.querySelectorAll('th[data-sort]').forEach(th => {
@@ -154,7 +173,7 @@ function draw() {
 $('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-url]'); if (tr) location.href = tr.dataset.url; });
 $('rows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-url]'); if (tr && e.key === 'Enter') location.href = tr.dataset.url; });
 document.querySelectorAll('.tile').forEach(t => t.addEventListener('click', () => { FILTER = FILTER === t.dataset.f ? 'all' : t.dataset.f; draw(); }));
-document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
+document.querySelectorAll('th[data-sort] button:not(.flt)').forEach(b => b.addEventListener('click', () => {
   const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
 }));
 $('pills').addEventListener('click', e => {
@@ -165,6 +184,62 @@ $('pills').addEventListener('click', e => {
 });
 ['q', 'dept', 'type'].forEach(id => $(id).addEventListener('input', draw));
 window.addEventListener('resize', drawPills);
+
+/* ---------- Column filters ---------- */
+let POP = null;   // {col, el, btn} while a filter list is open
+function closePop() {
+  if (!POP) return;
+  POP.el.remove(); POP.btn.setAttribute('aria-expanded', 'false'); POP = null;
+}
+function drawFltButtons() {
+  document.querySelectorAll('th button.flt').forEach(b => {
+    const n = COLF[b.dataset.col].size;
+    b.classList.toggle('on', n > 0);
+    b.title = n ? `Filtered: ${[...COLF[b.dataset.col]].map(v => colLabel(b.dataset.col, v)).join(', ')}` : `Filter by ${b.dataset.col}`;
+  });
+}
+function popBody(col) {
+  // The values in the column, with how many: counted within the other filters (so the numbers add up to what you'd see).
+  const others = ALL.filter(u => { const keep = COLF[col]; COLF[col] = new Set(); const ok = matches(u); COLF[col] = keep; return ok; });
+  const counts = new Map();
+  for (const u of others) counts.set(colVal(u, col), (counts.get(colVal(u, col)) || 0) + 1);
+  for (const v of COLF[col]) if (!counts.has(v)) counts.set(v, 0);
+  const order = col === 'type' ? ['VIP', 'Standard'] : ['Mac', 'Windows', 'Linux', ''];
+  const vals = [...counts.keys()].sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+  return `<div class="ft"><span>${col === 'type' ? 'Type' : 'Platform'}</span><button type="button" data-clear>${COLF[col].size ? 'Clear' : ''}</button></div>`
+    + vals.map(v => `<label><input type="checkbox" value="${esc(v)}" ${COLF[col].has(v) ? 'checked' : ''}> ${esc(colLabel(col, v))}<span class="c">${(counts.get(v) || 0).toLocaleString()}</span></label>`).join('');
+}
+function openPop(btn) {
+  const col = btn.dataset.col;
+  if (POP && POP.col === col) return closePop();
+  closePop();
+  const el = document.createElement('div');
+  el.className = 'fpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', `Filter by ${col}`);
+  el.innerHTML = popBody(col);
+  document.body.appendChild(el);
+  const r = btn.getBoundingClientRect();
+  el.style.top = (r.bottom + scrollY + 6) + 'px';
+  el.style.left = Math.max(8, Math.min(r.left + scrollX - 8, scrollX + innerWidth - el.offsetWidth - 8)) + 'px';
+  btn.setAttribute('aria-expanded', 'true');
+  POP = { col, el, btn };
+  el.addEventListener('change', e => {
+    const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
+    if (cb.checked) COLF[col].add(cb.value); else COLF[col].delete(cb.value);
+    draw(); el.querySelector('[data-clear]').textContent = COLF[col].size ? 'Clear' : '';
+  });
+  el.addEventListener('click', e => {
+    if (!e.target.closest('[data-clear]')) return;
+    COLF[col].clear(); draw(); el.innerHTML = popBody(col);
+  });
+  el.querySelector('input')?.focus();
+}
+document.querySelectorAll('th button.flt').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openPop(b); }));
+document.addEventListener('click', e => { if (POP && !POP.el.contains(e.target) && e.target !== POP.btn) closePop(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && POP) { const b = POP.btn; closePop(); b.focus(); } });
+window.addEventListener('resize', closePop);
 
 (async () => {
   try {
