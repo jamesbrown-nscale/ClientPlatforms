@@ -510,8 +510,17 @@ def _users() -> list[dict]:
     for d in devs:
         if d["user_email"]:
             assigned.setdefault(owner_email(d, links), []).append(d)
+    # Managers are often on the other list (a contractor's manager is on Users - FTE): look on both.
     names = {u["email"]: u["name"] or access.display_name(u["email"]) for u in rows}
+    for _, other in _other_lists():
+        for u in other.users():
+            names.setdefault(u["email"], u["name"] or access.display_name(u["email"]))
     return [_user_view(u, devices, names, assigned) for u in rows]
+
+
+def _other_lists() -> list[tuple[str, Store]]:
+    here = auth.LIST.get()
+    return [(k, ls) for k, ls in all_lists() if k != here]
 
 
 @users_app.get("/api/users")
@@ -530,7 +539,10 @@ def users_payload() -> dict:
     stats = {"users": len(items), "review": book.review_count(), "mismatches": len(_unmatched(items)), "vip": counts.get("VIP", 0), "departments": len({u["department"] for u in items if u["department"]}),
              "withDevice": sum(bool(u["primaryDevice"]) and not u["primaryDevice"].get("missing") for u in items),
              "noDevice": sum(not u["primaryDevice"] or bool(u["primaryDevice"].get("missing")) for u in items)}
-    return {"items": items, "departments": departments(items), "types": types, "stats": stats}
+    # People on the other list, for the line manager picker and hint (a contractor's manager is an FTE).
+    others = [{"email": u["email"], "name": u["name"] or access.display_name(u["email"]), "title": u["title"] or "",
+               "listName": LISTS[k][0]} for k, ls in _other_lists() for u in ls.users()]
+    return {"items": items, "departments": departments(items), "types": types, "stats": stats, "others": others}
 
 
 def departments(users: list[dict]) -> list[dict]:
@@ -596,7 +608,13 @@ def _resolve_manager(v: str, by_name: dict[str, str], email: str = "") -> str:
 
 
 def _names() -> dict[str, str]:
-    return {(u["name"] or "").lower(): u["email"] for u in book.users() if u["name"]}
+    """A name (lower case) → their email, for a line manager given by name: this list first, then the other."""
+    out = {(u["name"] or "").lower(): u["email"] for u in book.users() if u["name"]}
+    for _, other in _other_lists():
+        for u in other.users():
+            if u["name"]:
+                out.setdefault(u["name"].lower(), u["email"])
+    return out
 
 
 def known_types() -> dict[str, str]:

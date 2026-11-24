@@ -149,6 +149,7 @@ const ICON = {
   computer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
   mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>',
 };
+let OTHERS = [];   // people on the other list (Users - FTE or Users - CT): line managers can be there
 let TYPES = [];   // [{name, count}] in use: VIP first, the others A-Z, Standard last
 const typeBadge = t => `<span class="badge ${t === 'VIP' ? 'b-vip' : t === 'Standard' ? 'b-std' : 'b-type'}">${esc(t)}</span>`;
 
@@ -311,6 +312,7 @@ async function load() {
     ALL = data.items;
     for (const [k, v] of Object.entries(data.stats)) { const el = $('s-' + k); if (el) el.textContent = v.toLocaleString(); }
     TYPES = data.types;
+    OTHERS = data.others || [];
     // Review: an import's changes waiting to be accepted. Its tile is there only while something waits.
     document.getElementById('misTile')?.remove();
     if (data.stats.mismatches) $('tiles').insertAdjacentHTML('beforeend',
@@ -324,7 +326,7 @@ async function load() {
     drawFilters();
     $('locations').innerHTML = [...new Set(ALL.map(u => u.location).filter(Boolean))].sort().map(l => `<option value="${esc(l)}">`).join('');
     $('depts').innerHTML = DEPTS.filter(d => d.name).map(d => `<option value="${esc(d.name)}">`).join('');
-    $('people').innerHTML = ALL.map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+    $('people').innerHTML = [...ALL, ...OTHERS].map(u => `<option value="${esc(u.email)}">${esc(u.name)}${u.listName ? ` (${esc(u.listName)})` : ''}</option>`).join('');
     draw();
   } catch (e) { if (e.message !== 'signed out') showError('Could not load users: ' + e.message); }
 }
@@ -431,8 +433,9 @@ async function openUser(email) {
 
 function managerHint() {
   const v = $('f-manager').value.trim().toLowerCase();
-  const m = v && ALL.find(u => u.email === v);
-  $('f-managerHint').textContent = m ? m.name + (m.title ? ' · ' + m.title : '') : v && v.includes('@') ? 'Not on the Users list (that\'s fine).' : '';
+  const m = v && (ALL.find(u => u.email === v) || OTHERS.find(u => u.email === v));
+  $('f-managerHint').textContent = m ? m.name + (m.title ? ' · ' + m.title : '') + (m.listName ? ` · on ${m.listName}` : '')
+    : v && v.includes('@') ? 'Not on Users - FTE or Users - CT (that\'s fine).' : '';
 }
 
 function closePanel() {

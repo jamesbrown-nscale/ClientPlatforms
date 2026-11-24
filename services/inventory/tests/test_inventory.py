@@ -832,3 +832,20 @@ def test_jamf_username_is_the_email_when_email_is_empty(c, fake):
         db.execute("INSERT INTO devices (id, platform, user_email, user_name) VALUES ('old', 'Jamf', '', 'Bo.Old@nscale.com')")
     s = store_mod.Store(main.store.path, "s" * 40)
     assert next(d for d in s.devices() if d["id"] == "old")["user_email"] == "bo.old@nscale.com"
+
+
+def test_contractors_managers_are_found_on_the_other_list(c):
+    CE, CV = who("users-ct", "edit"), who("users-ct", "view")
+    c.post("/users/api/users", headers=UE, json={"email": "grant.keith@nscale.com", "name": "Grant Keith", "title": "Director"})
+    c.post("/users-ct/api/users", headers=CE, json={"email": "adam.bullington.ct@nscale.com", "name": "Adam Bullington",
+                                                    "manager": "grant.keith@nscale.com"})
+    r = c.post("/users-ct/api/import", headers=CE, json={"csv": "Email,Name,Line manager\nzed.ct@nscale.com,Zed,Grant Keith\n"}).json()
+    assert not r["problems"]
+    ids = [i["id"] for i in c.get("/users-ct/api/review", headers=CV).json()["items"]]
+    c.post("/users-ct/api/review/act", headers=CE, json={"ids": ids, "action": "accept"})
+    ct = c.get("/users-ct/api/users", headers=CV).json()
+    by = {u["email"]: u for u in ct["items"]}
+    assert by["adam.bullington.ct@nscale.com"]["managerName"] == "Grant Keith"
+    assert by["zed.ct@nscale.com"]["manager"] == "grant.keith@nscale.com"            # a name in the CSV, found on Users - FTE
+    assert ct["others"] == [{"email": "grant.keith@nscale.com", "name": "Grant Keith", "title": "Director", "listName": "Users - FTE"}]
+    assert c.get("/users/api/users", headers=UV).json()["others"][0]["listName"] == "Users - CT"
