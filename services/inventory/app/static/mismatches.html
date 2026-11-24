@@ -102,7 +102,8 @@ function userRow(u) {
     <div class="muted">${esc(u.department || '')}</div><div>${sug}</div></div>`;
 }
 function linkRow(l) {
-  return `<div class="lnk"><div><b>${esc(l.fromEmail)}</b><div class="muted">${l.devices} device${l.devices === 1 ? '' : 's'} in Jamf / Intune</div></div>
+  const why = l.ignored ? `<div style="margin-top:4px"><span class="badge b-gone" title="${esc(l.fromEmail)} is on this list itself, so its devices are ${esc(l.fromName || 'theirs')}'s, not ${esc(l.toName || l.toEmail)}'s">Not used: ${esc(l.fromName || l.fromEmail)} is on this list</span></div>` : '';
+  return `<div class="lnk"><div><b>${esc(l.fromEmail)}</b><div class="muted">${l.devices} device${l.devices === 1 ? '' : 's'} in Jamf / Intune</div>${why}</div>
     <span class="arrow">→</span>
     <div><b>${esc(l.toName || l.toEmail)}</b><div class="muted">${esc(l.toEmail)}${l.gone ? ' · no longer on Users' : ''}</div>
       <div class="muted">Linked ${esc(day(l.createdAt))}${l.createdBy ? ' by ' + esc(l.createdBy) : ''}</div></div>
@@ -127,7 +128,7 @@ function draw() {
     rows.sort((a, b) => (b.suggestions.length > 0) - (a.suggestions.length > 0) || (a.name || a.email).localeCompare(b.name || b.email));
     html = rows.slice(0, 500).map(userRow).join('');
   } else {
-    rows = DATA.links.filter(l => hit([l.fromEmail, l.toEmail, l.toName].join(' ')));
+    rows = DATA.links.filter(l => hit([l.fromEmail, l.toEmail, l.toName].join(' '))).sort((a, b) => b.ignored - a.ignored);
     html = rows.map(linkRow).join('');
   }
   const total = KIND === 'devices' ? DATA.devices.length : KIND === 'users' ? DATA.users.length : DATA.links.length;

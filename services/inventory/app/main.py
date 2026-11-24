@@ -1115,6 +1115,7 @@ def _link_list() -> list[dict]:
     devs = book.devices()
     return [{"fromEmail": r["from_email"], "toEmail": r["to_email"], "toName": names.get(r["to_email"], ""),
              "gone": r["to_email"] not in names, "createdAt": r["created_at"], "createdBy": r["created_by"],
+             "ignored": bool(r["ignored"]), "fromName": names.get(r["from_email"], "") if r["ignored"] else "",
              "devices": sum(d["user_email"] == r["from_email"] for d in devs)}
             for r in book.link_rows()]
 

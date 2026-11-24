@@ -767,3 +767,42 @@ def test_platform_in_csv_import(c):
     assert r["changes"][0]["fields"] == [{"field": "Platform", "from": "Windows", "to": "Automatic"}]
     assert next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "amy@nscale.com")["platformSet"] == ""
     assert "Platform" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]
+
+
+def test_lookalike_letters_and_accents_in_emails(c):
+    from app.store import clean_email
+    assert clean_email("anthоny.dicicco@nscale.com") == "anthony.dicicco@nscale.com"          # Cyrillic о
+    assert clean_email("аnthony.dіcicco@nscale.com") == "anthony.dicicco@nscale.com"     # Cyrillic а, і
+    assert clean_email("José.García@nscale.com") == "jose.garcia@nscale.com"              # accents
+    assert clean_email("ａmy@nscale.com") == "amy@nscale.com"                                  # full-width
+    main.store.replace_devices("Jamf", [{"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "name": "NS-Mac",
+                                         "user_email": "anthony.dicicco@nscale.com", "last_seen": "2026-11-24T12:24:00Z"}])
+    c.post("/users/api/import", headers=UE, json={"csv": "Email,Name\nanthоny.dicicco@nscale.com,Anthony Dicicco\n"})
+    accept_all(c)
+    u = c.get("/users/api/users", headers=UV).json()["items"][0]
+    assert u["email"] == "anthony.dicicco@nscale.com" and u["devices"] == 1 and u["platform"] == "Mac"
+
+    # Stored before this fix: tidied when the service starts.
+    path = main.store.path
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO users (email, name) VALUES (?, 'Bo')", ("bо@nscale.com",))
+    s = store_mod.Store(path, "s" * 40)
+    assert "bo@nscale.com" in {u["email"] for u in s.users()}
+
+
+def test_a_users_own_email_beats_a_link(c):
+    """A link made before the person was on the list mustn't take their devices to someone else."""
+    main.store.replace_devices("Jamf", [{"id": "jamf:c1", "platform": "Jamf", "kind": "computer", "os": "macOS", "name": "NS-Mac",
+                                         "user_email": "anthony.dicicco@nscale.com", "last_seen": "2026-11-24T12:24:00Z"}])
+    c.post("/users/api/users", headers=UE, json={"email": "harry.wilson@nscale.com", "name": "Harry Wilson"})
+    assert c.post("/users/api/links", headers=UE, json={"fromEmail": "anthony.dicicco@nscale.com", "toEmail": "harry.wilson@nscale.com"}).status_code == 200
+    harry = lambda: next(u for u in c.get("/users/api/users", headers=UV).json()["items"] if u["email"] == "harry.wilson@nscale.com")
+    assert harry()["devices"] == 1
+    c.post("/users/api/users", headers=UE, json={"email": "anthony.dicicco@nscale.com", "name": "Anthony Dicicco"})
+    users = {u["email"]: u for u in c.get("/users/api/users", headers=UV).json()["items"]}
+    assert users["anthony.dicicco@nscale.com"]["devices"] == 1 and users["anthony.dicicco@nscale.com"]["platform"] == "Mac"
+    assert users["harry.wilson@nscale.com"]["devices"] == 0
+    link = c.get("/users/api/mismatches", headers=UV).json()["links"][0]
+    assert link["ignored"] is True and link["fromName"] == "Anthony Dicicco"
+    devs = c.get("/devices/api/devices", headers=DV).json()["items"]
+    assert devs[0]["notOnUsers"] is False and devs[0]["linkedTo"] == ""

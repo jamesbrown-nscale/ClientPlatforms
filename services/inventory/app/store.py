@@ -29,12 +29,23 @@ DEVICE_FIELDS = ("platform", "kind", "name", "make", "model", "os", "os_version"
 USER_FIELDS = ("name", "department", "division", "manager", "user_type", "primary_device", "title", "platform_tag", "location")
 
 
+# Letters from other alphabets that look exactly like Latin ones: an email typed or pasted with one
+# (a Cyrillic "о" in "anthоny") looks the same on screen but doesn't match. Cyrillic, then Greek.
+LOOKALIKES = str.maketrans({
+    "а": "a", "в": "b", "е": "e", "ё": "e", "һ": "h", "і": "i", "ї": "i", "ј": "j", "к": "k", "м": "m", "н": "h", "о": "o",
+    "р": "p", "с": "c", "ѕ": "s", "т": "t", "у": "y", "х": "x", "ԁ": "d", "ԛ": "q", "ԝ": "w", "ӏ": "l", "ɡ": "g", "ı": "i",
+    "α": "a", "β": "b", "ε": "e", "ι": "i", "κ": "k", "ν": "v", "ο": "o", "ρ": "p", "τ": "t", "υ": "u", "χ": "x",
+})
+
+
 def clean_email(v: str) -> str:
-    """An email as we compare it: lower case, with no spaces or invisible characters. HR exports and
-    Jamf / Intune fields sometimes carry a zero-width space, a non-breaking space or a direction mark
-    that looks like nothing but stops two identical-looking emails matching."""
-    v = unicodedata.normalize("NFKC", v or "")
-    return "".join(ch for ch in v if not ch.isspace() and unicodedata.category(ch)[0] not in ("C", "Z")).lower()
+    """An email as we compare it: lower case, plain Latin letters, no spaces or invisible characters.
+    HR exports and Jamf / Intune fields sometimes carry a zero-width or non-breaking space, a direction
+    mark, a letter from another alphabet that looks Latin, or an accent (josé@ for jose@): each looks
+    the same, or nearly, on screen but stops two emails matching."""
+    v = unicodedata.normalize("NFKD", v or "").lower()
+    v = "".join(ch for ch in v if not unicodedata.combining(ch)).translate(LOOKALIKES)
+    return "".join(ch for ch in v if not ch.isspace() and unicodedata.category(ch)[0] not in ("C", "Z"))
 
 
 def now() -> str:
@@ -112,6 +123,10 @@ class Store:
             m = r["manager"] or ""
             if "@" in m and (c := clean_email(m)) != m:
                 db.execute(f"UPDATE {self.U} SET manager = ? WHERE manager = ?", (c, m))
+        for r in db.execute(f"SELECT from_email, to_email FROM {self.L}").fetchall():
+            f, t = clean_email(r["from_email"]), clean_email(r["to_email"])
+            if (f, t) != (r["from_email"], r["to_email"]):
+                db.execute(f"UPDATE OR IGNORE {self.L} SET from_email = ?, to_email = ? WHERE from_email = ?", (f, t, r["from_email"]))
 
     def _db(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -199,12 +214,17 @@ class Store:
     # ----- email links: devices under one email belong to a user with another (Users → Mismatches) -----
 
     def links(self) -> dict[str, str]:
+        """The links in use. One from an email that is itself on this list is ignored: that person's
+        devices are theirs (the link was made before they were added)."""
         with self._db() as db:
-            return {r["from_email"]: r["to_email"] for r in db.execute(f"SELECT from_email, to_email FROM {self.L}")}
+            return {r["from_email"]: r["to_email"] for r in db.execute(
+                f"SELECT from_email, to_email FROM {self.L} WHERE from_email NOT IN (SELECT email FROM {self.U})")}
 
     def link_rows(self) -> list[dict]:
+        """Every link, with ignored = 1 when its email is on this list itself (see links())."""
         with self._db() as db:
-            return [dict(r) for r in db.execute(f"SELECT * FROM {self.L} ORDER BY from_email")]
+            return [dict(r) for r in db.execute(
+                f"SELECT l.*, EXISTS (SELECT 1 FROM {self.U} u WHERE u.email = l.from_email) AS ignored FROM {self.L} l ORDER BY from_email")]
 
     def add_link(self, from_email: str, to_email: str, by: str) -> None:
         with self._lock, self._db() as db:
