@@ -95,6 +95,16 @@ def _s(v) -> str:
     return str(v).strip() if v is not None else ""
 
 
+def _email_of(*vals) -> str:
+    """The first that's an email address. Jamf often leaves Email empty and has the address in Username
+    (or Full Name); Intune may have only the sign-in name."""
+    for v in vals:
+        v = _s(v)
+        if "@" in v and "." in v.split("@")[-1] and " " not in v:
+            return v.lower()
+    return ""
+
+
 def _kind(os_name: str) -> str:
     o = os_name.lower()
     if any(x in o for x in ("ios", "ipados", "android", "iphone", "ipad", "tvos", "watchos")):
@@ -147,7 +157,8 @@ def jamf_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[lis
         devices.append({"id": f"jamf:c{c['id']}", "platform": "Jamf", "kind": "computer", "name": _s(g.get("name")),
                         "make": _s(h.get("make")) or "Apple", "model": _s(h.get("model")), "os": os_name,
                         "os_version": _s(o.get("version")), "serial": _s(h.get("serialNumber")),
-                        "user_email": _s(u.get("email")).lower(), "user_name": _s(u.get("realname")) or _s(u.get("username")),
+                        "user_email": _email_of(u.get("email"), u.get("username"), u.get("realname")),
+                        "user_name": _s(u.get("realname")) or _s(u.get("username")),
                         "last_seen": _s(g.get("lastContactTime"))})
     # Phones and tablets are extra: if Jamf won't give them, the Macs still count, with a note why.
     try:
@@ -168,7 +179,8 @@ def jamf_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[lis
                         "name": _s(g.get("displayName")) or _s(m.get("name")), "make": "Apple",
                         "model": _s(h.get("model")) or _s(h.get("modelIdentifier")), "os": os_name,
                         "os_version": _s(g.get("osVersion")), "serial": _s(h.get("serialNumber")),
-                        "user_email": _s(u.get("emailAddress")).lower(), "user_name": _s(u.get("realName")) or _s(u.get("username")),
+                        "user_email": _email_of(u.get("emailAddress"), u.get("username"), u.get("realName")),
+                        "user_name": _s(u.get("realName")) or _s(u.get("username")),
                         "last_seen": _s(g.get("lastInventoryUpdateDate")) or _s(g.get("lastInventoryUpdateTimestamp"))})
     return devices, notes
 
@@ -213,7 +225,7 @@ def intune_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[l
             devices.append({"id": f"intune:{d['id']}", "platform": "Intune", "kind": _kind(os_name), "name": _s(d.get("deviceName")),
                             "make": _s(d.get("manufacturer")), "model": _s(d.get("model")), "os": os_name,
                             "os_version": _s(d.get("osVersion")), "serial": _s(d.get("serialNumber")),
-                            "user_email": (_s(d.get("emailAddress")) or _s(d.get("userPrincipalName"))).lower(),
+                            "user_email": _email_of(d.get("emailAddress"), d.get("userPrincipalName")),
                             "user_name": _s(d.get("userDisplayName")), "last_seen": _s(d.get("lastSyncDateTime"))})
         url = data.get("@odata.nextLink")
         if not url:

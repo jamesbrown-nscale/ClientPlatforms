@@ -806,3 +806,29 @@ def test_a_users_own_email_beats_a_link(c):
     assert link["ignored"] is True and link["fromName"] == "Anthony Dicicco"
     devs = c.get("/devices/api/devices", headers=DV).json()["items"]
     assert devs[0]["notOnUsers"] is False and devs[0]["linkedTo"] == ""
+
+
+def test_jamf_username_is_the_email_when_email_is_empty(c, fake):
+    """Jamf often leaves Email empty and has the address in Username: that's who the device is."""
+    mac = computer(9, "NS-Mac-HK25Y69NRL", "HK25Y69NRL", "")
+    mac["userAndLocation"] = {"email": "", "realname": "", "username": "Anthony.Dicicco@nscale.com"}
+    named = computer(10, "NS-Mac-2", "S2", "")
+    named["userAndLocation"] = {"email": "", "realname": "Sam Lee", "username": "sam.lee@nscale.com"}
+    nobody = computer(11, "NS-Mac-3", "S3", "")
+    nobody["userAndLocation"] = {"email": "", "realname": "", "username": "kiosk"}
+    fake.computers = [mac, named, nobody]
+    connect_jamf(c)
+    main.sync("jamf")
+    devs = {d["serial"]: d for d in c.get("/devices/api/devices", headers=DV).json()["items"]}
+    assert devs["HK25Y69NRL"]["userEmail"] == "anthony.dicicco@nscale.com"
+    assert devs["S2"]["userEmail"] == "sam.lee@nscale.com" and devs["S2"]["userName"] == "Sam Lee"
+    assert devs["S3"]["userEmail"] == "" and devs["S3"]["userName"] == "kiosk"
+    c.post("/users/api/users", headers=UE, json={"email": "anthony.dicicco@nscale.com", "name": "Anthony Dicicco"})
+    u = c.get("/users/api/users", headers=UV).json()["items"][0]
+    assert u["devices"] == 1 and u["platform"] == "Mac"
+
+    # Saved before this fix (email empty, the address in the user name): tidied when the service starts.
+    with sqlite3.connect(main.store.path) as db:
+        db.execute("INSERT INTO devices (id, platform, user_email, user_name) VALUES ('old', 'Jamf', '', 'Bo.Old@nscale.com')")
+    s = store_mod.Store(main.store.path, "s" * 40)
+    assert next(d for d in s.devices() if d["id"] == "old")["user_email"] == "bo.old@nscale.com"

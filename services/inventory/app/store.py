@@ -48,6 +48,15 @@ def clean_email(v: str) -> str:
     return "".join(ch for ch in v if not ch.isspace() and unicodedata.category(ch)[0] not in ("C", "Z"))
 
 
+def device_email(user_email: str, user_name: str) -> str:
+    """Whose a device is, as an email: Jamf or Intune's email, or, when that's empty, the user name if
+    it is one (Jamf often puts the address in Username and leaves Email empty)."""
+    e = clean_email(user_email or "")
+    if not e and "@" in (user_name or "") and " " not in (user_name or "").strip():
+        e = clean_email(user_name)
+    return e
+
+
 def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -112,8 +121,8 @@ class Store:
     def _clean_emails(self, db) -> None:
         """Emails saved before clean_email: tidied in place, so they match their devices. A tidied
         email that another user already has is left alone (both show; delete the one you don't want)."""
-        for r in db.execute("SELECT id, user_email FROM devices").fetchall():
-            if (c := clean_email(r["user_email"])) != r["user_email"]:
+        for r in db.execute("SELECT id, user_email, user_name FROM devices").fetchall():
+            if (c := device_email(r["user_email"], r["user_name"])) != r["user_email"]:
                 db.execute("UPDATE devices SET user_email = ? WHERE id = ?", (c, r["id"]))
         for r in db.execute(f"SELECT email, manager FROM {self.U}").fetchall():
             e = clean_email(r["email"])
@@ -152,7 +161,7 @@ class Store:
             ids = []
             for d in rows:
                 ids.append(d["id"])
-                d = {**d, "user_email": clean_email(d.get("user_email") or "")}
+                d = {**d, "user_email": device_email(d.get("user_email") or "", d.get("user_name") or "")}
                 vals = [str(d.get(f) or "")[:300] for f in DEVICE_FIELDS]
                 db.execute(f"INSERT INTO devices (id, {', '.join(DEVICE_FIELDS)}, synced_at) VALUES (?, {', '.join('?' * len(DEVICE_FIELDS))}, ?) "
                            f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{f} = excluded.{f}' for f in DEVICE_FIELDS)}, synced_at = excluded.synced_at",
