@@ -150,8 +150,18 @@ function drawPills() {
   if (on) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
 }
 
+// The tiles count the list picked in the FTE / CT pill (both when it's on All).
+function drawTiles() {
+  const us = LIST ? ALL.filter(u => u.list === LIST) : ALL;
+  const st = { users: us.length, 'users-fte': us.filter(u => u.list === 'users').length, 'users-ct': us.filter(u => u.list === 'users-ct').length,
+               vip: us.filter(u => u.type === 'VIP').length, withDevice: us.filter(hasDevice).length,
+               noDevice: us.filter(u => !hasDevice(u) && !noDeviceType(u)).length };
+  for (const [k, v] of Object.entries(st)) $('s-' + k).textContent = v.toLocaleString();
+}
+
 function draw() {
   drawFltButtons();
+  drawTiles();
   const rows = ALL.filter(matches), k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
   document.querySelectorAll('th[data-sort]').forEach(th => {
@@ -249,9 +259,6 @@ window.addEventListener('resize', closePop);
     const me = await api('api/me'); $('who').textContent = me.email;
     const r = await api('api/users');
     ALL = r.items;
-    const st = { users: r.stats.users, 'users-fte': r.stats.users_fte, 'users-ct': r.stats.users_ct, vip: r.stats.vip,
-                 withDevice: r.stats.withDevice, noDevice: r.stats.noDevice };
-    for (const [k, v] of Object.entries(st)) $('s-' + k).textContent = (v ?? 0).toLocaleString();
     $('dept').innerHTML = '<option value="">Every department</option>' + r.departments.map(d => `<option>${esc(d)}</option>`).join('');
     $('type').innerHTML = '<option value="">Every user type</option>' + r.types.map(t => `<option>${esc(t.name)}</option>`).join('');
     draw();
