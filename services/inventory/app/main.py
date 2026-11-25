@@ -1362,7 +1362,7 @@ def all_csv(user: User = Depends(auth.all_users_viewer)):
              "pdModel": (u["primaryDevice"] or {}).get("model", ""),
              "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in all_users()]
     cols = [("listName", "List"), ("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"),
-            ("division", "Division"), ("manager", "Line manager"), ("type", "User type"), ("platform", "Platform"),
+            ("division", "Division"), ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("platform", "Platform"),
             ("pd", "Primary device"), ("pdSerial", "Serial"), ("pdModel", "Model"), ("others", "Other devices")]
     return _csv(cols, rows, f"all-users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 

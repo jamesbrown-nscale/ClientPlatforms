@@ -56,7 +56,7 @@
 
   <div class="card">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Search name, email, department, manager or device" aria-label="Search users">
+      <input type="search" id="q" placeholder="Search name, email, department, manager, location or device" aria-label="Search users">
       <select id="dept" aria-label="Department"><option value="">Every department</option></select>
       <select id="type" aria-label="User type"><option value="">Every user type</option></select>
       <div class="pills" id="pills" role="group" aria-label="Which list">
@@ -69,17 +69,18 @@
       <span class="count" id="count"></span>
     </div>
     <div class="tablewrap"><table class="fit">
-      <colgroup><col style="width:21%"><col style="width:7%"><col style="width:18%"><col class="hide-sm" style="width:15%"><col style="width:11%"><col style="width:11%"><col style="width:17%"></colgroup>
+      <colgroup><col style="width:19%"><col style="width:6%"><col style="width:16%"><col class="hide-sm" style="width:14%"><col class="hide-sm" style="width:10%"><col style="width:10%"><col style="width:9%"><col style="width:16%"></colgroup>
       <thead><tr>
         <th data-sort="name"><button type="button">User</button></th>
         <th data-sort="list"><button type="button">List</button></th>
         <th data-sort="team"><button type="button">Department</button></th>
         <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
+        <th data-sort="location" class="hide-sm"><button type="button">Location</button></th>
         <th data-sort="type"><button type="button">Type</button><button type="button" class="flt" data-col="type" aria-label="Filter by type" aria-expanded="false" title="Filter by type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button></th>
         <th data-sort="platform"><button type="button">Platform</button><button type="button" class="flt" data-col="platform" aria-label="Filter by platform" aria-expanded="false" title="Filter by platform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button></th>
         <th data-sort="device"><button type="button">Primary device</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
     </table></div>
   </div>
 </main>
@@ -131,7 +132,7 @@ function matches(u) {
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const d = u.primaryDevice || {};
-  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.type, u.platform, u.listName, d.name, d.serial, d.model].join(' ').toLowerCase();
+  const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.location, u.type, u.platform, u.listName, d.name, d.serial, d.model].join(' ').toLowerCase();
   return words.every(w => hay.includes(w));
 }
 function sortVal(u, k) {
@@ -170,17 +171,18 @@ function draw() {
   document.querySelectorAll('.tile').forEach(t => t.setAttribute('aria-pressed', String(t.dataset.f === FILTER)));
   $('count').textContent = rows.length === ALL.length ? `${ALL.length.toLocaleString()} users` : `${rows.length.toLocaleString()} of ${ALL.length.toLocaleString()}`;
   drawPills();
-  if (!ALL.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty"><b>No users yet</b>Import people on Users - FTE or Users - CT.</td></tr>'; return; }
-  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="7" class="empty">No users match.</td></tr>'; return; }
+  if (!ALL.length) { $('rows').innerHTML = '<tr><td colspan="8" class="empty"><b>No users yet</b>Import people on Users - FTE or Users - CT.</td></tr>'; return; }
+  if (!rows.length) { $('rows').innerHTML = '<tr><td colspan="8" class="empty">No users match.</td></tr>'; return; }
   $('rows').innerHTML = rows.slice(0, 3000).map(u => `<tr data-url="${esc(u.url)}#${encodeURIComponent(u.email)}" tabindex="0" title="Open on ${esc(u.listName)}">
     <td><b class="cut" title="${esc(u.name)}">${esc(u.name)}</b>${cut(u.email, 'muted')}${cut(u.title, 'muted')}</td>
     <td>${listBadge(u)}</td>
     <td>${u.department ? cut(u.department) : '<span class="muted">—</span>'}${u.division ? `<div class="cut"><span class="badge b-team" title="${esc(u.division)}">${esc(u.division)}</span></div>` : ''}</td>
     <td class="hide-sm">${u.manager ? `${cut(u.managerName || u.manager)}${u.managerName && u.managerName !== u.manager ? cut(u.manager, 'muted') : ''}` : '<span class="muted">—</span>'}</td>
+    <td class="hide-sm">${u.location ? cut(u.location) : '<span class="muted">—</span>'}</td>
     <td>${typeBadge(u.type)}</td>
     <td>${u.platform ? `<span class="badge b-os-${u.platform.toLowerCase()}">${esc(u.platform)}</span>` : '<span class="muted">—</span>'}</td>
     <td>${deviceCell(u)}</td></tr>`).join('')
-    + (rows.length > 3000 ? '<tr><td colspan="7" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>' : '');
+    + (rows.length > 3000 ? '<tr><td colspan="8" class="empty">Showing the first 3,000. Search to narrow it down.</td></tr>' : '');
 }
 
 $('rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-url]'); if (tr) location.href = tr.dataset.url; });

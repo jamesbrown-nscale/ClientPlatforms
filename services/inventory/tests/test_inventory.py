@@ -721,6 +721,8 @@ def test_location(c):
     cols = head.split(",")
     assert cols.index("Location") == cols.index("Line manager") + 1
     assert "Location" in c.get("/users/api/template.csv", headers=UV).text.splitlines()[0]
+    allcsv = c.get("/all-users/api/users.csv", headers=who("all-users", "view")).text.lstrip("\ufeff").splitlines()
+    assert "Location" in allcsv[0].split(",") and any(",New York," in l for l in allcsv)
 
 
 def test_all_users_shows_both_lists(c):
