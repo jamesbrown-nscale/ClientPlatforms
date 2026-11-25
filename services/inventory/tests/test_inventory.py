@@ -12,7 +12,7 @@ import httpx  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app import access, connectors, main, store as store_mod  # noqa: E402
+from app import access, connectors, custom as custom_mod, main, store as store_mod  # noqa: E402
 
 H = {"X-Requested-With": "nscale-admin"}
 
@@ -28,6 +28,7 @@ UE, UV = who("users", "edit"), who("users", "view")
 @pytest.fixture
 def c(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "store", store_mod.Store(str(tmp_path / "t.db"), "s" * 40))
+    monkeypatch.setattr(main, "custom", custom_mod.Custom(str(tmp_path / "t.db"), main.store._lock))
     with TestClient(main.app) as client:
         yield client
 
@@ -43,6 +44,7 @@ class Fake:
                        intune("w2", "PIXEL-PAT", "PX222", "pat@nscale.com", "Android")]
         self.token_status = 200
         self.graph_status = 200
+        self.detected = []          # Intune's detected apps: [{id, displayName, devices: [managed device id]}]
         self.calls = []
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
@@ -75,6 +77,11 @@ class Fake:
             if self.graph_status != 200:
                 return httpx.Response(self.graph_status, json={})
             assert req.headers["authorization"] == "Bearer mt"
+            if "/detectedApps/" in u.path and u.path.endswith("/managedDevices"):
+                app = next(a for a in self.detected if a["id"] == u.path.split("/")[-2])
+                return httpx.Response(200, json={"value": [{"id": d} for d in app["devices"]]})
+            if u.path.endswith("/detectedApps"):
+                return httpx.Response(200, json={"value": [{"id": a["id"], "displayName": a["displayName"]} for a in self.detected]})
             if "skiptoken" in str(u):
                 return httpx.Response(200, json={"value": self.intune[1:]})
             return httpx.Response(200, json={"value": self.intune[:1],
@@ -861,3 +868,115 @@ def test_no_device_type_is_not_missing_a_primary_device(c):
     assert c.get("/users/api/users", headers=UV).json()["stats"]["noDevice"] == 1
     assert c.get("/users-ct/api/users", headers=who("users-ct", "view")).json()["stats"]["noDevice"] == 0
     assert c.get("/all-users/api/users", headers=who("all-users", "view")).json()["stats"]["noDevice"] == 1
+
+
+# ---------- Device customisation ----------
+
+CA, CE, CV = who("customisation"), who("customisation", "edit"), who("customisation", "view")
+
+
+def test_customisation_catalogue_profiles_and_policies(c):
+    assert c.get("/customisation/api/data", headers=UV).status_code == 401           # its own access
+    assert c.post("/customisation/api/apps", headers=CV, json={"name": "Slack"}).status_code == 403
+    app = lambda **kw: c.post("/customisation/api/apps", headers=CE, json=kw)       # noqa: E731
+    slack = app(name="Slack", platforms=["mac", "Windows"], delivery="Company Portal").json()
+    docker = app(name="Docker Desktop", vendor="Docker", platforms=["Mac", "Windows"], delivery="Jamf policy", detect=["Docker"]).json()
+    tf = app(name="Terraform", platforms=["Mac"]).json()
+    dropbox = app(name="Dropbox").json()
+    assert slack["platforms"] == ["Mac", "Windows"] and docker["detect"] == ["Docker"]
+    assert app(name="slack").status_code == 422                                     # already in the catalogue
+    assert app(name="X", link="http://x").status_code == 422
+    assert app(name="X", delivery="Carrier pigeon").status_code == 422
+
+    pol = c.post("/customisation/api/policies", headers=CE, json={
+        "name": "SSH and dev ports firewall rules", "platforms": ["Mac", "Windows"], "type": "Configuration profile",
+        "settings": [{"platform": "Mac", "setting": "Inbound SSH (22)", "value": "VPN range only"}, {"setting": "", "value": ""}]}).json()
+    assert pol["status"] == "Draft" and pol["version"] == 1 and len(pol["settings"]) == 1
+    body = {**pol, "changeRef": "CHG-0187", "status": "Live"}
+    pol2 = c.put(f"/customisation/api/policies/{pol['id']}", headers=CE, json=body).json()
+    assert pol2["version"] == 2 and pol2["status"] == "Live" and pol2["change_ref"] == "CHG-0187"
+    assert c.put(f"/customisation/api/policies/{pol['id']}", headers=CE, json=body).json()["version"] == 2   # nothing changed
+    hist = c.get(f"/customisation/api/policies/{pol['id']}/history", headers=CV).json()["items"]
+    assert [h["version"] for h in hist] == [1] and hist[0]["status"] == "Draft"
+    retired = c.post("/customisation/api/policies", headers=CE, json={"name": "Old VPN", "status": "Retired"}).json()
+
+    save = lambda scope, **kw: c.put("/customisation/api/profiles", headers=CE, json={"scope": scope, **kw})   # noqa: E731
+    assert save("baseline", apps=[{"app": slack["id"]}]).status_code == 200
+    assert save("baseline", apps=[{"app": slack["id"]}], exclusions=[{"title": "x", "reason": "y"}]).status_code == 422
+    assert save("dept:Eng", exclusions=[{"target": f"app:{slack['id']}"}]).status_code == 422          # needs a reason
+    assert save("nonsense").status_code == 422
+    r = save("dept:Eng", apps=[{"app": docker["id"], "mode": "required"}, {"app": dropbox["id"], "mode": "blocked"}],
+             policies=[pol["id"], retired["id"]],
+             exclusions=[{"target": f"app:{slack['id']}", "reason": "Uses Teams", "approval": "CHG-0142", "review": "2027-03-01"},
+                         {"title": "Screen lock 15 min", "reason": "Lab kiosks"}])
+    assert r.status_code == 200 and len(r.json()["exclusions"]) == 2
+    save("div:Eng\x01Platform", apps=[{"app": tf["id"], "mode": "optional"}, {"app": docker["id"], "mode": "required", "platforms": ["Mac"]}])
+
+    b = c.get("/customisation/api/build", headers=CV, params={"dept": "Eng", "div": "Platform", "platform": "Mac"}).json()
+    assert [(a["name"], a["mode"], a["from"]) for a in b["apps"]] == [
+        ("Docker Desktop", "required", "Eng › Platform"), ("Terraform", "optional", "Eng › Platform"), ("Dropbox", "blocked", "Eng")]
+    assert [p["name"] for p in b["policies"]] == ["SSH and dev ports firewall rules"]               # retired ones drop out
+    assert [e["targetName"] or e["title"] for e in b["exclusions"]] == ["Slack", "Screen lock 15 min"]
+    win = c.get("/customisation/api/build", headers=CV, params={"dept": "Eng", "div": "Platform", "platform": "Windows"}).json()
+    assert [a["name"] for a in win["apps"]] == ["Dropbox"]                                          # Docker is Mac-only on this division
+    assert [a["name"] for a in c.get("/customisation/api/build", headers=CV, params={"dept": "Sales"}).json()["apps"]] == ["Slack"]
+    csv_ = c.get("/customisation/api/build.csv", headers=CV, params={"dept": "Eng"}).text
+    assert "Docker Desktop" in csv_ and "Uses Teams" in csv_
+
+    d = c.get("/customisation/api/data", headers=CV).json()
+    assert d["stats"] == {"apps": 4, "policies": 2, "live": 1, "profiles": 2, "exclusions": 2, "reviewDue": 0}
+
+    # Copy a profile; delete an app (into the recycle bin, off every profile).
+    assert c.post("/customisation/api/profiles/copy", headers=CE, json={"source": "dept:Eng", "scope": "dept:Research"}).json()["apps"][0]["app"] == docker["id"]
+    assert c.delete(f"/customisation/api/apps/{docker['id']}", headers=CE).status_code == 200
+    profs = c.get("/customisation/api/data", headers=CV).json()["profiles"]
+    assert all(a["app"] != docker["id"] for p in profs.values() for a in p["apps"])
+    assert [i["label"] for i in c.get("/customisation/api/bin", headers=CA).json()["items"]] == ["Docker Desktop"]
+    assert c.delete(f"/customisation/api/policies/{pol['id']}", headers=CE).status_code == 200
+    assert pol["id"] not in c.get("/customisation/api/data", headers=CV).json()["profiles"]["dept:Eng"]["policies"]
+
+
+def test_matching_app_names():
+    m = custom_mod.matches
+    assert m("Docker", "Docker.app") and m("docker", "Docker Desktop") and m("Teams", "Microsoft Teams")
+    assert not m("git", "digit") and not m("", "Anything")
+
+
+def test_drift_and_someones_build(c, fake):
+    fake.computers[0]["applications"] = [{"name": "Docker.app"}, {"name": "Dropbox.app"}, {"name": "Safari.app"}]
+    fake.computers[1]["applications"] = [{"name": "Safari.app"}]
+    fake.detected = [{"id": "a1", "displayName": "Docker Desktop", "devices": ["w1"]}, {"id": "a2", "displayName": "Notepad++", "devices": ["w1"]}]
+    for e, n in (("amy.chen@nscale.com", "Amy Chen"), ("sam.lee@nscale.com", "Sam Lee")):
+        c.post("/users/api/users", headers=UE, json={"email": e, "name": n, "department": "Eng"})
+    docker = c.post("/customisation/api/apps", headers=CE, json={"name": "Docker Desktop", "detect": ["Docker"]}).json()
+    dropbox = c.post("/customisation/api/apps", headers=CE, json={"name": "Dropbox"}).json()
+    c.put("/customisation/api/profiles", headers=CE, json={"scope": "dept:Eng", "apps": [{"app": docker["id"]}, {"app": dropbox["id"], "mode": "blocked"}]})
+
+    connect_jamf(c)
+    assert main.sync("jamf")["ok"]
+    connect_intune(c)
+    assert main.sync("intune")["ok"]
+    graph = [u for _, u in fake.calls if "detectedApps" in u]
+    assert any(u.endswith("/detectedApps/a1/managedDevices?%24select=id") or "/detectedApps/a1/managedDevices" in u for u in graph)
+    assert not any("/detectedApps/a2/" in u for u in graph)                          # only what the catalogue looks for
+    d = c.get("/customisation/api/drift", headers=CV).json()
+    rows = {r["name"]: r for r in d["items"]}
+    assert rows["MBP-AMY"]["blocked"] == ["Dropbox"] and rows["MBP-AMY"]["missing"] == []
+    assert rows["MBA-SAM"]["missing"] == ["Docker Desktop"] and rows["MBA-SAM"]["read"]
+    assert rows["LT-LON-042"]["missing"] == [] and rows["LT-LON-042"]["os"] == "Windows"
+    assert d["stats"] == {"checked": 3, "drifting": 2, "missing": 1, "blocked": 1, "notRead": 0}
+    assert "MBA-SAM" in c.get("/customisation/api/drift.csv", headers=CV).text
+
+    b = c.get("/users/api/users/sam.lee@nscale.com/build", headers=UV).json()
+    assert [a["name"] for a in b["build"]["apps"]] == ["Docker Desktop", "Dropbox"] and b["devices"][0]["missing"] == ["Docker Desktop"]
+    assert b["canOpen"] is False
+    assert c.get("/users/api/users/nobody@nscale.com/build", headers=UV).status_code == 404
+
+    # Intune's apps can't be read: the devices still sync, and nothing there counts as missing.
+    orig = fake.__call__
+    main.make_client = lambda: httpx.Client(transport=httpx.MockTransport(
+        lambda req: httpx.Response(403, json={}) if "detectedApps" in req.url.path else orig(req)))
+    r = main.sync("intune")
+    assert r["ok"] and "weren't read" in r["note"]
+    rows = {r["name"]: r for r in c.get("/customisation/api/drift", headers=CV).json()["items"]}
+    assert rows["LT-LON-042"]["read"] is False

@@ -997,7 +997,7 @@ window.cpRefresh = async () => {
   const adminOf = id => (me.tools || []).some(t => t.id === id && t.level === 'admin');
   // Each tool's deletions are for its own admins ('' is this portal: deleted people, for whoever manages people).
   BIN_SOURCES = [...(can('people') && me.accounts ? [''] : []),
-                 ...['projects', 'tasks', 'team', 'changes', 'users'].filter(adminOf).map(t => '/' + t)];
+                 ...['projects', 'tasks', 'team', 'changes', 'users', 'customisation'].filter(adminOf).map(t => '/' + t)];
   const available = [me.passwords && 'account', can('settings') && 'site', can('people') && me.accounts && 'people',
                      can('people') && me.accounts && 'permissions', changesAdmin && 'changes', (devicesAdmin || can('integrations')) && 'connections',
                      (can('settings') || ['notifications', 'elevation', 'restart'].some(adminOf)) && 'apps',

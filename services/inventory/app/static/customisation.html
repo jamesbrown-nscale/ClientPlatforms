@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Device customisation · Nscale Client Platforms</title>
+<link rel="icon" href="static/nscale-icon.svg">
+<link rel="stylesheet" href="static/inventory.css">
+<script src="/static/dialog.js"></script>
+<script src="/static/nav.js" defer></script>
+<style>
+  .tabsrow { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .tabsrow .sp { flex: 1; }
+  .prof { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .scopes { padding: 10px; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+  .scopes input { width: 100%; height: 34px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; background: #fff; outline: none; margin-bottom: 8px; }
+  .scopes input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .scopes .lbl { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); padding: 10px 8px 4px; }
+  .scopes button { all: unset; box-sizing: border-box; display: flex; gap: 8px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+  .scopes button:hover { background: #F7F9FE; }
+  .scopes button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .scopes button[aria-current="true"] { background: var(--surface); color: var(--primary); font-weight: 600; }
+  .scopes button.div { padding-left: 26px; font-size: 13px; }
+  .scopes button .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scopes .n { font-size: 12px; color: var(--text2); font-weight: 400; }
+  .scopes .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
+  .scopes .dot.off { background: transparent; }
+  .ed { padding: 20px 22px; }
+  .ed .top { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .ed .top h2 { margin: 0; font-size: 18px; font-weight: 600; }
+  .ed .top > div:first-child { flex: 1; min-width: 220px; }
+  .ed h3 { display: flex; align-items: center; gap: 8px; }
+  .ed h3 .sp { flex: 1; }
+  .rows { border: 1px solid var(--surface); border-radius: 10px; background: #fff; }
+  .row { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--surface); flex-wrap: wrap; }
+  .row:first-child { border-top: 0; }
+  .row .grow { flex: 1; min-width: 160px; }
+  .row select, .row input[type=text], .row input[type=date], .addrow select, .addrow input { height: 32px; border: 1px solid var(--border); border-radius: 7px; padding: 0 8px; background: #fff; outline: none; }
+  .row select:focus, .row input:focus, .addrow select:focus, .addrow input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .row.inh { background: #FAFBFE; color: var(--text2); }
+  .row.inh b { color: var(--text); }
+  .row.gone { opacity: .55; }
+  .row.gone b { text-decoration: line-through; }
+  .empty-row { padding: 12px; color: var(--text2); font-size: 13px; }
+  .addrow { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .addrow select { min-width: 220px; }
+  .chips { display: inline-flex; gap: 4px; }
+  .chip { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--surface); color: var(--primary); border-color: var(--primary); }
+  .chip:disabled { cursor: default; }
+  .x { border: 0; background: none; color: var(--text2); cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+  .x:hover { background: var(--err-fill); color: var(--err); }
+  .exc { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) minmax(0, 1fr) 140px 28px; gap: 8px; align-items: start; padding: 10px 12px; border-top: 1px solid var(--surface); }
+  .exc:first-child { border-top: 0; }
+  .exc input, .exc select, .exc textarea { width: 100%; height: 32px; border: 1px solid var(--border); border-radius: 7px; padding: 0 8px; background: #fff; font: inherit; outline: none; }
+  .exc textarea { height: 56px; padding: 6px 8px; resize: vertical; }
+  .exc .t { font-size: 11px; color: var(--text2); font-weight: 600; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+  .exc.head { display: none; }
+  textarea.notes { width: 100%; min-height: 70px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; background: #fff; outline: none; resize: vertical; }
+  textarea.notes:focus, .exc textarea:focus, .exc input:focus, .exc select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .savebar { position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; padding: 12px 22px; background: #FFF8E8; border-top: 1px solid #F0C36A; border-radius: 0 0 12px 12px; }
+  .savebar .sp { flex: 1; }
+  .b-req { background: var(--ok-fill); color: var(--ok-text); }
+  .b-opt { background: var(--grey-fill); color: var(--text2); }
+  .b-blk { background: var(--err-fill); color: var(--err); }
+  .b-draft { background: var(--warn-fill); color: var(--warn); }
+  .b-review { background: #EDE7FB; color: #5B32B4; }
+  .b-live { background: var(--ok-fill); color: var(--ok-text); }
+  .b-retired { background: var(--grey-fill); color: var(--text2); }
+  .b-due { background: var(--err-fill); color: var(--err); }
+  .b-from { background: var(--surface); color: var(--text2); font-weight: 500; }
+  .preview { margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .preview .box { border: 1px solid var(--surface); border-radius: 10px; background: #fff; padding: 10px 12px; }
+  .preview .box b.h { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); margin-bottom: 6px; }
+  .preview ul { list-style: none; margin: 0; padding: 0; }
+  .preview li { display: flex; gap: 8px; align-items: center; padding: 3px 0; font-size: 13px; }
+  .preview li { align-items: flex-start; }
+  .preview li .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .sets { border: 1px solid var(--surface); border-radius: 10px; overflow: hidden; background: #fff; }
+  .set { display: grid; grid-template-columns: 110px minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1fr) 28px; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--surface); align-items: start; }
+  .set:first-child { border-top: 0; }
+  .set.hd { background: var(--page); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text2); }
+  .set select, .set input, .set textarea { width: 100%; min-height: 32px; border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px; background: #fff; font: inherit; font-size: 13px; outline: none; }
+  .set textarea { resize: vertical; height: 32px; }
+  .set input:focus, .set select:focus, .set textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .field textarea { width: 100%; min-height: 80px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font: inherit; background: #fff; outline: none; resize: vertical; }
+  .field textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15,65,243,.12); }
+  .checks { display: flex; gap: 14px; flex-wrap: wrap; }
+  .checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .panel { width: min(760px, 100%); }
+  .hist { list-style: none; margin: 0; padding: 0; border: 1px solid var(--surface); border-radius: 10px; background: #fff; }
+  .hist li { padding: 8px 12px; border-top: 1px solid var(--surface); font-size: 13px; }
+  .hist li:first-child { border-top: 0; }
+  .hist details summary { cursor: pointer; }
+  .hist table td { padding: 4px 8px; font-size: 12.5px; cursor: default; }
+  .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .readbar { font-size: 13px; color: var(--text2); margin: 0 0 12px; }
+  @media (max-width: 900px) {
+    .prof { grid-template-columns: 1fr; } .scopes { position: static; max-height: 300px; }
+    .exc { grid-template-columns: 1fr 28px; } .exc > :nth-child(2), .exc > :nth-child(3), .exc > :nth-child(4) { grid-column: 1; }
+    .set { grid-template-columns: 1fr 28px; } .set > * { grid-column: 1; } .set > .x { grid-column: 2; grid-row: 1; } .set.hd { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <img src="static/nscale-wordmark.svg" alt="Nscale">
+    <span class="app">Client Platforms</span>
+    <a class="home" href="/">All tools</a>
+    <div class="who"><span id="who"></span> · <a href="/logout" style="color:inherit">Sign out</a></div>
+  </div>
+</header>
+<main>
+  <div class="head">
+    <div>
+      <h1>Device customisation</h1>
+      <p class="sub">What each department needs on its devices: the software, the exclusions they're allowed and the policies behind it. Everyone gets the baseline; a department adds to it, and a division adds to its department.</p>
+    </div>
+    <div class="acts" id="acts"></div>
+  </div>
+  <div class="notice" id="notice" hidden></div>
+  <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    <button class="tile" data-go="catalogue"><b id="s-apps">–</b><span>Apps in the catalogue</span></button>
+    <button class="tile" data-go="policies"><b id="s-policies">–</b><span id="s-policiesL">Policies</span></button>
+    <button class="tile" data-go="profiles"><b id="s-profiles">–</b><span>Departments and divisions with a profile</span></button>
+    <button class="tile" data-go="exclusions"><b id="s-exclusions">–</b><span id="s-exclusionsL">Exclusions</span></button>
+    <button class="tile warn" data-go="drift"><b id="s-drift">–</b><span>Devices drifting</span></button>
+  </div>
+  <div class="tabsrow">
+    <div class="pills" id="tabs" role="tablist" aria-label="Sections"><span class="thumb" aria-hidden="true"></span>
+      <button type="button" data-t="profiles">Profiles</button>
+      <button type="button" data-t="catalogue">Catalogue <span class="pn" id="pn-catalogue"></span></button>
+      <button type="button" data-t="policies">Policies <span class="pn" id="pn-policies"></span></button>
+      <button type="button" data-t="drift">Drift <span class="pn" id="pn-drift"></span></button>
+    </div>
+    <span class="sp"></span>
+  </div>
+
+  <section id="v-profiles" hidden>
+    <div class="prof">
+      <nav class="card scopes" aria-label="Profiles"><input type="search" id="scopeQ" placeholder="Find a department" aria-label="Find a department"><div id="scopeList"></div></nav>
+      <div class="card" id="editor"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+
+  <section id="v-catalogue" hidden>
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="appQ" placeholder="Search apps, vendors or owners" aria-label="Search apps">
+        <select id="appPlat" aria-label="Platform"><option value="">Every platform</option></select>
+        <select id="appDel" aria-label="Delivery"><option value="">Any delivery</option></select>
+        <span class="sp"></span><span class="count" id="appCount"></span>
+      </div>
+      <div class="tablewrap"><table class="fit">
+        <colgroup><col style="width:24%"><col style="width:14%"><col style="width:15%"><col class="hide-sm" style="width:17%"><col style="width:18%"><col class="hide-sm" style="width:12%"></colgroup>
+        <thead><tr><th>App</th><th>Platforms</th><th>Delivery</th><th class="hide-sm">Found on a device as</th><th>Used by</th><th class="hide-sm">Owner</th></tr></thead>
+        <tbody id="appRows"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section id="v-policies" hidden>
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="polQ" placeholder="Search policies, settings or change references" aria-label="Search policies">
+        <select id="polStatus" aria-label="Status"><option value="">Every status</option></select>
+        <select id="polType" aria-label="Type"><option value="">Every type</option></select>
+        <span class="sp"></span><span class="count" id="polCount"></span>
+      </div>
+      <div class="tablewrap"><table class="fit">
+        <colgroup><col style="width:28%"><col style="width:13%"><col class="hide-sm" style="width:15%"><col style="width:10%"><col class="hide-sm" style="width:11%"><col style="width:15%"><col class="hide-sm" style="width:8%"></colgroup>
+        <thead><tr><th>Policy</th><th>Platforms</th><th class="hide-sm">Type</th><th>Status</th><th class="hide-sm">Change</th><th>Used by</th><th class="hide-sm">Version</th></tr></thead>
+        <tbody id="polRows"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <section id="v-drift" hidden>
+    <p class="readbar" id="readbar"></p>
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="drQ" placeholder="Search devices, people, departments or apps" aria-label="Search drift">
+        <div class="pills" id="drPills" role="group" aria-label="Show"><span class="thumb" aria-hidden="true"></span>
+          <button type="button" data-d="drifting">Drifting <span class="pn" id="dn-drifting"></span></button>
+          <button type="button" data-d="missing">Missing apps <span class="pn" id="dn-missing"></span></button>
+          <button type="button" data-d="blocked">Blocked apps <span class="pn" id="dn-blocked"></span></button>
+          <button type="button" data-d="unread">Not read <span class="pn" id="dn-unread"></span></button>
+          <button type="button" data-d="all">All <span class="pn" id="dn-all"></span></button>
+        </div>
+        <span class="sp"></span><span class="count" id="drCount"></span>
+      </div>
+      <div class="tablewrap"><table class="fit">
+        <colgroup><col style="width:22%"><col style="width:22%"><col class="hide-sm" style="width:18%"><col style="width:20%"><col style="width:18%"></colgroup>
+        <thead><tr><th>Device</th><th>User</th><th class="hide-sm">Department</th><th>Missing required apps</th><th>Blocked apps found</th></tr></thead>
+        <tbody id="drRows"></tbody>
+      </table></div>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden role="dialog" aria-modal="true" aria-labelledby="p-title">
+  <div class="phd">
+    <div style="min-width:0"><span id="p-badge"></span><h2 id="p-title"></h2><div class="muted" id="p-sub"></div></div>
+    <button class="btn small x" id="p-close" type="button" aria-label="Close" style="margin-left:auto">Close</button>
+  </div>
+  <form class="pbody" id="p-form" autocomplete="off"></form>
+  <div class="pfoot" id="p-foot">
+    <button class="btn primary" id="p-save" type="button">Save</button>
+    <button class="btn" id="p-cancel" type="button">Cancel</button>
+    <span class="sp"></span>
+    <button class="btn danger" id="p-delete" type="button">Delete</button>
+  </div>
+</aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const full = s => s ? new Date(s).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+const day = s => s ? new Date(s + 'T00:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' }) : '';
+const today = () => new Date().toISOString().slice(0, 10);
+const SEP = '\u0001';
+const MODE = { required: ['Required', 'b-req'], optional: ['Self Service / optional', 'b-opt'], blocked: ['Blocked', 'b-blk'] };
+const STATUS = { 'Draft': 'b-draft', 'In review': 'b-review', 'Live': 'b-live', 'Retired': 'b-retired' };
+let ME = null, D = null, DRIFT = null, TAB = 'profiles', SCOPE = 'baseline', DRAFT = null, DIRTY = false, PREVIEW = '', DRF = 'drifting', OPEN = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { cache: 'no-store', ...opts, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'nscale-admin', ...(opts.headers || {}) } });
+  if (res.status === 401) throw new Error('Your sign-in has expired. Reload the page to sign in again.');
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof j.detail === 'string' ? j.detail : (j.detail?.[0]?.msg || `Error ${res.status}`));
+  return j;
+}
+function note(msg, kind = '') { const n = $('notice'); n.textContent = msg; n.hidden = !msg; n.className = 'notice' + (kind ? ' ' + kind : ''); if (kind === 'ok') setTimeout(() => { if (n.textContent === msg) n.hidden = true; }, 3000); }
+const can = () => ME && ME.canEdit;
+const platBadges = ps => (ps && ps.length ? ps : ['All']).map(p => `<span class="badge ${p === 'All' ? 'b-std' : 'b-os-' + p.toLowerCase()}">${esc(p)}</span>`).join(' ');
+const appOf = id => D.apps.find(a => a.id === id);
+const polOf = id => D.policies.find(p => p.id === id);
+const label = s => s === 'baseline' ? 'Baseline' : s.startsWith('dept:') ? s.slice(5) : s.slice(4).replace(SEP, ' › ');
+const prof = s => D.profiles[s] || { scope: s, notes: '', apps: [], policies: [], exclusions: [] };
+const hasContent = p => p && (p.apps.length || p.policies.length || p.exclusions.length || p.notes);
+const parents = s => s === 'baseline' ? [] : s.startsWith('dept:') ? ['baseline'] : ['baseline', 'dept:' + s.slice(4).split(SEP)[0]];
+function usedBy(kind, id) {
+  return Object.values(D.profiles).filter(p => kind === 'app' ? p.apps.some(a => a.app === id) : p.policies.includes(id)).map(p => label(p.scope));
+}
+
+// ---------- Tabs ----------
+function drawPill(box, attr, val) {
+  box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === val)));
+  const on = box.querySelector(`button[data-${attr}="${val}"]`), th = box.querySelector('.thumb');
+  if (on && on.offsetWidth) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
+}
+function setTab(t) {
+  TAB = t;
+  ['profiles', 'catalogue', 'policies', 'drift'].forEach(x => $('v-' + x).hidden = x !== t);
+  drawPill($('tabs'), 't', t);
+  history.replaceState(null, '', '#' + t + (t === 'profiles' && SCOPE !== 'baseline' ? '/' + encodeURIComponent(SCOPE) : ''));
+  try { localStorage.setItem('cp-custom-tab', t); } catch {}
+  drawActs();
+  if (t === 'drift') { drawPill($('drPills'), 'd', DRF); if (!DRIFT) loadDrift(); }
+  if (t === 'profiles' && $('pvPills')) drawPill($('pvPills'), 'pv', PREVIEW);
+}
+$('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) guard(() => setTab(b.dataset.t)); });
+document.querySelectorAll('.tile[data-go]').forEach(t => t.addEventListener('click', () => guard(() => {
+  if (t.dataset.go === 'exclusions') { setTab('profiles'); const s = Object.values(D.profiles).find(p => p.exclusions.length); if (s) pickScope(s.scope); return; }
+  if (t.dataset.go === 'drift') DRF = 'drifting';
+  setTab(t.dataset.go);
+})));
+window.addEventListener('resize', () => { drawPill($('tabs'), 't', TAB); drawPill($('drPills'), 'd', DRF); if ($('pvPills')) drawPill($('pvPills'), 'pv', PREVIEW); });
+
+function drawActs() {
+  const b = [];
+  if (TAB === 'catalogue' && can()) b.push('<button class="btn primary" type="button" id="addApp">Add app</button>');
+  if (TAB === 'policies' && can()) b.push('<button class="btn primary" type="button" id="addPol">Add policy</button>');
+  if (TAB === 'drift') b.push('<a class="btn" href="api/drift.csv" download>Download CSV</a>');
+  $('acts').innerHTML = b.join('');
+  $('addApp')?.addEventListener('click', () => openApp(null));
+  $('addPol')?.addEventListener('click', () => openPol(null));
+}
+
+// ---------- Load ----------
+async function load() {
+  D = await api('api/data');
+  const st = D.stats;
+  $('s-apps').textContent = st.apps; $('s-policies').textContent = st.policies; $('s-profiles').textContent = st.profiles;
+  $('s-policiesL').textContent = st.policies ? `Policies · ${st.live} live` : 'Policies';
+  $('s-exclusions').textContent = st.exclusions;
+  $('s-exclusionsL').textContent = st.reviewDue ? `Exclusions · ${st.reviewDue} due for review` : 'Exclusions';
+  $('s-exclusions').style.color = st.reviewDue ? 'var(--err)' : '';
+  $('pn-catalogue').textContent = st.apps; $('pn-policies').textContent = st.policies;
+  const o = D.options;
+  if ($('appPlat').options.length === 1) {
+    $('appPlat').innerHTML += o.platforms.map(p => `<option>${esc(p)}</option>`).join('');
+    $('appDel').innerHTML += o.delivery.map(p => `<option>${esc(p)}</option>`).join('');
+    $('polStatus').innerHTML += o.statuses.map(p => `<option>${esc(p)}</option>`).join('');
+    $('polType').innerHTML += o.types.map(p => `<option>${esc(p)}</option>`).join('');
+  }
+  if (!DIRTY) DRAFT = null;
+  drawScopes(); drawEditor(); drawApps(); drawPols();
+}
+async function loadDrift() {
+  try {
+    DRIFT = await api('api/drift');
+    $('s-drift').textContent = DRIFT.stats.drifting; $('pn-drift').textContent = DRIFT.stats.drifting || '';
+    drawDrift();
+  } catch (e) { $('drRows').innerHTML = `<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; }
+}
+
+// ---------- Profiles ----------
+function scopeKeys() {
+  const keys = ['baseline'];
+  const deps = new Map(D.departments.map(d => [d.name, d]));
+  for (const s of Object.keys(D.profiles)) {   // profiles kept for departments nobody's in any more
+    if (s.startsWith('dept:') && !deps.has(s.slice(5))) deps.set(s.slice(5), { name: s.slice(5), people: 0, divisions: [] });
+    if (s.startsWith('div:')) { const [dp, dv] = s.slice(4).split(SEP); if (!deps.has(dp)) deps.set(dp, { name: dp, people: 0, divisions: [] });
+      const e = deps.get(dp); if (!e.divisions.some(x => x.name === dv)) e.divisions = [...e.divisions, { name: dv, people: 0 }]; }
+  }
+  return [...deps.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+function drawScopes() {
+  const q = $('scopeQ').value.trim().toLowerCase();
+  const btn = (s, text, n, cls = '') => `<button type="button" class="${cls}" data-s="${esc(s)}" aria-current="${s === SCOPE}">
+    <span class="dot${hasContent(D.profiles[s]) ? '' : ' off'}" title="${hasContent(D.profiles[s]) ? 'Has a profile' : ''}"></span><span class="grow">${esc(text)}</span>${n !== '' ? `<span class="n">${n}</span>` : ''}</button>`;
+  let h = '<div class="lbl">Everyone</div>' + btn('baseline', 'Baseline', '');
+  h += '<div class="lbl">Departments</div>';
+  const deps = scopeKeys().filter(d => !q || d.name.toLowerCase().includes(q) || d.divisions.some(v => v.name.toLowerCase().includes(q)));
+  for (const d of deps) {
+    h += btn('dept:' + d.name, d.name, d.people || '');
+    const open = SCOPE === 'dept:' + d.name || SCOPE.startsWith('div:' + d.name + SEP) || q;
+    if (open) for (const v of d.divisions) if (!q || d.name.toLowerCase().includes(q) || v.name.toLowerCase().includes(q)) h += btn(`div:${d.name}${SEP}${v.name}`, v.name, v.people || '', 'div');
+  }
+  if (!deps.length) h += '<div class="empty-row">No departments match. Departments come from Users - FTE and Users - CT.</div>';
+  $('scopeList').innerHTML = h;
+}
+$('scopeQ').addEventListener('input', drawScopes);
+$('scopeList').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (b) guard(() => pickScope(b.dataset.s)); });
+function pickScope(s) { SCOPE = s; DRAFT = null; DIRTY = false; drawScopes(); drawEditor(); setTab('profiles'); }
+
+async function guard(fn) {
+  if (DIRTY && !(await cp.confirm({ title: 'Leave without saving?', message: `Your changes to ${label(SCOPE)} haven't been saved.`, confirm: 'Leave', danger: true }))) return;
+  DIRTY = false; DRAFT = null; fn();
+}
+window.addEventListener('beforeunload', e => { if (DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+
+function draft() {
+  if (!DRAFT) DRAFT = JSON.parse(JSON.stringify(prof(SCOPE)));
+  return DRAFT;
+}
+function changed() { DIRTY = true; drawEditor(); }
+
+// What a scope gets from the layers above it (baseline, its department), with exclusions applied.
+function inherited(s) {
+  const apps = new Map(), pols = new Map();
+  for (const p of parents(s)) {
+    const pr = prof(p);
+    pr.apps.forEach(a => apps.set(a.app, { ...a, from: label(p) }));
+    pr.policies.forEach(id => { if (!pols.has(id)) pols.set(id, { id, from: label(p) }); });
+    pr.exclusions.forEach(e => { if (e.target.startsWith('app:')) apps.delete(e.target.slice(4)); if (e.target.startsWith('policy:')) pols.delete(e.target.slice(7)); });
+  }
+  return { apps: [...apps.values()].filter(a => appOf(a.app)), pols: [...pols.values()].filter(p => polOf(p.id)) };
+}
+
+function drawEditor() {
+  const s = SCOPE, p = DRAFT || prof(s), ed = can(), inh = inherited(s), base = s === 'baseline';
+  const excl = new Set(p.exclusions.map(e => e.target).filter(Boolean));
+  const dep = s.startsWith('div:') ? s.slice(4).split(SEP)[0] : '', div = s.startsWith('div:') ? s.slice(4).split(SEP)[1] : '';
+  const people = base ? null : s.startsWith('dept:') ? (D.departments.find(d => d.name === s.slice(5)) || {}).people : ((D.departments.find(d => d.name === dep) || { divisions: [] }).divisions.find(v => v.name === div) || {}).people;
+  const sub = base ? 'Everyone gets this: the apps and policies every device has. Departments add to it, and can be excluded from parts of it.'
+    : `Inherits ${parents(s).map(label).join(' › ')}${people ? ` · ${people} ${people === 1 ? 'person' : 'people'}` : ''}${p.updated_at ? ` · changed ${full(p.updated_at)}${p.updated_by ? ' by ' + p.updated_by : ''}` : ''}`;
+  const others = ['baseline', ...scopeKeys().flatMap(d => ['dept:' + d.name, ...d.divisions.map(v => `div:${d.name}${SEP}${v.name}`)])].filter(k => k !== s && hasContent(D.profiles[k]));
+  const q = new URLSearchParams(base ? {} : { dept: dep || s.slice(5), div });
+  let h = `<div class="ed"><div class="top"><div><h2>${esc(label(s))}</h2><div class="muted">${esc(sub)}</div></div>
+    <div class="acts">${ed && others.length ? `<select id="copyFrom" class="btn small" aria-label="Copy from another profile" style="height:30px"><option value="">Copy from…</option>${others.map(k => `<option value="${esc(k)}">${esc(label(k))}</option>`).join('')}</select>` : ''}
+    <a class="btn small" href="api/build.csv?${q}" download>Download CSV</a></div></div>`;
+
+  // Software
+  const appIds = new Set(p.apps.map(a => a.app));
+  h += `<h3>Software</h3><div class="rows">`;
+  if (!p.apps.length && !inh.apps.length) h += `<div class="empty-row">No software yet.${ed ? ' Add apps from the catalogue below.' : ''}</div>`;
+  for (const [i, a] of p.apps.entries()) {
+    const app = appOf(a.app); if (!app) continue;
+    const plats = app.platforms.length ? app.platforms : D.options.platforms;
+    const over = inh.apps.find(x => x.app === a.app);
+    h += `<div class="row"><div class="grow"><b>${esc(app.name)}</b> ${app.vendor ? `<span class="muted">${esc(app.vendor)}</span>` : ''}${over ? ` <span class="badge b-from" title="Replaces what ${esc(over.from)} sets">replaces ${esc(over.from)}</span>` : ''}</div>
+      <span class="chips" title="Platforms here (none ticked: every platform the app is on)">${plats.map(pl => `<button type="button" class="chip" data-i="${i}" data-pl="${esc(pl)}" aria-pressed="${a.platforms.includes(pl)}" ${ed ? '' : 'disabled'}>${esc(pl)}</button>`).join('')}</span>
+      ${ed ? `<select data-mode="${i}" aria-label="Setting for ${esc(app.name)}">${Object.entries(MODE).map(([k, [t]]) => `<option value="${k}" ${a.mode === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <button type="button" class="x" data-rmapp="${i}" aria-label="Remove ${esc(app.name)}">×</button>` : `<span class="badge ${MODE[a.mode][1]}">${MODE[a.mode][0]}</span>`}</div>`;
+  }
+  for (const a of inh.apps.filter(a => !appIds.has(a.app))) {
+    const app = appOf(a.app), gone = excl.has('app:' + a.app);
+    h += `<div class="row inh${gone ? ' gone' : ''}"><div class="grow"><b>${esc(app.name)}</b> <span class="badge b-from">from ${esc(a.from)}</span></div>
+      ${platBadges(a.platforms.length ? a.platforms : app.platforms)} <span class="badge ${MODE[a.mode][1]}">${MODE[a.mode][0]}</span>
+      ${ed && !gone ? `<button type="button" class="btn small" data-excl="app:${esc(a.app)}">Exclude</button>` : gone ? '<span class="muted">Excluded</span>' : ''}</div>`;
+  }
+  h += '</div>';
+  if (ed) {
+    const left = D.apps.filter(a => !appIds.has(a.id));
+    h += `<div class="addrow"><select id="addAppSel" aria-label="App to add"><option value="">${left.length ? 'Add an app from the catalogue…' : D.apps.length ? 'Every app is here' : 'The catalogue is empty'}</option>${left.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.platforms.length ? ' · ' + a.platforms.join(', ') : ''}</option>`).join('')}</select>
+      <select id="addAppMode" aria-label="Setting">${Object.entries(MODE).map(([k, [t]]) => `<option value="${k}">${t}</option>`).join('')}</select>
+      <button class="btn small" type="button" id="addAppGo">Add</button>${!D.apps.length ? '<button class="btn small" type="button" id="toCat">Open the catalogue</button>' : ''}</div>`;
+  }
+
+  // Policies
+  const polIds = new Set(p.policies);
+  h += `<h3>Policies</h3><div class="rows">`;
+  if (!p.policies.length && !inh.pols.length) h += `<div class="empty-row">No policies yet.${ed ? ' Add one from the library below.' : ''}</div>`;
+  for (const id of p.policies) {
+    const pol = polOf(id); if (!pol) continue;
+    h += `<div class="row"><div class="grow"><a href="#" data-openpol="${esc(id)}" style="color:inherit"><b>${esc(pol.name)}</b></a> ${pol.type ? `<span class="muted">${esc(pol.type)}</span>` : ''}</div>
+      ${platBadges(pol.platforms)} <span class="badge ${STATUS[pol.status]}">${esc(pol.status)}</span>
+      ${ed ? `<button type="button" class="x" data-rmpol="${esc(id)}" aria-label="Remove ${esc(pol.name)}">×</button>` : ''}</div>`;
+  }
+  for (const x of inh.pols.filter(x => !polIds.has(x.id))) {
+    const pol = polOf(x.id), gone = excl.has('policy:' + x.id);
+    h += `<div class="row inh${gone ? ' gone' : ''}"><div class="grow"><a href="#" data-openpol="${esc(x.id)}" style="color:inherit"><b>${esc(pol.name)}</b></a> <span class="badge b-from">from ${esc(x.from)}</span></div>
+      ${platBadges(pol.platforms)} <span class="badge ${STATUS[pol.status]}">${esc(pol.status)}</span>
+      ${ed && !gone ? `<button type="button" class="btn small" data-excl="policy:${esc(x.id)}">Exclude</button>` : gone ? '<span class="muted">Excluded</span>' : ''}</div>`;
+  }
+  h += '</div>';
+  if (ed) {
+    const left = D.policies.filter(x => !polIds.has(x.id) && x.status !== 'Retired');
+    h += `<div class="addrow"><select id="addPolSel" aria-label="Policy to add"><option value="">${left.length ? 'Add a policy from the library…' : D.policies.length ? 'Every policy is here' : 'The library is empty'}</option>${left.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.status)}</option>`).join('')}</select>
+      <button class="btn small" type="button" id="addPolGo">Add</button>${!D.policies.length ? '<button class="btn small" type="button" id="toPol">Open the library</button>' : ''}</div>`;
+  }
+
+  // Exclusions
+  if (!base) {
+    const targets = [...inh.apps.map(a => ['app:' + a.app, 'App · ' + appOf(a.app).name]), ...inh.pols.map(x => ['policy:' + x.id, 'Policy · ' + polOf(x.id).name])];
+    h += `<h3>Exclusions <span class="sp"></span>${ed ? '<button class="btn small" type="button" id="addExc">Add exclusion</button>' : ''}</h3>
+      <div class="hint" style="margin:-4px 0 8px">What this ${s.startsWith('div:') ? 'division' : 'department'} is allowed to go without, why, who approved it and when to look at it again. One on an app or policy takes it out of their build.</div><div class="rows">`;
+    if (!p.exclusions.length) h += '<div class="empty-row">No exclusions.</div>';
+    for (const [i, e] of p.exclusions.entries()) {
+      const due = e.review && e.review <= today();
+      const tname = e.target ? (e.target.startsWith('app:') ? 'App · ' + (appOf(e.target.slice(4))?.name || '?') : 'Policy · ' + (polOf(e.target.slice(7))?.name || '?')) : '';
+      if (ed) {
+        h += `<div class="exc"><div><div class="t">From</div><select data-ef="target" data-i="${i}"><option value="">Something else (give a title)</option>${targets.concat(e.target && !targets.some(t => t[0] === e.target) ? [[e.target, tname]] : []).map(([v, t]) => `<option value="${esc(v)}" ${v === e.target ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          ${e.target ? '' : `<input type="text" data-ef="title" data-i="${i}" value="${esc(e.title)}" placeholder="e.g. Screen lock after 15 min" maxlength="200" style="margin-top:6px" aria-label="Title">`}</div>
+          <div><div class="t">Reason</div><textarea data-ef="reason" data-i="${i}" maxlength="1000" placeholder="Why they need it" aria-label="Reason">${esc(e.reason)}</textarea></div>
+          <div><div class="t">Approved by / change</div><input type="text" data-ef="approval" data-i="${i}" value="${esc(e.approval)}" maxlength="200" placeholder="e.g. CHG-0142" aria-label="Approval"></div>
+          <div><div class="t">Review on ${due ? '<span class="badge b-due">Due</span>' : ''}</div><input type="date" data-ef="review" data-i="${i}" value="${esc(e.review)}" aria-label="Review date"></div>
+          <button type="button" class="x" data-rmexc="${i}" aria-label="Remove exclusion" style="margin-top:18px">×</button></div>`;
+      } else {
+        h += `<div class="row"><div class="grow"><b>${esc(tname || e.title)}</b><div class="muted">${esc(e.reason)}</div></div>
+          ${e.approval ? `<span class="muted">${esc(e.approval)}</span>` : ''}${e.review ? `<span class="badge ${due ? 'b-due' : 'b-std'}">Review ${esc(day(e.review))}</span>` : ''}</div>`;
+      }
+    }
+    h += '</div>';
+  }
+
+  h += `<h3>Notes</h3>${ed ? `<textarea class="notes" id="pNotes" maxlength="4000" placeholder="Anything else: who to talk to, hardware they need, how they work">${esc(p.notes)}</textarea>`
+    : `<div>${p.notes ? esc(p.notes).replace(/\n/g, '<br>') : '<span class="muted">None.</span>'}</div>`}`;
+
+  h += `<h3>What someone here gets <span class="sp"></span><span class="pills" id="pvPills" style="height:32px"><span class="thumb" aria-hidden="true"></span>${['', ...D.options.platforms].map(x => `<button type="button" data-pv="${x}" style="font-size:13px">${x || 'All'}</button>`).join('')}</span></h3>
+    <div class="hint" style="margin:-4px 0 8px">${DIRTY ? 'As saved: save to see your changes here.' : base ? 'Everyone, before their department adds to it.' : 'The baseline, then their department, then their division, with exclusions taken out.'}</div>
+    <div class="preview" id="preview"><div class="muted">Loading…</div></div></div>`;
+  if (ed && DIRTY) h += `<div class="savebar"><b>Unsaved changes</b><span class="sp"></span><button class="btn" type="button" id="pDiscard">Discard</button><button class="btn primary" type="button" id="pSave">Save ${esc(label(s))}</button></div>`;
+  $('editor').innerHTML = h;
+  drawPill($('pvPills'), 'pv', PREVIEW);
+  drawPreview();
+}
+
+async function drawPreview() {
+  const s = SCOPE, base = s === 'baseline';
+  const [dep, div] = base ? ['', ''] : s.startsWith('dept:') ? [s.slice(5), ''] : s.slice(4).split(SEP);
+  try {
+    const b = await api('api/build?' + new URLSearchParams({ dept: dep || '', div: div || '', platform: PREVIEW }));
+    if (SCOPE !== s || !$('preview')) return;
+    const li = (name, badge, from) => `<li><span class="grow">${esc(name)}</span>${badge}${from ? `<span class="badge b-from">${esc(from)}</span>` : ''}</li>`;
+    const box = (t, items) => `<div class="box"><b class="h">${t}</b><ul>${items.join('') || '<li class="muted">None</li>'}</ul></div>`;
+    $('preview').innerHTML = box('Required', b.apps.filter(a => a.mode === 'required').map(a => li(a.name, '', a.from)))
+      + box('Self Service / optional', b.apps.filter(a => a.mode === 'optional').map(a => li(a.name, '', a.from)))
+      + box('Blocked', b.apps.filter(a => a.mode === 'blocked').map(a => li(a.name, '', a.from)))
+      + box('Policies', b.policies.map(p => li(p.name, `<span class="badge ${STATUS[p.status]}">${esc(p.status)}</span>`, p.from)))
+      + (base ? '' : box('Exclusions', b.exclusions.map(e => li(e.targetName || e.title, e.review && e.review <= today() ? '<span class="badge b-due">Review due</span>' : '', e.from))));
+  } catch (e) { if ($('preview')) $('preview').innerHTML = `<div class="muted">${esc(e.message)}</div>`; }
+}
+
+$('editor').addEventListener('click', async e => {
+  const t = e.target;
+  if (t.closest('#pvPills button')) { PREVIEW = t.closest('button').dataset.pv; drawPill($('pvPills'), 'pv', PREVIEW); drawPreview(); return; }
+  if (t.closest('[data-openpol]')) { e.preventDefault(); openPol(t.closest('[data-openpol]').dataset.openpol); return; }
+  if (t.id === 'toCat') return setTab('catalogue');
+  if (t.id === 'toPol') return setTab('policies');
+  if (!can()) return;
+  const p = () => draft();
+  if (t.classList.contains('chip')) { const a = p().apps[+t.dataset.i], pl = t.dataset.pl; a.platforms = a.platforms.includes(pl) ? a.platforms.filter(x => x !== pl) : [...a.platforms, pl]; return changed(); }
+  if (t.dataset.rmapp !== undefined) { p().apps.splice(+t.dataset.rmapp, 1); return changed(); }
+  if (t.dataset.rmpol !== undefined) { p().policies = p().policies.filter(x => x !== t.dataset.rmpol); return changed(); }
+  if (t.dataset.rmexc !== undefined) { p().exclusions.splice(+t.dataset.rmexc, 1); return changed(); }
+  if (t.id === 'addAppGo') { const v = $('addAppSel').value; if (!v) return $('addAppSel').focus(); p().apps.push({ app: v, mode: $('addAppMode').value, platforms: [] }); return changed(); }
+  if (t.id === 'addPolGo') { const v = $('addPolSel').value; if (!v) return $('addPolSel').focus(); p().policies.push(v); return changed(); }
+  if (t.id === 'addExc') { p().exclusions.push({ id: '', target: '', title: '', reason: '', approval: '', review: '' }); changed();
+    document.querySelector(`.exc:last-child [data-ef="target"]`)?.focus(); return; }
+  if (t.dataset.excl) {
+    const reason = await cp.prompt({ title: 'Exclude it?', message: `${label(SCOPE)} won't get ${t.closest('.row').querySelector('b').textContent}. Say why: it's kept with the exclusion.`, label: 'Reason', confirm: 'Exclude' });
+    if (!reason) return;
+    p().exclusions.push({ id: '', target: t.dataset.excl, title: '', reason, approval: '', review: '' }); return changed();
+  }
+  if (t.id === 'pDiscard') { DRAFT = null; DIRTY = false; return drawEditor(); }
+  if (t.id === 'pSave') return saveProfile();
+});
+$('editor').addEventListener('change', async e => {
+  const t = e.target;
+  if (t.id === 'copyFrom' && t.value) {
+    const src = t.value; t.value = '';
+    if (!(await cp.confirm({ title: `Copy ${label(src)}?`, message: `${label(SCOPE)} gets ${label(src)}'s apps, policies, exclusions and notes, in place of its own.`, confirm: 'Copy' }))) return;
+    try { await api('api/profiles/copy', { method: 'POST', body: JSON.stringify({ source: src, scope: SCOPE }) }); DIRTY = false; DRAFT = null; await load(); note(`Copied ${label(src)} to ${label(SCOPE)}.`, 'ok'); }
+    catch (err) { note(err.message); }
+    return;
+  }
+  if (!can()) return;
+  if (t.dataset.mode !== undefined) { draft().apps[+t.dataset.mode].mode = t.value; return changed(); }
+  if (t.dataset.ef === 'target') { const x = draft().exclusions[+t.dataset.i]; x.target = t.value; if (t.value) x.title = ''; return changed(); }
+});
+$('editor').addEventListener('input', e => {
+  const t = e.target;
+  if (!can()) return;
+  const mark = () => { if (!DIRTY) { DIRTY = true; const pos = t.selectionStart, id = t.id, ef = t.dataset.ef, i = t.dataset.i; drawEditor();
+    const n = id ? $(id) : document.querySelector(`[data-ef="${ef}"][data-i="${i}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} } } };
+  if (t.id === 'pNotes') { draft().notes = t.value; mark(); }
+  else if (t.dataset.ef && t.dataset.ef !== 'target') { draft().exclusions[+t.dataset.i][t.dataset.ef] = t.value; mark(); }
+});
+async function saveProfile() {
+  const b = $('pSave'); b.disabled = true;
+  try {
+    const p = draft();
+    await api('api/profiles', { method: 'PUT', body: JSON.stringify({ scope: SCOPE, notes: p.notes, apps: p.apps, policies: p.policies, exclusions: p.exclusions }) });
+    DIRTY = false; DRAFT = null; await load(); note(`${label(SCOPE)} saved.`, 'ok'); DRIFT = null; loadDrift();
+  } catch (e) { note(e.message); b.disabled = false; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+}
+
+// ---------- Catalogue ----------
+function drawApps() {
+  const q = $('appQ').value.trim().toLowerCase(), pl = $('appPlat').value, dl = $('appDel').value;
+  const rows = D.apps.filter(a => (!pl || !a.platforms.length || a.platforms.includes(pl)) && (!dl || a.delivery === dl)
+    && (!q || [a.name, a.vendor, a.owner, a.licence, a.notes, ...a.detect].join(' ').toLowerCase().includes(q)));
+  $('appCount').textContent = rows.length === D.apps.length ? `${D.apps.length} apps` : `${rows.length} of ${D.apps.length}`;
+  if (!D.apps.length) { $('appRows').innerHTML = `<tr><td colspan="6" class="empty"><b>The catalogue is empty</b>${can() ? 'Add each app once, with its platforms and how it\'s delivered. Then add it to the baseline or a department.' : 'Nothing has been added yet.'}</td></tr>`; return; }
+  $('appRows').innerHTML = rows.map(a => { const used = usedBy('app', a.id);
+    return `<tr data-app="${esc(a.id)}" tabindex="0"><td><b class="cut">${esc(a.name)}</b>${a.vendor ? `<span class="cut muted">${esc(a.vendor)}</span>` : ''}</td>
+      <td>${platBadges(a.platforms)}</td><td>${a.delivery ? esc(a.delivery) : '<span class="muted">—</span>'}</td>
+      <td class="hide-sm"><span class="cut muted">${esc((a.detect.length ? a.detect : [a.name]).join(', '))}</span></td>
+      <td>${used.length ? `<span class="cut" title="${esc(used.join(', '))}">${esc(used.join(', '))}</span>` : '<span class="muted">Not used yet</span>'}</td>
+      <td class="hide-sm">${a.owner ? `<span class="cut">${esc(a.owner)}</span>` : '<span class="muted">—</span>'}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty">No apps match.</td></tr>';
+}
+['appQ', 'appPlat', 'appDel'].forEach(id => $(id).addEventListener('input', drawApps));
+$('appRows').addEventListener('click', e => { const tr = e.target.closest('tr[data-app]'); if (tr) openApp(tr.dataset.app); });
+$('appRows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-app]'); if (tr && e.key === 'Enter') openApp(tr.dataset.app); });
+
+// ---------- Policies ----------
+function drawPols() {
+  const q = $('polQ').value.trim().toLowerCase(), st = $('polStatus').value, ty = $('polType').value;
+  const rows = D.policies.filter(p => (!st || p.status === st) && (!ty || p.type === ty)
+    && (!q || [p.name, p.description, p.owner, p.change_ref, ...p.settings.flatMap(x => [x.setting, x.value])].join(' ').toLowerCase().includes(q)));
+  $('polCount').textContent = rows.length === D.policies.length ? `${D.policies.length} policies` : `${rows.length} of ${D.policies.length}`;
+  if (!D.policies.length) { $('polRows').innerHTML = `<tr><td colspan="7" class="empty"><b>No policies yet</b>${can() ? 'Name a policy, say what it does and list its settings for each platform. Then add it to the baseline or a department.' : 'Nothing has been added yet.'}</td></tr>`; return; }
+  $('polRows').innerHTML = rows.map(p => { const used = usedBy('policy', p.id);
+    return `<tr data-pol="${esc(p.id)}" tabindex="0"><td><b class="cut">${esc(p.name)}</b><span class="cut muted">${esc(p.description.split('\n')[0] || `${p.settings.length} setting${p.settings.length === 1 ? '' : 's'}`)}</span></td>
+      <td>${platBadges(p.platforms)}</td><td class="hide-sm">${p.type ? esc(p.type) : '<span class="muted">—</span>'}</td>
+      <td><span class="badge ${STATUS[p.status]}">${esc(p.status)}</span></td><td class="hide-sm">${p.change_ref ? esc(p.change_ref) : '<span class="muted">—</span>'}</td>
+      <td>${used.length ? `<span class="cut" title="${esc(used.join(', '))}">${esc(used.join(', '))}</span>` : '<span class="muted">Not used yet</span>'}</td>
+      <td class="hide-sm">v${p.version}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No policies match.</td></tr>';
+}
+['polQ', 'polStatus', 'polType'].forEach(id => $(id).addEventListener('input', drawPols));
+$('polRows').addEventListener('click', e => { const tr = e.target.closest('tr[data-pol]'); if (tr) openPol(tr.dataset.pol); });
+$('polRows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-pol]'); if (tr && e.key === 'Enter') openPol(tr.dataset.pol); });
+
+// ---------- Side panel: an app or a policy ----------
+const checks = (name, all, on, dis) => `<div class="checks">${all.map(p => `<label><input type="checkbox" name="${name}" value="${esc(p)}" ${on.includes(p) ? 'checked' : ''} ${dis}> ${esc(p)}</label>`).join('')}</div>`;
+const opts = (all, v, blank) => (blank !== undefined ? `<option value="">${esc(blank)}</option>` : '') + all.map(x => `<option ${x === v ? 'selected' : ''}>${esc(x)}</option>`).join('');
+function showPanel(title, badge, sub, body, canDelete) {
+  $('p-title').textContent = title; $('p-badge').innerHTML = badge; $('p-sub').textContent = sub;
+  $('p-form').innerHTML = body + '<div class="notice" id="p-notice" hidden style="margin:16px 0 0"></div>';
+  $('p-foot').hidden = !can(); $('p-delete').hidden = !canDelete;
+  $('panel').hidden = $('scrim').hidden = false;
+  ($('p-form').querySelector('input:not([disabled])') || $('p-close')).focus();
+}
+function closePanel() { $('panel').hidden = $('scrim').hidden = true; OPEN = null; }
+$('p-close').onclick = $('p-cancel').onclick = $('scrim').onclick = closePanel;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('panel').hidden && !document.querySelector('dialog[open]')) closePanel(); });
+const pnote = m => { const n = $('p-notice'); n.textContent = m; n.hidden = !m; n.scrollIntoView({ block: 'nearest' }); };
+const val = id => ($(id)?.value || '').trim();
+const ticked = name => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(i => i.value);
+
+function openApp(id) {
+  const a = id ? appOf(id) : { name: '', vendor: '', platforms: [], delivery: '', detect: [], licence: '', owner: '', link: '', notes: '' };
+  if (!a) return;
+  OPEN = { kind: 'app', id };
+  const dis = can() ? '' : 'disabled', used = id ? usedBy('app', id) : [];
+  showPanel(id ? a.name : 'Add app', '', id ? `${used.length ? 'Used by ' + used.join(', ') : 'Not on any profile yet'} · changed ${full(a.updated_at)}${a.updated_by ? ' by ' + a.updated_by : ''}` : 'Each app once: departments pick it from here.', `
+    <div class="two"><div class="field"><label class="l" for="a-name">Name</label><input type="text" id="a-name" maxlength="120" value="${esc(a.name)}" ${dis} placeholder="e.g. Docker Desktop"></div>
+    <div class="field"><label class="l" for="a-vendor">Vendor</label><input type="text" id="a-vendor" maxlength="120" value="${esc(a.vendor)}" ${dis}></div></div>
+    <label class="l">Platforms</label>${checks('a-plat', D.options.platforms, a.platforms, dis)}
+    <div class="field"><label class="l" for="a-del">How it's delivered</label><select id="a-del" ${dis}>${opts(D.options.delivery, a.delivery, 'Not set')}</select></div>
+    <div class="field"><label class="l" for="a-detect">Found on a device as</label><input type="text" id="a-detect" maxlength="600" value="${esc(a.detect.join(', '))}" ${dis} placeholder="${esc(a.name || 'Its name')}">
+      <div class="hint">The name Jamf or Intune lists it under, for the drift check: a name that starts a word in it counts ("Docker" finds Docker.app and Docker Desktop). Several, with commas. Empty: its name.</div></div>
+    <div class="two"><div class="field"><label class="l" for="a-lic">Licence</label><input type="text" id="a-lic" maxlength="200" value="${esc(a.licence)}" ${dis} placeholder="e.g. Per user, 50 seats"></div>
+    <div class="field"><label class="l" for="a-owner">Owner</label><input type="text" id="a-owner" maxlength="200" value="${esc(a.owner)}" ${dis} placeholder="Who looks after it"></div></div>
+    <div class="field"><label class="l" for="a-link">Link</label><input type="text" id="a-link" maxlength="500" value="${esc(a.link)}" ${dis} placeholder="https://… (the Jamf policy or Intune app)">${a.link ? `<div class="hint"><a href="${esc(a.link)}" target="_blank" rel="noopener">Open</a></div>` : ''}</div>
+    <div class="field"><label class="l" for="a-notes">Notes</label><textarea id="a-notes" maxlength="2000" ${dis}>${esc(a.notes)}</textarea></div>`, !!id);
+}
+
+function setRow(s, i, dis) {
+  return `<div class="set" data-row="${i}"><select data-k="platform" aria-label="Platform" ${dis}>${opts(['All', ...D.options.platforms], s.platform)}</select>
+    <input type="text" data-k="setting" value="${esc(s.setting)}" placeholder="Setting" maxlength="200" aria-label="Setting" ${dis}>
+    <textarea data-k="value" placeholder="Value" maxlength="1000" aria-label="Value" ${dis}>${esc(s.value)}</textarea>
+    <textarea data-k="notes" placeholder="Notes" maxlength="1000" aria-label="Notes" ${dis}>${esc(s.notes)}</textarea>
+    ${dis ? '<span></span>' : `<button type="button" class="x" data-rmset="${i}" aria-label="Remove setting">×</button>`}</div>`;
+}
+async function openPol(id) {
+  const p = id ? polOf(id) : { name: '', description: '', owner: '', platforms: [], type: '', status: 'Draft', change_ref: '', link: '', settings: [], version: 0 };
+  if (!p) return;
+  OPEN = { kind: 'pol', id };
+  const dis = can() ? '' : 'disabled', used = id ? usedBy('policy', id) : [];
+  const sets = p.settings.length ? p.settings : (can() ? [{ platform: 'All', setting: '', value: '', notes: '' }] : []);
+  showPanel(id ? p.name : 'Add policy', id ? `<span class="badge ${STATUS[p.status]}">${esc(p.status)}</span> <span class="badge b-std">v${p.version}</span>` : '',
+    id ? `${used.length ? 'Used by ' + used.join(', ') : 'Not on any profile yet'} · changed ${full(p.updated_at)}${p.updated_by ? ' by ' + p.updated_by : ''}` : 'A named policy, its settings for each platform, and where it stands.', `
+    <div class="field"><label class="l" for="o-name">Name</label><input type="text" id="o-name" maxlength="160" value="${esc(p.name)}" ${dis} placeholder="e.g. FileVault and recovery key escrow"></div>
+    <div class="field"><label class="l" for="o-desc">What it does</label><textarea id="o-desc" maxlength="4000" ${dis}>${esc(p.description)}</textarea></div>
+    <div class="two"><div class="field"><label class="l" for="o-type">Type</label><select id="o-type" ${dis}>${opts(D.options.types, p.type, 'Not set')}</select></div>
+    <div class="field"><label class="l" for="o-status">Status</label><select id="o-status" ${dis}>${opts(D.options.statuses, p.status)}</select></div></div>
+    <label class="l">Platforms</label>${checks('o-plat', D.options.platforms, p.platforms, dis)}
+    <div class="two"><div class="field"><label class="l" for="o-owner">Owner</label><input type="text" id="o-owner" maxlength="200" value="${esc(p.owner)}" ${dis}></div>
+    <div class="field"><label class="l" for="o-chg">Change reference</label><input type="text" id="o-chg" maxlength="120" value="${esc(p.change_ref)}" ${dis} placeholder="e.g. CHG-0187"></div></div>
+    <div class="field"><label class="l" for="o-link">Link</label><input type="text" id="o-link" maxlength="500" value="${esc(p.link)}" ${dis} placeholder="https://… (the Jamf profile or Intune policy)">${p.link ? `<div class="hint"><a href="${esc(p.link)}" target="_blank" rel="noopener">Open</a></div>` : ''}</div>
+    <h3>Settings</h3>
+    <div class="sets" id="sets"><div class="set hd"><span>Platform</span><span>Setting</span><span>Value</span><span>Notes</span><span></span></div>${sets.map((s, i) => setRow(s, i, dis)).join('')}</div>
+    ${can() ? '<div class="addrow"><button class="btn small" type="button" id="addSet">Add setting</button></div>' : ''}
+    ${sets.length ? '' : '<div class="muted">No settings listed.</div>'}
+    ${id ? '<h3>Earlier versions</h3><div id="hist" class="muted">Loading…</div>' : ''}`, !!id);
+  $('addSet')?.addEventListener('click', () => { const n = $('sets').querySelectorAll('.set[data-row]').length;
+    $('sets').insertAdjacentHTML('beforeend', setRow({ platform: 'All', setting: '', value: '', notes: '' }, n, '')); $('sets').lastElementChild.querySelector('input').focus(); });
+  if (id) {
+    try {
+      const h = (await api(`api/policies/${encodeURIComponent(id)}/history`)).items;
+      if (OPEN?.id !== id) return;
+      $('hist').outerHTML = h.length ? `<ul class="hist">${h.map(v => `<li><details><summary><b>v${v.version}</b> · ${esc(v.status)} · ${esc(full(v.savedAt))}${v.savedBy ? ' by ' + esc(v.savedBy) : ''}${v.name !== p.name ? ` · was “${esc(v.name)}”` : ''}</summary>
+        ${v.settings.length ? `<table>${v.settings.map(s => `<tr><td>${esc(s.platform)}</td><td><b>${esc(s.setting)}</b></td><td>${esc(s.value)}</td><td class="muted">${esc(s.notes)}</td></tr>`).join('')}</table>` : '<div class="muted">No settings.</div>'}
+        ${v.change_ref ? `<div class="muted">Change: ${esc(v.change_ref)}</div>` : ''}</details></li>`).join('')}</ul>` : '<div class="muted" id="hist">None: this is the first version.</div>';
+    } catch (e) { if ($('hist')) $('hist').textContent = e.message; }
+  }
+}
+$('p-form').addEventListener('click', e => { const b = e.target.closest('[data-rmset]'); if (b) b.closest('.set').remove(); });
+$('p-form').addEventListener('submit', e => { e.preventDefault(); $('p-save').click(); });
+
+$('p-save').onclick = async () => {
+  if (!OPEN) return;
+  const b = $('p-save'); b.disabled = true;
+  try {
+    if (OPEN.kind === 'app') {
+      const body = { name: val('a-name'), vendor: val('a-vendor'), platforms: ticked('a-plat'), delivery: val('a-del'),
+        detect: val('a-detect').split(',').map(x => x.trim()).filter(Boolean), licence: val('a-lic'), owner: val('a-owner'), link: val('a-link'), notes: $('a-notes').value };
+      const a = await api(OPEN.id ? 'api/apps/' + encodeURIComponent(OPEN.id) : 'api/apps', { method: OPEN.id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      closePanel(); await load(); note(`${a.name} saved.`, 'ok');
+    } else {
+      const settings = [...$('sets').querySelectorAll('.set[data-row]')].map(r => Object.fromEntries([...r.querySelectorAll('[data-k]')].map(x => [x.dataset.k, x.value])));
+      const body = { name: val('o-name'), description: $('o-desc').value, type: val('o-type'), status: val('o-status'), platforms: ticked('o-plat'),
+        owner: val('o-owner'), changeRef: val('o-chg'), link: val('o-link'), settings };
+      const p = await api(OPEN.id ? 'api/policies/' + encodeURIComponent(OPEN.id) : 'api/policies', { method: OPEN.id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      closePanel(); await load(); note(`${p.name} saved (v${p.version}).`, 'ok');
+    }
+  } catch (e) { pnote(e.message); }
+  finally { b.disabled = false; }
+};
+$('p-delete').onclick = async () => {
+  if (!OPEN?.id) return;
+  const isApp = OPEN.kind === 'app', x = isApp ? appOf(OPEN.id) : polOf(OPEN.id), used = usedBy(isApp ? 'app' : 'policy', OPEN.id);
+  if (!(await cp.confirm({ title: `Delete ${x.name}?`, danger: true, confirm: 'Delete',
+    message: (used.length ? `It comes off ${used.join(', ')}, and any exclusion of it goes too. ` : '') + 'It goes to the recycle bin for 30 days (Settings → Recycle bin).' }))) return;
+  try { await api(`api/${isApp ? 'apps' : 'policies'}/${encodeURIComponent(OPEN.id)}`, { method: 'DELETE' }); closePanel(); DRAFT = null; DIRTY = false; await load(); note(`${x.name} deleted.`, 'ok'); }
+  catch (e) { pnote(e.message); }
+};
+
+// ---------- Drift ----------
+function drawDrift() {
+  if (!DRIFT) return;
+  const it = DRIFT.items, st = DRIFT.stats, rd = DRIFT.reads;
+  const when = p => rd[p] ? `${p}: ${rd[p].scope === 'all' ? 'every app' : 'the catalogue\'s apps'}, read ${full(rd[p].read_at)}` : `${p}: not read yet`;
+  $('readbar').textContent = `Each person's computers, against their build (baseline, department, division). Apps on devices come from the last sync. ${['Jamf', 'Intune'].map(when).join(' · ')}.`;
+  const groups = { drifting: it.filter(r => r.missing.length || r.blocked.length), missing: it.filter(r => r.missing.length), blocked: it.filter(r => r.blocked.length), unread: it.filter(r => !r.read), all: it };
+  for (const k in groups) $('dn-' + k).textContent = groups[k].length;
+  drawPill($('drPills'), 'd', DRF);
+  const q = $('drQ').value.trim().toLowerCase();
+  const rows = groups[DRF].filter(r => !q || [r.name, r.serial, r.userName, r.userEmail, r.department, r.division, ...r.missing, ...r.blocked].join(' ').toLowerCase().includes(q));
+  $('drCount').textContent = `${rows.length} device${rows.length === 1 ? '' : 's'}`;
+  if (!it.length) { $('drRows').innerHTML = '<tr><td colspan="5" class="empty"><b>Nothing to check yet</b>Computers show here once they\'re someone\'s on Users - FTE or Users - CT, and Jamf or Intune has synced.</td></tr>'; return; }
+  const tag = (xs, cls) => xs.length ? `<div class="tags">${xs.map(x => `<span class="badge ${cls}">${esc(x)}</span>`).join('')}</div>` : '<span class="muted">—</span>';
+  $('drRows').innerHTML = rows.slice(0, 3000).map(r => `<tr data-url="${esc(r.url)}#${encodeURIComponent(r.userEmail)}" tabindex="0" title="Open ${esc(r.userName)} on ${esc(r.listName)}">
+    <td><div class="cutrow"><b class="cut">${esc(r.name)}</b><span class="badge b-os-${r.os.toLowerCase()}">${esc(r.os)}</span></div><span class="cut muted">${esc([r.serial, r.source, r.primary && 'primary'].filter(Boolean).join(' · '))}</span></td>
+    <td><b class="cut">${esc(r.userName)}</b><span class="cut muted">${esc(r.userEmail)}</span></td>
+    <td class="hide-sm"><span class="cut">${esc(r.department || '—')}</span>${r.division ? `<span class="cut muted">${esc(r.division)}</span>` : ''}</td>
+    <td>${r.read ? tag(r.missing, 'b-blk') : '<span class="muted">Apps not read yet</span>'}</td><td>${r.read ? tag(r.blocked, 'b-draft') : ''}</td></tr>`).join('')
+    || `<tr><td colspan="5" class="empty">${DRF === 'drifting' && !q ? 'Every computer matches its build.' : 'No devices match.'}</td></tr>`;
+}
+$('drQ').addEventListener('input', drawDrift);
+$('drPills').addEventListener('click', e => { const b = e.target.closest('button[data-d]'); if (b) { DRF = b.dataset.d; drawDrift(); } });
+$('drRows').addEventListener('click', e => { const tr = e.target.closest('tr[data-url]'); if (tr) location.href = tr.dataset.url; });
+$('drRows').addEventListener('keydown', e => { const tr = e.target.closest('tr[data-url]'); if (tr && e.key === 'Enter') location.href = tr.dataset.url; });
+
+// ---------- Start ----------
+(async () => {
+  try {
+    ME = await api('api/me'); $('who').textContent = ME.email;
+    await load();
+    const [t, s] = location.hash.slice(1).split('/');
+    if (s) { const sc = decodeURIComponent(s); if (sc === 'baseline' || sc.startsWith('dept:') || sc.startsWith('div:')) { SCOPE = sc; drawScopes(); drawEditor(); } }
+    let start = ['profiles', 'catalogue', 'policies', 'drift'].includes(t) ? t : '';
+    if (!start) { try { start = localStorage.getItem('cp-custom-tab') || ''; } catch {} }
+    setTab(['profiles', 'catalogue', 'policies', 'drift'].includes(start) ? start : 'profiles');
+    if (TAB !== 'drift') loadDrift();
+  } catch (e) { note(e.message); $('editor').innerHTML = ''; }
+})();
+</script>
+</body>
+</html>

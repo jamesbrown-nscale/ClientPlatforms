@@ -9,6 +9,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/elevation/` | Admin elevation log: every Windows admin elevation request | [`services/elevation`](services/elevation) (app: [ElevationApp](https://github.com/jamesbrown-nscale/ElevationApp)) |
 | `/changes/` | Change management: raise, review and approve changes, through a flow per change type | [`services/projects`](services/projects) (`app/changes.py`) |
 | `/devices/` | Devices: every device in Jamf and Intune (make, model, OS, platform, who uses it) | [`services/inventory`](services/inventory) |
+| `/customisation/` | Device customisation: the app catalogue, what each department needs (and is excused from), and the policy library | [`services/inventory`](services/inventory) (`app/custom.py`) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
@@ -131,8 +132,29 @@ Devices are read again every hour (`SYNC_MINUTES`), and anyone who can edit Devi
 
 | Platform | What it needs | Read from |
 |---|---|---|
-| Jamf Pro | An API client whose API role has **Read Computers** (and **Read Mobile Devices** for iPhones and iPads) | `/api/v1/computers-inventory`, `/api/v2/mobile-devices/detail` |
-| Intune | An Entra app registration with the Graph *application* permission **DeviceManagementManagedDevices.Read.All** (admin consent) and a client secret | `graph.microsoft.com/v1.0/deviceManagement/managedDevices` |
+| Jamf Pro | An API client whose API role has **Read Computers** (and **Read Mobile Devices** for iPhones and iPads) | `/api/v1/computers-inventory` (with the apps on each Mac), `/api/v2/mobile-devices/detail` |
+| Intune | An Entra app registration with the Graph *application* permission **DeviceManagementManagedDevices.Read.All** (admin consent) and a client secret | `graph.microsoft.com/v1.0/deviceManagement/managedDevices`, and `/deviceManagement/detectedApps` for the apps Device customisation looks for |
+
+## Device customisation
+
+`/customisation/` (under Device Management) says what each department needs on its devices. It has its own access: roles that had Devices were given the same level on it once. Viewers see everything, editors change it, and admins also see its recycle bin. It has four tabs.
+
+- **Profiles.** There's one for the **Baseline** (everyone), one per department and one per division, listed from Users - FTE and Users - CT. Each profile has:
+  - **Software:** apps from the catalogue, each *Required*, *Self Service / optional* or *Blocked*, optionally limited to some platforms.
+  - **Policies:** chosen from the library.
+  - **Exclusions:** what this department or division may go without. Each one is an app or policy it would otherwise inherit, or a titled item of its own, with a reason (needed), who approved it or the change reference, and a review date. The *Exclusions* tile counts the ones due for review.
+  - **Notes.**
+
+  Things inherited from the baseline (and, for a division, from its department) are shown greyed with an *Exclude* button. *What someone here gets* previews the effective build for All, Mac, Windows or Linux. *Copy from…* starts a profile from another one, and *Download CSV* gives the build for audits or onboarding packs.
+- **Catalogue.** Each app once: name, vendor, platforms, how it's delivered (Jamf policy, Jamf Self Service, Intune required, Company Portal and so on), licence, owner, a link to it in Jamf or Intune, notes, and the names it shows up under on a device. Deleting an app takes it off every profile and goes to the recycle bin; restoring it doesn't put it back on the profiles.
+- **Policies.** Named policies with a description, type, status (*Draft*, *In review*, *Live* or *Retired*), platforms, owner, change reference, link and a settings table (platform, setting, value, notes). Each save that changes something is a new version, and the earlier versions are listed under the policy. Retired policies drop out of builds.
+- **Drift.** Each person's computers (on either list) checked against their build. It shows required apps that weren't found and blocked apps that were, with *Download CSV*. The apps come with each sync:
+  - Jamf lists every app on a Mac.
+  - Intune is asked only about the names the catalogue looks for, using the same permission as before.
+  - A name matches when it starts a word in the app's name, so "Docker" finds Docker.app and Docker Desktop.
+  - If Intune's apps can't be read, its devices still sync, show *Not read*, and the sync note says why.
+
+Someone's **effective build** is the baseline, then their department, then their division. A lower layer's setting for an app replaces a higher one, and an exclusion takes the app or policy out. It also shows in the Users - FTE and Users - CT side panel under *Device build*, with how each of their computers matches. In the database, the tables are `cz_apps`, `cz_policies`, `cz_policy_history`, `cz_profiles`, `device_apps` and `app_reads`.
 
 ## Users
 

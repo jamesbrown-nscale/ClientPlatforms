@@ -22,6 +22,7 @@ LIST: ContextVar[str] = ContextVar("users_list", default=USERS)
 ORG = "org"                  # Org chart: its own access, read only
 DEPARTMENTS = "departments"  # Departments: its own access, read only
 ALL_USERS = "all-users"      # All Users: Users - FTE and Users - CT together, its own access, read only
+CUSTOM = "customisation"     # Device customisation: app catalogue, department profiles, policies; its own access
 RANK = {"view": 1, "edit": 2, "admin": 3}
 
 
@@ -89,3 +90,15 @@ def departments_viewer(request: Request) -> User:
 
 def all_users_viewer(request: Request) -> User:
     return _require(request, ALL_USERS)
+
+
+def custom_viewer(request: Request) -> User:
+    return _require(request, CUSTOM)
+
+
+def custom_editor(request: Request) -> User:
+    return _require(request, CUSTOM, "edit")
+
+
+def custom_admin(request: Request) -> User:
+    return _require(request, CUSTOM, "admin")

@@ -51,7 +51,7 @@ def add(c, email, tools=(), admin=False, password="a-good-password", level="edit
     return c.post("/api/users", headers=H, json={"email": email, "password": password, "roles": roles})
 
 
-TOOLS = ["devices", "notifications", "elevation", "changes", "restart", "projects", "tasks", "all-users", "users", "users-ct", "org", "departments", "team"]
+TOOLS = ["devices", "notifications", "elevation", "changes", "customisation", "restart", "projects", "tasks", "all-users", "users", "users-ct", "org", "departments", "team"]
 
 
 def test_first_admin_and_sign_in(c):
