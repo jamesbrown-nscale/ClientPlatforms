@@ -107,10 +107,6 @@
       <input type="search" id="f-devq" placeholder="Search devices by name, serial, model or person" aria-label="Search devices" style="margin-top:8px">
       <ul class="devlist" id="f-devlist" role="listbox" aria-label="Devices"></ul>
     </div>
-    <div id="buildWrap" hidden>
-      <h3 style="display:flex;align-items:center;gap:8px">Device build <span style="flex:1"></span><a class="btn small" id="buildLink" href="/customisation/" hidden style="text-transform:none;letter-spacing:normal;color:var(--text)">Open in Device customisation</a></h3>
-      <div id="f-build" class="muted">Loading…</div>
-    </div>
     <div class="notice" id="p-notice" hidden style="margin:16px 0 0"></div>
     <button type="submit" hidden></button>
   </form>
@@ -436,39 +432,8 @@ async function openUser(email) {
   $('panel').hidden = $('scrim').hidden = false;
   history.replaceState(null, '', u ? '#' + encodeURIComponent(u.email) : location.pathname);
   (u ? $('p-close') : $('f-email')).focus();
-  drawPicked(); drawPick(); drawBuild(u);
+  drawPicked(); drawPick();
   try { await devices(); if (OPEN === (email || '')) { drawPicked(); drawPick(); } } catch (e) { $('f-devlist').innerHTML = `<li class="none">${esc(e.message)}</li>`; }
-}
-
-// What their department's Device customisation profile says they should have, and how their computers match it.
-async function drawBuild(u) {
-  $('buildWrap').hidden = !u;
-  if (!u) return;
-  $('f-build').innerHTML = 'Loading…'; $('buildLink').hidden = true;
-  try {
-    const r = await api('api/users/' + encodeURIComponent(u.email) + '/build');
-    if (OPEN !== u.email) return;
-    const b = r.build, chip = (t, bg, fg) => `<span class="badge" style="background:${bg};color:${fg};margin:0 4px 4px 0">${esc(t)}</span>`;
-    const group = (t, xs) => xs.length ? `<div style="margin-bottom:8px"><div class="muted" style="margin-bottom:3px">${t}</div>${xs.join('')}</div>` : '';
-    if (!b.apps.length && !b.policies.length && !b.exclusions.length) {
-      $('f-build').innerHTML = `Nothing set for ${esc(b.layers.join(' › '))} yet.`;
-    } else {
-      $('f-build').innerHTML = `<div class="muted" style="margin-bottom:8px">${esc(b.layers.join(' › '))}${r.platform ? ' · ' + esc(r.platform) : ''}</div>`
-        + group('Required', b.apps.filter(a => a.mode === 'required').map(a => chip(a.name, 'var(--ok-fill)', 'var(--ok-text)')))
-        + group('Self Service / optional', b.apps.filter(a => a.mode === 'optional').map(a => chip(a.name, 'var(--grey-fill)', 'var(--text2)')))
-        + group('Blocked', b.apps.filter(a => a.mode === 'blocked').map(a => chip(a.name, 'var(--err-fill)', 'var(--err)')))
-        + group('Policies', b.policies.map(p => chip(p.name + (p.status !== 'Live' ? ` (${p.status})` : ''), 'var(--surface)', 'var(--text)')))
-        + group('Exclusions', b.exclusions.map(e => `<div style="color:var(--text)">${esc(e.targetName || e.title)} <span class="muted">· ${esc(e.reason)}${e.approval ? ' · ' + esc(e.approval) : ''}</span></div>`))
-        + (r.devices.length ? `<div class="muted" style="margin:10px 0 3px">Their computers</div>` + r.devices.map(d => `<div style="color:var(--text)"><b>${esc(d.name)}</b> `
-          + (!d.read ? '<span class="muted">apps not read yet</span>' : !d.missing.length && !d.blocked.length ? '<span style="color:var(--ok-text)">matches</span>'
-            : [d.missing.length ? `<span style="color:var(--err)">missing ${esc(d.missing.join(', '))}</span>` : '', d.blocked.length ? `<span style="color:var(--warn)">has blocked ${esc(d.blocked.join(', '))}</span>` : ''].filter(Boolean).join(' · '))
-          + '</div>').join('') : '');
-    }
-    if (r.canOpen) {
-      const scope = u.division && u.department ? `div:${u.department}\u0001${u.division}` : u.department ? 'dept:' + u.department : 'baseline';
-      $('buildLink').href = '/customisation/#profiles/' + encodeURIComponent(scope); $('buildLink').hidden = false;
-    }
-  } catch (e) { if (OPEN === u.email) $('f-build').textContent = e.message; }
 }
 
 function managerHint() {

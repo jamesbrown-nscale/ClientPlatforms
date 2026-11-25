@@ -42,10 +42,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import access, auth, connectors, recycle
-from .auth import ALL_USERS, CUSTOM, DEPARTMENTS, DEVICES, ORG, USERS, USERS_CT, User
+from .auth import ALL_USERS, DEPARTMENTS, DEVICES, ORG, USERS, USERS_CT, User
 from .connectors import PLATFORMS, SyncError
-from . import custom as custom_mod
-from .custom import Custom, drift_for
 from .store import Store, clean_email, now
 
 STATIC = Path(__file__).parent / "static"
@@ -66,7 +64,6 @@ log.propagate = False
 
 auth.check_settings()
 store = Store(os.environ.get("DATABASE_PATH", "/data/inventory.db"), access.AUTH_SECRET)
-custom = Custom(store.path, store._lock)   # Device customisation (custom.py): the same file
 
 # The lists of users: each its own page, access and tables; the same devices.
 #   tool: (name on the site, table prefix, what a deleted one is called in the recycle bin)
@@ -131,12 +128,8 @@ def sync(kind: str) -> dict:
         if conn["has_secret"] and not secret:
             raise SyncError("The saved secret can't be read any more (AUTH_SECRET changed). Enter it again.")
         with make_client() as client:
-            rows, notes = connectors.READERS[kind](client, conn["settings"], secret, app_terms=custom.detect_terms())
+            rows, notes = connectors.READERS[kind](client, conn["settings"], secret)
         count = store.replace_devices(PLATFORMS[kind], rows)
-        # The apps on each device, for Device customisation's drift check.
-        read = [d for d in rows if "apps" in d]
-        custom.replace_device_apps(PLATFORMS[kind], [d["id"] for d in rows], {d["id"]: d["apps"] for d in read} if read or not rows else None,
-                                   "all" if kind == "jamf" else "catalogue")
         note = " ".join(notes)
         store.sync_result(kind, count, note=note)
         log.info(json.dumps({"severity": "INFO", "message": f"{PLATFORMS[kind]} sync: {count} devices", "note": note}))
@@ -1378,259 +1371,6 @@ org_app = _view_app("Nscale Org chart", ORG, "org.html", auth.org_viewer)
 departments_app = _view_app("Nscale Departments", DEPARTMENTS, "departments.html", auth.departments_viewer)
 
 
-# ---------- Device customisation: app catalogue, department profiles and exclusions, policy library ----------
-
-custom_app = FastAPI(title="Nscale Device customisation", docs_url=None, redoc_url=None, openapi_url=None)
-custom_app.mount("/static", _Static(directory=STATIC), name="static")
-custom_app.add_exception_handler(HTTPException, _http_error)
-custom_app.add_exception_handler(ValueError, _value_error)
-
-
-def _custom_bin_admin(request: Request) -> str:
-    user = auth.current_user(request, CUSTOM)
-    if not user:
-        raise HTTPException(401, access.sign_in_message())
-    if user.level != "admin":
-        raise HTTPException(403, "Only admins can see the recycle bin.")
-    return user.email
-
-
-custom_app.include_router(recycle.router(lambda: custom.bin, _custom_bin_admin, tool=CUSTOM))
-
-
-@custom_app.get("/")
-def custom_page(request: Request):
-    if not auth.current_user(request, CUSTOM):
-        return _page(access.sign_in_message(), 403)
-    return FileResponse(STATIC / "customisation.html", headers={"Cache-Control": "no-store"})
-
-
-@custom_app.get("/api/me")
-def custom_me(user: User = Depends(auth.custom_viewer)):
-    return {"email": user.email, "name": user.name, "level": user.level, "canEdit": user.can_edit, "portalUrl": PORTAL_URL}
-
-
-def _org_tree() -> list[dict]:
-    """Departments and their divisions, with how many people, from both lists of users."""
-    deps: dict[str, dict] = {}
-    for _, ls in all_lists():
-        for u in ls.users():
-            d = (u["department"] or "").strip()
-            if not d:
-                continue
-            e = deps.setdefault(d, {"name": d, "people": 0, "divisions": {}})
-            e["people"] += 1
-            if v := (u["division"] or "").strip():
-                e["divisions"][v] = e["divisions"].get(v, 0) + 1
-    return [{"name": e["name"], "people": e["people"], "divisions": [{"name": k, "people": n} for k, n in sorted(e["divisions"].items(), key=lambda x: x[0].lower())]}
-            for e in sorted(deps.values(), key=lambda e: e["name"].lower())]
-
-
-def _due(review: str) -> bool:
-    return bool(review) and review <= datetime.now(timezone.utc).date().isoformat()
-
-
-@custom_app.get("/api/data")
-def custom_data(user: User = Depends(auth.custom_viewer)):
-    profiles = custom.profiles()
-    exc = [e for p in profiles.values() for e in p["exclusions"]]
-    return {"apps": custom.apps(), "policies": custom.policies(), "profiles": profiles, "departments": _org_tree(),
-            "reads": custom.app_reads(),
-            "options": {"platforms": list(custom_mod.PLATFORMS), "modes": list(custom_mod.MODES), "delivery": list(custom_mod.DELIVERY),
-                        "types": list(custom_mod.POLICY_TYPES), "statuses": list(custom_mod.STATUSES)},
-            "stats": {"apps": len(custom.apps()), "policies": len(custom.policies()),
-                      "live": sum(p["status"] == "Live" for p in custom.policies()),
-                      "profiles": sum(1 for k, p in profiles.items() if k != custom_mod.BASELINE and (p["apps"] or p["policies"] or p["exclusions"])),
-                      "exclusions": len(exc), "reviewDue": sum(_due(e.get("review", "")) for e in exc)}}
-
-
-class AppIn(BaseModel):
-    name: str = Field("", max_length=300)
-    vendor: str = Field("", max_length=300)
-    platforms: list[str] = []
-    delivery: str = ""
-    detect: list[str] = []
-    licence: str = Field("", max_length=300)
-    owner: str = Field("", max_length=300)
-    link: str = Field("", max_length=600)
-    notes: str = Field("", max_length=4000)
-
-
-class PolicyIn(BaseModel):
-    name: str = Field("", max_length=300)
-    description: str = Field("", max_length=8000)
-    owner: str = Field("", max_length=300)
-    platforms: list[str] = []
-    type: str = ""
-    status: str = ""
-    changeRef: str = Field("", max_length=300)
-    link: str = Field("", max_length=600)
-    settings: list[dict] = []
-
-
-class ProfileIn(BaseModel):
-    scope: str = Field(..., max_length=500)
-    notes: str = Field("", max_length=8000)
-    apps: list[dict] = []
-    policies: list[str] = []
-    exclusions: list[dict] = []
-
-
-class CopyIn(BaseModel):
-    source: str = Field(..., max_length=500)
-    scope: str = Field(..., max_length=500)
-
-
-def _found(fn, *a):
-    try:
-        return fn(*a)
-    except LookupError as e:
-        raise HTTPException(404, str(e))
-
-
-@custom_app.post("/api/apps")
-def custom_add_app(body: AppIn, user: User = Depends(auth.custom_editor)):
-    return custom.save_app(None, body.model_dump(), user.email)
-
-
-@custom_app.put("/api/apps/{aid}")
-def custom_change_app(aid: str, body: AppIn, user: User = Depends(auth.custom_editor)):
-    return _found(custom.save_app, aid, body.model_dump(), user.email)
-
-
-@custom_app.delete("/api/apps/{aid}")
-def custom_delete_app(aid: str, user: User = Depends(auth.custom_editor)):
-    if not custom.delete_app(aid, user.email, CUSTOM):
-        raise HTTPException(404, "That app isn't in the catalogue any more.")
-    return {"ok": True}
-
-
-@custom_app.post("/api/policies")
-def custom_add_policy(body: PolicyIn, user: User = Depends(auth.custom_editor)):
-    return custom.save_policy(None, body.model_dump(), user.email)
-
-
-@custom_app.put("/api/policies/{pid}")
-def custom_change_policy(pid: str, body: PolicyIn, user: User = Depends(auth.custom_editor)):
-    return _found(custom.save_policy, pid, body.model_dump(), user.email)
-
-
-@custom_app.get("/api/policies/{pid}/history")
-def custom_policy_history(pid: str, user: User = Depends(auth.custom_viewer)):
-    if not custom.policy(pid):
-        raise HTTPException(404, "That policy isn't in the library any more.")
-    return {"items": custom.history(pid)}
-
-
-@custom_app.delete("/api/policies/{pid}")
-def custom_delete_policy(pid: str, user: User = Depends(auth.custom_editor)):
-    if not custom.delete_policy(pid, user.email, CUSTOM):
-        raise HTTPException(404, "That policy isn't in the library any more.")
-    return {"ok": True}
-
-
-@custom_app.put("/api/profiles")
-def custom_save_profile(body: ProfileIn, user: User = Depends(auth.custom_editor)):
-    return custom.save_profile(body.scope, body.model_dump(), user.email)
-
-
-@custom_app.post("/api/profiles/copy")
-def custom_copy_profile(body: CopyIn, user: User = Depends(auth.custom_editor)):
-    if body.source == body.scope:
-        raise ValueError("Pick a different profile to copy from.")
-    return custom.copy_profile(body.source, custom_mod.valid_scope(body.scope), user.email)
-
-
-@custom_app.get("/api/build")
-def custom_build(dept: str = "", div: str = "", platform: str = "", user: User = Depends(auth.custom_viewer)):
-    return custom.build(dept, div, platform if platform in custom_mod.PLATFORMS else "")
-
-
-@custom_app.get("/api/build.csv")
-def custom_build_csv(dept: str = "", div: str = "", user: User = Depends(auth.custom_viewer)):
-    """A department's (or division's) effective build: for audits, onboarding packs or the department head."""
-    b = custom.build(dept, div)
-    modes = {"required": "Required", "optional": "Self Service / optional", "blocked": "Blocked"}
-    rows = [{"kind": "App", "name": a["name"], "detail": modes[a["mode"]], "platforms": ", ".join(a["platforms"]) or "All",
-             "more": a["delivery"], "from": a["from"]} for a in b["apps"]]
-    rows += [{"kind": "Policy", "name": p["name"], "detail": p["status"], "platforms": ", ".join(p["platforms"]) or "All",
-              "more": p["type"], "from": p["from"]} for p in b["policies"]]
-    rows += [{"kind": "Exclusion", "name": e["targetName"] or e["title"], "detail": e["reason"], "platforms": "",
-              "more": " · ".join(x for x in (e["approval"], e["review"] and "Review " + e["review"]) if x), "from": e["from"]} for e in b["exclusions"]]
-    name = re.sub(r"[^A-Za-z0-9]+", "-", " ".join(x for x in (dept, div) if x) or "baseline").strip("-").lower()
-    return _csv([("kind", "Kind"), ("name", "Name"), ("detail", "Setting / status / reason"), ("platforms", "Platforms"),
-                 ("more", "Delivery / type / approval"), ("from", "From")], rows, f"build-{name}.csv")
-
-
-def _drift_cache():
-    apps = {a["id"]: a for a in custom.apps()}
-    pols = {p["id"]: p for p in custom.policies()}
-    profs = custom.profiles()
-    cache: dict[tuple, dict] = {}
-
-    def build(dept: str, div: str, plat: str) -> dict:
-        k = (dept, div, plat)
-        if k not in cache:
-            cache[k] = custom.build(dept, div, plat, apps, pols, profs)
-        return cache[k]
-    return build
-
-
-def _device_drift(u: dict, build, dapps: dict, reads: dict) -> list[dict]:
-    """Each of someone's computers, with what's missing or shouldn't be there for their build."""
-    out = []
-    for d in ([u["primaryDevice"]] if u["primaryDevice"] and not u["primaryDevice"].get("missing") else []) + u["otherDevices"]:
-        plat = os_family(d["os"])
-        if d["kind"] != "computer" or not plat:
-            continue
-        names = dapps.get(d["id"], [] if d["platform"] in reads else None)
-        res = drift_for(build(u["department"], u["division"], plat), names)
-        out.append({"id": d["id"], "name": d["name"] or d["serial"], "serial": d["serial"], "source": d["platform"], "os": plat,
-                    "primary": d is u["primaryDevice"], **res})
-    return out
-
-
-def drift_rows() -> list[dict]:
-    build, dapps, reads = _drift_cache(), custom.device_apps(), custom.app_reads()
-    rows = []
-    for u in all_users():
-        for d in _device_drift(u, build, dapps, reads):
-            rows.append({**d, "userEmail": u["email"], "userName": u["name"], "listName": u["listName"], "url": u["url"],
-                         "department": u["department"], "division": u["division"]})
-    return rows
-
-
-@custom_app.get("/api/drift")
-def custom_drift(user: User = Depends(auth.custom_viewer)):
-    rows = drift_rows()
-    bad = [r for r in rows if r["missing"] or r["blocked"]]
-    return {"items": rows, "reads": custom.app_reads(),
-            "stats": {"checked": sum(r["read"] for r in rows), "drifting": len(bad), "missing": sum(bool(r["missing"]) for r in rows),
-                      "blocked": sum(bool(r["blocked"]) for r in rows), "notRead": sum(not r["read"] for r in rows)}}
-
-
-@custom_app.get("/api/drift.csv")
-def custom_drift_csv(user: User = Depends(auth.custom_viewer)):
-    rows = [{**r, "missing": ", ".join(r["missing"]), "blocked": ", ".join(r["blocked"]), "read": "Yes" if r["read"] else "Not read yet"}
-            for r in drift_rows() if r["missing"] or r["blocked"] or not r["read"]]
-    return _csv([("name", "Device"), ("serial", "Serial"), ("os", "Platform"), ("source", "From"), ("userName", "User"), ("userEmail", "Email"),
-                 ("listName", "List"), ("department", "Department"), ("division", "Division"), ("missing", "Missing required apps"),
-                 ("blocked", "Blocked apps found"), ("read", "Apps read")], rows, f"drift-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
-
-
-@users_app.get("/api/users/{email}/build")
-def user_build(email: str, request: Request, user: User = Depends(auth.users_viewer)):
-    """Someone's effective build (baseline, their department, their division) and how their computers match it."""
-    e = clean_email(email)
-    u = next((x for x in _users() if x["email"] == e), None)
-    if not u:
-        raise HTTPException(404, "They aren't on this list.")
-    build = _drift_cache()
-    return {"build": custom.build(u["department"], u["division"], u["platform"] if u["platform"] in custom_mod.PLATFORMS else ""),
-            "platform": u["platform"], "devices": _device_drift(u, build, custom.device_apps(), custom.app_reads()),
-            "canOpen": bool(auth.current_user(request, CUSTOM))}
-
-
 # ---------- One app, four paths ----------
 
 app = FastAPI(title="Nscale Users and Devices", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -1669,6 +1409,6 @@ def _for_list(sub, key: str):
 
 
 for _path, _sub in (("/devices", devices_app), ("/all-users", all_app), ("/users", _for_list(users_app, USERS)), ("/users-ct", _for_list(users_app, USERS_CT)),
-                    ("/org", org_app), ("/departments", departments_app), ("/customisation", custom_app)):
+                    ("/org", org_app), ("/departments", departments_app)):
     app.add_api_route(_path, (lambda p: lambda: RedirectResponse(p + "/"))(_path), include_in_schema=False)
     app.mount(_path, _sub)

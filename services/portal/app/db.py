@@ -32,8 +32,6 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Every Windows admin elevation request: who, which device, why, and how it ended."},
     {"id": "changes", "group": "Device Management", "name": "Change management", "icon": "changes", "url": "/changes/",
      "about": "Raise, review and approve changes to devices and services, through the right flow for each change type."},
-    {"id": "customisation", "group": "Device Management", "name": "Device customisation", "icon": "sliders", "url": "/customisation/",
-     "about": "What each department needs on its devices: the app catalogue, department profiles and exclusions, and the policy library."},
     {"id": "restart", "group": "Device Management", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",
@@ -117,7 +115,6 @@ class DB:
         self.bin = Bin(self._db, self._lock)   # deleted people, kept 30 days (recycle.py; Settings → Recycle bin)
         self._copy_levels("users", ["org", "departments"], "pages-from-users")
         self._copy_levels("users", ["users-ct"], "users-ct-from-users")
-        self._copy_levels("devices", ["customisation"], "customisation-from-devices")   # whoever works on Devices can use it
         self._copy_levels("users", ["all-users"], "all-users-from-users")   # whoever sees Users sees everyone   # a clone of Users: the same people can use it
 
     def _db(self):

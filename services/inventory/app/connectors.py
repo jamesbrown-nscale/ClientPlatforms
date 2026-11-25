@@ -12,11 +12,7 @@ the tenant ID, client ID and secret and page through
     https://graph.microsoft.com/v1.0/deviceManagement/managedDevices
 
 Each device comes back as {id, platform, kind, name, make, model, os, os_version, serial, user_email,
-user_name, last_seen}, and "apps" (the names of the apps on it) when those could be read, for Device
-customisation's drift check: Jamf lists every app on a Mac (the APPLICATIONS section, same "Read
-Computers" permission); Intune is asked only about the apps the catalogue looks for
-(/deviceManagement/detectedApps, same permission). If Intune's apps can't be read the devices still
-come back, without "apps", and a note says why. Anything else that goes wrong raises SyncError.
+user_name, last_seen}. Anything that goes wrong raises SyncError with a message for the page.
 """
 import re
 from urllib.parse import urlsplit
@@ -148,12 +144,12 @@ def _jamf_pages(client, base, token, path, sections, sort):
     return out
 
 
-def jamf_devices(client: httpx.Client, settings: dict, secret: str, app_terms: list[str] | None = None) -> tuple[list[dict], list[str]]:
+def jamf_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[list[dict], list[str]]:
     base = jamf_url(settings.get("url", ""))
     token = jamf_token(client, settings, secret)
     devices, notes = [], []
     for c in _jamf_pages(client, base, token, "/api/v1/computers-inventory",
-                         ["GENERAL", "HARDWARE", "OPERATING_SYSTEM", "USER_AND_LOCATION", "APPLICATIONS"], "id:asc") or []:
+                         ["GENERAL", "HARDWARE", "OPERATING_SYSTEM", "USER_AND_LOCATION"], "id:asc") or []:
         g, h, o, u = (c.get(k) or {} for k in ("general", "hardware", "operatingSystem", "userAndLocation"))
         if not c.get("id"):
             continue
@@ -163,8 +159,7 @@ def jamf_devices(client: httpx.Client, settings: dict, secret: str, app_terms: l
                         "os_version": _s(o.get("version")), "serial": _s(h.get("serialNumber")),
                         "user_email": _email_of(u.get("email"), u.get("username"), u.get("realname")),
                         "user_name": _s(u.get("realname")) or _s(u.get("username")),
-                        "last_seen": _s(g.get("lastContactTime")),
-                        "apps": sorted({_s(a.get("name")) for a in (c.get("applications") or []) if isinstance(a, dict) and _s(a.get("name"))})})
+                        "last_seen": _s(g.get("lastContactTime"))})
     # Phones and tablets are extra: if Jamf won't give them, the Macs still count, with a note why.
     try:
         mobiles = _jamf_pages(client, base, token, "/api/v2/mobile-devices/detail", ["GENERAL", "HARDWARE", "USER_AND_LOCATION"],
@@ -212,47 +207,7 @@ def intune_token(client: httpx.Client, settings: dict, secret: str) -> str:
 SELECT = "id,deviceName,manufacturer,model,operatingSystem,osVersion,serialNumber,userPrincipalName,emailAddress,userDisplayName,lastSyncDateTime"
 
 
-MAX_APP_LOOKUPS = 300   # detected apps whose devices we ask for, per sync
-
-
-def _word_match(term: str, name: str) -> bool:
-    t = re.sub(r"\s+", " ", term or "").strip().lower()
-    n = re.sub(r"\s+", " ", re.sub(r"\.(app|exe|msi|pkg)$", "", (name or "").strip(), flags=re.I)).lower()
-    return bool(t) and bool(re.search(r"(^|[\s\-_.(])" + re.escape(t), n))
-
-
-def _graph_pages(client, token, url, what):
-    out = []
-    for _ in range(MAX_PAGES):
-        r = _call(client, "Microsoft Graph", "GET", url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
-        _fail(r, "Microsoft Graph", what)
-        data = _json(r, "Microsoft Graph") or {}
-        out.extend(data.get("value") or [])
-        url = data.get("@odata.nextLink")
-        if not url:
-            return out
-        if urlsplit(url).netloc != urlsplit(GRAPH).netloc:
-            raise SyncError("Microsoft Graph gave a next page somewhere else; stopped.")
-    return out
-
-
-def intune_apps(client: httpx.Client, token: str, terms: list[str]) -> dict[str, list[str]]:
-    """Intune device id → the names of the catalogue's apps found on it. Every detected app in the
-    tenant is listed once; only those the catalogue looks for are asked which devices have them."""
-    if not terms:
-        return {}
-    found: dict[str, set] = {}
-    hits = [a for a in _graph_pages(client, token, f"{GRAPH}/v1.0/deviceManagement/detectedApps?$select=id,displayName", "reading detected apps")
-            if a.get("id") and any(_word_match(t, _s(a.get("displayName"))) for t in terms)]
-    for a in hits[:MAX_APP_LOOKUPS]:
-        for d in _graph_pages(client, token, f"{GRAPH}/v1.0/deviceManagement/detectedApps/{a['id']}/managedDevices?$select=id",
-                              "reading which devices have an app"):
-            if d.get("id"):
-                found.setdefault(f"intune:{d['id']}", set()).add(_s(a.get("displayName")))
-    return {k: sorted(v) for k, v in found.items()}
-
-
-def intune_devices(client: httpx.Client, settings: dict, secret: str, app_terms: list[str] | None = None) -> tuple[list[dict], list[str]]:
+def intune_devices(client: httpx.Client, settings: dict, secret: str) -> tuple[list[dict], list[str]]:
     token = intune_token(client, settings, secret)
     url = f"{GRAPH}/v1.0/deviceManagement/managedDevices?$select={SELECT}&$top=999"
     devices = []
@@ -277,15 +232,7 @@ def intune_devices(client: httpx.Client, settings: dict, secret: str, app_terms:
             break
         if urlsplit(url).netloc != urlsplit(GRAPH).netloc:
             raise SyncError("Microsoft Graph gave a next page somewhere else; stopped.")
-    notes = []
-    if app_terms is not None:
-        try:
-            apps = intune_apps(client, token, app_terms)
-            for d in devices:
-                d["apps"] = apps.get(d["id"], [])
-        except SyncError as e:
-            notes.append(f"Apps on Intune devices weren't read (Device customisation can't check them): {e}")
-    return devices, notes
+    return devices, []
 
 
 READERS = {"jamf": jamf_devices, "intune": intune_devices}
