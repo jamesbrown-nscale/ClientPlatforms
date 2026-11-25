@@ -46,6 +46,7 @@
       <select id="dept" aria-label="Department"><option value="">Every department</option></select>
       <select id="div" aria-label="Division" hidden><option value="">Every division</option></select>
       <select id="type" aria-label="User type"><option value="">Every user type</option></select>
+      <select id="plat" aria-label="Platform"><option value="">Every platform</option><option>Mac</option><option>Windows</option><option>Linux</option><option value="__none__">No platform</option></select>
       <label class="grpby"><input type="checkbox" id="group"> Group by department</label>
       <div class="pills" id="typePills" role="group" aria-label="User type"><span class="thumb" aria-hidden="true"></span></div>
       <span class="folds" id="folds" hidden><button class="btn small" type="button" id="expandAll">Expand all</button><button class="btn small" type="button" id="collapseAll">Collapse all</button></span>
@@ -213,6 +214,7 @@ function matches(u) {
   if ($('dept').value && u.department !== ($('dept').value === '__none__' ? '' : $('dept').value)) return false;
   if ($('div').value && u.division !== $('div').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;
+  if ($('plat').value && (u.platform || '') !== ($('plat').value === '__none__' ? '' : $('plat').value)) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
   const d = u.primaryDevice || {};
@@ -576,6 +578,7 @@ $('group').addEventListener('change', () => { saveGroup(); draw(); });
 $('expandAll').onclick = () => { FOLDED.clear(); draw(); };
 // Departments fold shut; their divisions are left open, ready for when one is opened.
 $('collapseAll').onclick = () => { FOLDED.clear(); GROUPKEYS.filter(k => !k.includes('\u0001')).forEach(k => FOLDED.add(k)); draw(); };
+$('plat').addEventListener('change', () => draw());
 $('dept').addEventListener('change', () => { $('div').value = ''; drawFilters(); draw(); });
 $('f-dept').addEventListener('input', divisionList);
 $('rows').addEventListener('click', e => {
