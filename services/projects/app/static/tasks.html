@@ -1483,19 +1483,27 @@ function drawCal() {
   const grid = DW >= 9 ? `background-image:repeating-linear-gradient(to right, transparent 0 ${DW - 1}px, #ECEFF5 ${DW - 1}px ${DW}px)` : '';
   const todayLine = t0 >= RS && t0 <= end ? `<div class="tltoday" style="left:${LEFT + x(t0) + DW / 2 - 1}px"></div>` : '';
 
-  // A person's regular work, as a row like a job's: drag it along, by its right edge, or onto someone else.
-  const slotRow = (s, g) => {
+  // A person's regular work of one kind (Migration Activities, a ticket queue …), as a row like a job's: each time it's
+  // given to them is a bar on that row. Drag a bar along, by its right edge, or onto someone else; click it to change it.
+  const slotRow = (ss, g) => {
+    const s = ss[0], t0s = today();
+    const sub = ss.length === 1
+      ? `${dmy(s.start)} – ${dmy(s.end)} · ${days(s.duration)}${s.recur ? ' · ↻ ' + recurWord(s) : ''}${s.recurUntil ? ' until ' + dmy(s.recurUntil) : ''}`
+      : `${ss.length} times · ${dmy(s.start)} – ${dmy(ss.reduce((m, x) => x.end > m ? x.end : m, s.end))}`;
+    const next = ss.find(x => x.end >= t0s) || ss[ss.length - 1];   // what the name opens: the next one, or the last
+    return `<div class="tlrow tljob ind" data-grp="${esc(g.email)}" data-nslots="${ss.length}" style="min-height:44px">
+      <div class="tllab" style="width:${LEFT}px" data-slotlab="${esc(next.id)}" title="${esc(s.title)}${ss.length > 1 ? ` · ${ss.length} times: click a bar to change that one` : s.note ? ' · ' + esc(s.note) : ''}"><span class="jn">${esc(s.title)}</span><span class="js">${esc(sub)}</span></div>
+      <div class="tltrack" style="width:${W}px">${ss.map(x => slotBars(x, g)).join('')}</div></div>`;
+  };
+  const slotBars = (s, g) => {
     const cv = '--c:#5B7BE0;--f:#E6EDFF;--t:#1F3C9A', half = isHalf(s.duration);
-    const sub = `${dmy(s.start)} – ${dmy(s.end)} · ${days(s.duration)}${s.recur ? ' · ↻ ' + recurWord(s) : ''}${s.recurUntil ? ' until ' + dmy(s.recurUntil) : ''}`;
     const bar = s.end >= RS && s.start <= end
       ? `<div class="gbar can" style="left:${x(s.start) + 1}px;width:${(between(s.start, s.end) + 1 - (half ? 0.5 : 0)) * DW - 2}px;${cv}"
           data-slot="${esc(s.id)}" data-owner="${esc(g.email)}" data-label="${esc('↻ ' + s.title)}" data-pc="" title="${esc(s.title)}: ${esc(span(s.start, s.end))} (${days(s.duration)})${s.note ? '\n' + esc(s.note) : ''}\nDrag to move; drag its right edge to change how long; drag onto someone else to give it to them">${barPieces(s.start, s.end, '↻ ' + s.title, '', true, half)}</div>` : '';
     const reps = (s.repeats || []).filter(r => r.end >= RS && r.start <= end).map(r =>
       `<div class="rbar" style="left:${x(r.start) + 1}px;width:${(between(r.start, r.end) + 1 - (half ? 0.5 : 0)) * DW - 2}px;${cv}" data-rslot="${esc(s.id)}"
         title="${esc(s.title)}\nRepeats ${esc(recurWord(s).toLowerCase())}: ${esc(span(r.start, r.end))}\nMove the first one to move them all">↻ ${esc(s.title)}</div>`).join('');
-    return `<div class="tlrow tljob ind" data-grp="${esc(g.email)}" style="min-height:44px">
-      <div class="tllab" style="width:${LEFT}px" data-slotlab="${esc(s.id)}" title="${esc(s.title)}${s.note ? ' · ' + esc(s.note) : ''}"><span class="jn">${esc(s.title)}</span><span class="js">${esc(sub)}</span></div>
-      <div class="tltrack" style="width:${W}px">${bar}${reps}</div></div>`;
+    return bar + reps;
   };
   const jobRow = (p, j, byPerson, owner = null) => {
     const cv = colourVars(p.id), isDone = j.status === 'Done', lateJ = !isDone && j.end && j.end < t0, sel = OPEN?.id === p.id && JOBOPEN === j.id;
@@ -1566,7 +1574,10 @@ function drawCal() {
         rows += `<div class="tlrow tlsub" data-grp="${esc(g.email)}" style="min-height:34px">
           <div class="tllab" style="width:${LEFT}px;cursor:default"><span class="chev" style="visibility:hidden">▶</span><span class="sq" style="background:#5B7BE0"></span><span class="gt">Regular work</span></div>
           <div class="tltrack" style="width:${W}px"></div></div>`;
-        for (const s of slots) rows += slotRow(s, g);
+        // One row per kind of regular work: the same kind on different days shares it.
+        const kinds = new Map();
+        for (const s of slots) { const k = s.workId || s.title; if (!kinds.has(k)) kinds.set(k, []); kinds.get(k).push(s); }
+        for (const ss of kinds.values()) rows += slotRow(ss.sort((a, b) => a.start.localeCompare(b.start)), g);
       }
       // Each plan they have jobs in is a sub-heading, with its span of their jobs; their jobs in it underneath.
       for (const { p, jobs: js } of byPlan(g.jobs)) {
@@ -1962,7 +1973,7 @@ function wireTimeline() {
         bar.style.width = (between(s, e) + 1 - (isHalf(len) ? 0.5 : 0)) * DW - 2 + 'px';
         bar.innerHTML = barPieces(s, e, bar.dataset.label, bar.dataset.pc, true, isHalf(len));   // weekends stay empty while dragging too
         bar.title = `${span(s, e)} (${days(len)})`;
-        const lab = bar.closest('.tlrow').querySelector('.js');
+        const row = bar.closest('.tlrow'), lab = row.dataset.nslots > 1 ? null : row.querySelector('.js');   // a shared row keeps its summary
         if (lab) lab.textContent = `${dmy(s)} – ${dmy(e)} · ${slot ? days(len) : said(job.status)}`;
       };
       bar.onpointerup = async () => {
