@@ -34,6 +34,12 @@ class ValidationError(ValueError):
     pass
 
 
+def risk_rating(score) -> str:
+    """Likelihood × impact as a word: Critical 20+, High 12–19, Medium 6–11, Low below."""
+    score = score or 0
+    return "Critical" if score >= 20 else "High" if score >= 12 else "Medium" if score >= 6 else "Low"
+
+
 def today() -> str:
     return date.today().isoformat()
 
@@ -333,7 +339,7 @@ def status_draft(items: list[dict], t: str, project: dict) -> dict:
                   or (d["data"].get("status") not in ("Met", "Missed") and d["data"].get("requiredBy")
                       and d["data"]["requiredBy"] < t)]
     key_risks = (
-        [f"Risk {label(r, r['data'].get('title'))} (score {r['data'].get('score')})" for r in by("risks")
+        [f"Risk {label(r, r['data'].get('title'))} ({risk_rating(r['data'].get('score'))})" for r in by("risks")
          if r["data"].get("status") != "Closed" and (r["data"].get("score") or 0) >= 12]
         + [f"Issue {label(i, i['data'].get('title'))} ({i['data'].get('priority')})" for i in bad_issues]
         + [f"Dependency {label(d, d['data'].get('title'))} ({d['data'].get('status')})" for d in risky_deps])

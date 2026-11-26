@@ -312,6 +312,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const GREEN = /^(complete|completed|done|met|closed|resolved|approved|implemented|validated|sent|paid|accepted)$/i;
 const RED = /^(blocked|missed|invalid|rejected|delayed|critical|at risk|red)$/i;
 const AMBER = /^(in progress|mitigating|under review|requested|scheduled|pending|amber|high|on hold|proposed|committed|invoiced)$/i;
+// Likelihood × impact as a rating: Critical 20+, High 12–19, Medium 6–11, Low 1–5.
+const riskRating = v => v >= 20 ? ['Critical', 'red'] : v >= 12 ? ['High', 'amber'] : v >= 6 ? ['Medium', 'blue'] : ['Low', 'green'];
 function chip(v) {
   if (!v) return '';
   const c = GREEN.test(v) ? 'green' : RED.test(v) ? 'red' : AMBER.test(v) ? 'amber' : /^(open|active|not started|green)$/i.test(v) ? 'blue' : '';
@@ -328,7 +330,7 @@ function cell(mod, key, item) {
     case 'users': return esc(v.join(', '));
     case 'actions': { const open = v.filter(a => !['Completed', 'Cancelled'].includes(a.status)).length; return `${v.length} (${open} open)`; }
     case 'currency': return money(v, P?.currency);
-    case 'computed': return key === 'score' ? `<b style="color:${v >= 20 ? 'var(--err)' : v >= 12 ? 'var(--warn)' : 'inherit'}">${esc(v)}</b>` : money(v, P?.currency);
+    case 'computed': if (key === 'score') { const [r, c] = riskRating(v); return `<span class="chip ${c}" title="Score ${esc(v)} (likelihood × impact)">${r}</span>`; } return money(v, P?.currency);
     case 'select': return /status|priority/i.test(key) ? chip(v) : esc(v);
     case 'url': return `<a href="${esc(v)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open link</a>`;
     case 'file': return fileChip(v, item);
@@ -656,7 +658,7 @@ function field(f, v, ro) {
     case 'users': input = `<input id="${id}" list="peopleList" data-k="${f.key}" data-users value="${esc((v || []).join(', '))}" ${ph} ${dis}><div class="hint">Separate names with commas.</div>`; break;
     case 'computed': {
       const it = OPEN.item?.data || {};
-      const val = f.key === 'score' ? (it.score ?? '') : money(it[f.key], P.currency);
+      const val = f.key === 'score' ? (it.score ? `${riskRating(it.score)[0]} (${it.score})` : '') : money(it[f.key], P.currency);
       input = `<input id="${id}" value="${esc(val)}" readonly><div class="hint">Worked out when you save.</div>`; break;
     }
     case 'file': input = '<div data-filebox></div>'; break;

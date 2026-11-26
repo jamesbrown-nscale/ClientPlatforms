@@ -266,7 +266,7 @@
    "label": "Risk Register",
    "singular": "Risk",
    "icon": "risks",
-   "description": "Potential problems scored by likelihood × impact (critical ≥ 20, high 12–19).",
+   "description": "Potential problems rated by likelihood × impact: Critical 20–25, High 12–19, Medium 6–11, Low 1–5.",
    "titleField": "title",
    "refPrefix": "RSK-",
    "filters": [
@@ -360,7 +360,7 @@
     },
     {
      "key": "score",
-     "label": "Risk Score",
+     "label": "Risk Rating",
      "type": "computed",
      "width": "third"
     },
