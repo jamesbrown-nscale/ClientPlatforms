@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [portal, notifications, elevation, restart, projects, inventory]
+        service: [portal, notifications, elevation, restart, projects, inventory, packaging]
     defaults:
       run:
         working-directory: services/${{ matrix.service }}
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [portal, notifications, elevation, restart, projects, inventory]
+        service: [portal, notifications, elevation, restart, projects, inventory, packaging]
     steps:
       - uses: actions/checkout@v4
       - run: docker build --target test services/${{ matrix.service }}
