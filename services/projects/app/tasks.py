@@ -31,7 +31,7 @@ import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from . import access
@@ -1364,3 +1364,49 @@ def timeline(project: str = "", mine: bool = False, done: bool = False, user: Us
     out.sort(key=lambda p: (p["start"] or p["due"] or "9999", p["ref"]))
     # Leave from the last year onwards: drawn on each person's own row, never as a job.
     return {"plans": out, "leave": leave_from((date.today() - timedelta(days=365)).isoformat()), **regular_all()}
+
+
+# ---------- Export: the jobs as a PDF, in Nscale's look ----------
+
+EXPORTS = {"all": ("All jobs", "Every job in the open plans."),
+           "unassigned": ("Unassigned jobs", "Jobs nobody has been given yet."),
+           "scheduled": ("Scheduled jobs", "Jobs with a start date, in date order.")}
+
+
+@router.get("/api/export.pdf")
+def export_pdf(which: str = "all", project: str = "", done: bool = False, user: User = Depends(require_task_user)):
+    """which: all, unassigned (nobody on it) or scheduled (has a start date). done=true keeps finished jobs
+    (and finished plans). project: just that project's plans. Plans you can't see aren't in it."""
+    from .export import build_pdf   # reportlab only loads when someone exports
+    if which not in EXPORTS:
+        raise HTTPException(422, "Export all, unassigned or scheduled jobs.")
+    data = timeline(project=project, mine=False, done=done, user=user)
+    keep = {"all": lambda j: True, "unassigned": lambda j: not j["people"], "scheduled": lambda j: bool(j["start"])}[which]
+    groups = []
+    for p in data["plans"]:
+        jobs = [j for j in p["jobs"] if (done or j["status"] != "Done") and keep(j)]
+        if which == "scheduled":
+            jobs.sort(key=lambda j: (j["start"], j["priority"] or 0))
+        if jobs:
+            groups.append({**p, "jobs": jobs})
+    if which == "scheduled":
+        groups.sort(key=lambda g: (g["jobs"][0]["start"], g["ref"]))
+    jobs = [j for g in groups for j in g["jobs"]]
+    today = date.today().isoformat()
+    late = sum(1 for j in jobs if j["status"] != "Done" and j["end"] and j["end"] < today)
+    counts = [("Jobs", len(jobs)), ("Plans", len(groups))]
+    counts += [(st, n) for st in STATUSES if (n := sum(1 for j in jobs if j["status"] == st))]
+    if late:
+        counts.append(("Overdue", late))
+    if which != "unassigned":
+        counts.append(("Unassigned", sum(1 for j in jobs if not j["people"])))
+    # The project's name, from a plan you can see in it (so an export never names a project you can't).
+    proj = next((p["project"] for p in data["plans"] if p["project"]), "One project") if project else ""
+    title, what = EXPORTS[which]
+    d = date.today()
+    sub = " · ".join(x for x in (f"{d.day} {d.strftime('%B %Y')}", proj or "All projects", what,
+                                 "Including finished jobs" if done else "", f"Exported by {user.name or user.email}") if x)
+    pdf = build_pdf(groups, heading=title, sub=sub, counts=counts, footer=f"Nscale · Client Platforms · Team Planning · {title}", today=today)
+    name = f"team-planning-{which}-{d.isoformat()}.pdf"
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})

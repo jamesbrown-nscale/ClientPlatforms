@@ -223,6 +223,14 @@ Team Planning (once called Tasks, then Pipelines; it keeps the `/tasks/` address
 | **List** | Plans, grouped **By person** or **By plan**. By person: each staff member, with the plans they have jobs in as headings and their jobs underneath. **+** adds a job for them. By plan: the views **Mine** (plans you own or have an open job in), **I asked**, **Waiting on me**, **Mentions**, **All open** and **Done**, with search and a project filter. |
 | **Timeline** | A Gantt chart, each job a bar from its start to its end, grouped **By person** or **By plan**. By person: a faint line where someone is busy, red where two of their jobs overlap. By plan: the plan's due date as a diamond. Drag a bar to move a job, or its right edge to change its length; weekends are skipped either way. Click a day in a plan's row to add a job starting then, or in an unscheduled job's row to schedule it. It opens on this week and the next two. Move earlier or later, zoom in and out, **Fit** to show the whole plan, or **Today** to go back to the three weeks. Filter by project or to just your jobs. |
 
+**Export PDF** (beside the project filter in the List, and at the top of the Timeline) asks which jobs to export, then downloads them as a PDF in Nscale's look, plan by plan (A4 landscape):
+
+- **All:** every job in the open plans.
+- **Unassigned:** jobs nobody has been given yet.
+- **Scheduled:** jobs with a start date, in date order.
+
+*Include finished jobs* adds the done ones. It follows the page's project filter and only includes plans you can see. Each job shows its number, title, the first line of its description, sub jobs, who's on it, start, end, length and status (overdue ones in red). A summary at the top counts jobs, plans, statuses, overdue and unassigned jobs. A long plan carries on over the page with its headings repeated. Regular work and leave aren't in it. It's made on the server with `reportlab` (`app/export.py`).
+
 **Plan headings** (in the List by person, and on the Timeline) start folded: click the arrow to show or hide their jobs, and the page remembers which are open. Each shows the plan's **% complete** as a bar, worked out from all its jobs: each job counts equally, Done counts 100%, In progress its own %, anything else 0%. The bar turns green at 100%.
 
 A plan's activity is one thread:

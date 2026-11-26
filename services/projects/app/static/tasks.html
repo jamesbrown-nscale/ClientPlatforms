@@ -374,6 +374,14 @@
   .planmenu button.pmreg .pmm { max-width: 100%; }
   .planmenu button.pmreg.new { font-weight: 500; color: var(--primary); }
   dialog.regdlg { width: min(640px, calc(100vw - 32px)); }
+  .pdfdlg .pick { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .pdfdlg .pick label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; font-weight: 400; margin: 0; }
+  .pdfdlg .pick label:has(input:checked) { border-color: var(--primary); background: #F5F8FF; box-shadow: 0 0 0 3px rgba(15,65,243,.10); }
+  .pdfdlg .pick input { width: auto; height: auto; margin-top: 3px; accent-color: var(--primary); }
+  .pdfdlg .pick b { display: block; }
+  .pdfdlg .pick .muted { font-size: 12.5px; }
+  .pdfdlg .chk { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-weight: 400; cursor: pointer; }
+  .pdfdlg .chk input { width: auto; height: auto; accent-color: var(--primary); }
   .regdlg .rlist { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .regdlg .ritem { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid var(--surface); background: #fff; text-align: left; font: inherit; cursor: pointer; }
   .regdlg .ritem:first-child { border-top: 0; }
@@ -444,6 +452,7 @@
       <input type="search" id="q" placeholder="Search plans" aria-label="Search">
       <select id="jobSort" aria-label="Sort" hidden><option value="start">By start date</option><option value="plan">By plan</option><option value="person">By person</option><option value="status">By status</option></select>
       <select id="proj" aria-label="Project"><option value="">All projects</option></select>
+      <button class="btn" style="height:38px;flex-shrink:0" id="pdfBtn" type="button" title="Download the jobs as a PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 14.5 12 17l2.5-2.5"/></svg>Export PDF</button>
     </div>
     <div class="rows" id="rows"><div class="empty">Loading…</div></div>
   </section>
@@ -459,6 +468,7 @@
         <button type="button" data-mode="list" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span>List</span></button>
         <button type="button" data-mode="timeline" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h9M8 12h10M6 18h7"/></svg><span>Timeline</span></button>
       </div>
+      <button class="btn" id="pdfBtn2" type="button" title="Download the jobs as a PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 14.5 12 17l2.5-2.5"/></svg>Export PDF</button>
       <button class="btn" id="regBtn2" type="button" title="The team's standing duties (a ticket queue, a weekly check): set them up here, then give them to people from the + beside their name">Regular work</button>
       <button class="btn primary" id="newBtn2">New plan</button>
     </div>
@@ -1747,6 +1757,50 @@ async function regularDialog(opts = {}) {
 }
 
 /** Give regular work to someone (or change or remove it): first day, how long, how often and until when, a note. */
+/* Export PDF: which jobs (all, unassigned or scheduled), from the project picked on the page, as an Nscale-styled PDF. */
+function pdfDialog() {
+  document.querySelector('dialog.leavedlg')?.remove();
+  const proj = MODE === 'timeline' ? $('calProj') : $('proj'), pname = proj.value ? proj.options[proj.selectedIndex].text : '';
+  let last = 'all';
+  try { last = localStorage.getItem('cp.pdf.which') || 'all'; } catch {}
+  const opt = (v, t, d) => `<label><input type="radio" name="which" value="${v}" ${v === last ? 'checked' : ''}><span><b>${t}</b><span class="muted">${d}</span></span></label>`;
+  const d = document.createElement('dialog');
+  d.className = 'leavedlg pdfdlg';
+  d.innerHTML = `<form method="dialog">
+      <h2>Export PDF</h2>
+      <p class="muted" style="margin:0">The jobs, plan by plan, as a PDF to share or print${pname ? `, from ${esc(pname)}` : ''}.</p>
+      <div class="pick" role="radiogroup" aria-label="Which jobs">
+        ${opt('all', 'All', 'Every job in the open plans.')}
+        ${opt('unassigned', 'Unassigned', 'Jobs nobody has been given yet.')}
+        ${opt('scheduled', 'Scheduled', 'Jobs with a start date, in date order.')}
+      </div>
+      <label class="chk"><input type="checkbox" id="pdfDone"> Include finished jobs</label>
+      <div class="notice" id="pdfErr" hidden style="margin-top:12px"></div>
+      <div class="lact"><button class="btn primary small" value="go">Download PDF</button><button class="btn small" value="cancel" formnovalidate>Cancel</button></div>
+    </form>`;
+  document.body.append(d);
+  d.querySelector('form').onsubmit = async e => {
+    if (e.submitter?.value !== 'go') return;
+    e.preventDefault();
+    const which = d.querySelector('input[name=which]:checked').value, btn = e.submitter;
+    try { localStorage.setItem('cp.pdf.which', which); } catch {}
+    const q = new URLSearchParams({ which, project: proj.value || '', done: $('pdfDone').checked ? 'true' : 'false' });
+    btn.disabled = true; btn.textContent = 'Making the PDF…';
+    try {
+      const res = await fetch('api/export.pdf?' + q, { cache: 'no-store' });
+      if (res.status === 401) { location.reload(); return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || res.statusText); }
+      const url = URL.createObjectURL(await res.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: (res.headers.get('content-disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'team-planning.pdf' });
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+      d.close();
+    } catch (x) { $('pdfErr').textContent = x.message; $('pdfErr').hidden = false; btn.disabled = false; btn.textContent = 'Download PDF'; }
+  };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+  d.querySelector('input[name=which]:checked')?.focus();
+}
+
 function slotDialog(s) {
   document.querySelector('dialog.leavedlg')?.remove();
   const d = document.createElement('dialog');
@@ -2051,6 +2105,7 @@ async function addJobOn(pid, day, assignee = '') {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ACT_OPEN && !document.querySelector('.cp-mention:not([hidden]), dialog[open]')) closeActivity(); });
   $('newBtn').onclick = newTask; $('newBtn2').onclick = newTask;
   $('regBtn').onclick = () => regularDialog(); $('regBtn2').onclick = () => regularDialog();
+  $('pdfBtn').onclick = $('pdfBtn2').onclick = pdfDialog;
   if (/^\d{4}-\d{2}-\d{2}$/.test(fromHash.get('from') || '')) {
     RS = fromHash.get('from'); const z = Number(fromHash.get('zoom')); DW = z >= ZOOMS[0] && z <= 400 ? z : 34; FIT = WEEKS = false; RE = RS;
   }

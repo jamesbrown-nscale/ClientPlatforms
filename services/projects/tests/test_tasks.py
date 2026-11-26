@@ -500,3 +500,39 @@ def test_regular_work_delete_is_for_admins(c):
     w = c.post("/tasks/api/regular-work", headers=AMY, json={"title": "Ticket queue"}).json()["added"]
     assert c.delete(f"/tasks/api/regular-work/{w['id']}", headers=AMY).status_code == 403
     assert c.delete(f"/tasks/api/regular-work/{w['id']}", headers=ADMIN).json()["regular"] == []
+
+
+def test_export_pdf(c, monkeypatch):
+    from app import export
+    a = new(c, title="Discovery")
+    b = new(c, title="Build")
+    c.post(f"/tasks/api/tasks/{b['id']}/jobs", headers=AMY, json={"title": "Code", "start": "2026-11-20", "duration": 4, "assignee": "amy.chen@nscale.com"})
+    c.post(f"/tasks/api/tasks/{a['id']}/jobs", headers=AMY, json={"title": "Interviews", "start": "2026-11-18", "duration": 2, "assignee": "bob.smith@nscale.com"})
+    w = c.post(f"/tasks/api/tasks/{a['id']}/jobs", headers=AMY, json={"title": "Write up"}).json()
+    c.post(f"/tasks/api/tasks/{a['id']}/jobs", headers=AMY, json={"title": "Old notes", "start": "2026-11-02", "duration": 1})
+    old = next(j for j in c.get(f"/tasks/api/tasks/{a['id']}", headers=AMY).json()["jobs"] if j["title"] == "Old notes")
+    c.patch(f"/tasks/api/tasks/{a['id']}/jobs/{old['id']}", headers=AMY, json={"status": "Done"})
+    pid = c.post("/projects/api/projects", headers=AMY_P, json={"name": "Secret"}).json()["id"]
+    hidden = new(c, title="Hidden", projectId=pid)
+    c.post(f"/tasks/api/tasks/{hidden['id']}/jobs", headers=AMY, json={"title": "Nobody else sees this"})
+
+    r = c.get("/tasks/api/export.pdf", headers=AMY, params={"which": "all"})
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-" and r.headers["content-type"] == "application/pdf"
+    assert 'filename="team-planning-all-' in r.headers["content-disposition"]
+    assert c.get("/tasks/api/export.pdf", headers=AMY, params={"which": "nope"}).status_code == 422
+
+    got = {}
+    monkeypatch.setattr(export, "build_pdf", lambda groups, **kw: got.update(groups=groups, **kw) or b"%PDF-")
+    jobs = lambda: [(g["title"], [j["title"] for j in g["jobs"]]) for g in got["groups"]]   # noqa: E731
+    c.get("/tasks/api/export.pdf", headers=BOB, params={"which": "all"})
+    assert ("Hidden", ["Nobody else sees this"]) not in jobs()                                  # Bob isn't in the project
+    assert ("Discovery", ["Interviews", "Write up"]) in jobs()                                  # finished jobs left out
+    assert got["heading"] == "All jobs" and dict(got["counts"])["Jobs"] == 3
+    c.get("/tasks/api/export.pdf", headers=BOB, params={"which": "unassigned"})
+    assert jobs() == [("Discovery", ["Write up"])]
+    c.get("/tasks/api/export.pdf", headers=BOB, params={"which": "scheduled", "done": True})
+    assert jobs() == [("Discovery", ["Old notes", "Interviews"]), ("Build", ["Code"])]          # date order; finished ones too
+    assert "Including finished jobs" in got["sub"]
+    c.get("/tasks/api/export.pdf", headers=AMY, params={"which": "all", "project": pid})
+    assert jobs() == [("Hidden", ["Nobody else sees this"])] and "Secret" in got["sub"]
+    assert w["id"]
