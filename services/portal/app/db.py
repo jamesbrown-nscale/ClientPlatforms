@@ -34,6 +34,8 @@ TOOLS = [   # every tool on the site; the id is its path (/notifications/ etc.) 
      "about": "Raise, review and approve changes to devices and services, through the right flow for each change type."},
     {"id": "restart", "group": "Device Management", "name": "Restart reminder", "icon": "restart", "url": "/restart/",
      "about": "Which Windows devices have gone too long without a restart, who put it off, and when they restarted."},
+    {"id": "packaging", "group": "Device Management", "name": "App Packaging", "icon": "package", "url": "/packaging/",
+     "about": "Upload an installer, script or folder: it's packaged for Intune as an .intunewin, with its install and uninstall commands."},
     {"id": "projects", "group": "Project Management", "name": "Projects", "icon": "projects", "url": "/projects/",
      "about": "Small project workspaces: status reports, timeline, RAID, actions, decisions, budget and closure."},
     {"id": "tasks", "group": "Project Management", "name": "Team Planning", "icon": "tasks", "url": "/tasks/",
@@ -115,6 +117,7 @@ class DB:
         self.bin = Bin(self._db, self._lock)   # deleted people, kept 30 days (recycle.py; Settings → Recycle bin)
         self._copy_levels("users", ["org", "departments"], "pages-from-users")
         self._copy_levels("users", ["users-ct"], "users-ct-from-users")
+        self._copy_levels("devices", ["packaging"], "packaging-from-devices")   # whoever works on Devices can package apps
         self._copy_levels("users", ["all-users"], "all-users-from-users")   # whoever sees Users sees everyone   # a clone of Users: the same people can use it
 
     def _db(self):

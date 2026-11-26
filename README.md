@@ -10,6 +10,7 @@ The Client Platforms team's tools, behind one sign-in, as a Docker stack on a sm
 | `/changes/` | Change management: raise, review and approve changes, through a flow per change type | [`services/projects`](services/projects) (`app/changes.py`) |
 | `/devices/` | Devices: every device in Jamf and Intune (make, model, OS, platform, who uses it) | [`services/inventory`](services/inventory) |
 | `/restart/` | Restart reminder: which devices have gone too long without a restart, who put it off | [`services/restart`](services/restart) (app: [WindowsRestart](https://github.com/jamesbrown-nscale/WindowsRestart)) |
+| `/packaging/` | App Packaging: upload an installer, script or folder, get an .intunewin with its install and uninstall commands | [`services/packaging`](services/packaging) |
 | `/projects/` | Projects: small project workspaces (status, timeline, RAID, delivery logs, budget, closure) | [`services/projects`](services/projects) |
 | `/tasks/` | Team Planning: plans of scheduled jobs, with a timeline, questions, updates and comments | [`services/projects`](services/projects) (`app/tasks.py`) |
 | `/users/` | Users: the people we look after, imported by CSV, tagged with department and division, line manager, VIP or Standard and primary device. |
@@ -120,6 +121,49 @@ The Windows Restart Reminder app reports what happens on each device, and the pa
 The answer is `{"results": [{"reportId", "status": "created" | "updated" | "duplicate" | "rejected", "error"?}]}`. Resending a report is safe. `GET /restart/api/policy` returns the policy (`maxUptimeDays`, `countdownHours`, `latestScheduleTime`), so the app can follow the site instead of its `appsettings.json`.
 
 **The app sends these from version 1.2** (`ReportUrl` and `ReportKey` in its `appsettings.json`, queued and retried like the elevation worker; see the WindowsRestart README). Earlier versions don't report.
+
+## App Packaging
+
+`/packaging/` (under Device Management, below Restart reminder) turns an installer into an Intune Win32 app package. Drop or choose one of these:
+
+- an installer (.msi or .exe);
+- a script (.ps1, .cmd or .bat);
+- a whole folder: the installer with the files it needs. The folder's layout is kept, and the folder itself is the top of the package.
+
+Pick the file Intune runs (it picks the likeliest: an MSI, then an EXE, then an Install script) and, optionally, a name. Then press **Package for Intune**. A progress bar shows the upload.
+
+It makes the **.intunewin** itself (`app/intunewin.py`), in the same format as Microsoft's IntuneWinAppUtil:
+
+1. The files are zipped.
+2. The zip is encrypted with AES-256-CBC under a fresh key and IV, behind an HMAC-SHA256.
+3. A `Detection.xml` holds the keys, the zip's SHA-256 and, for an MSI, its details.
+
+It runs on the Linux VM, without the Windows tool. It also works out the commands (`app/installers.py`):
+
+| Installer | What it reads | Install / uninstall |
+|---|---|---|
+| MSI | The MSI's own tables: product name, version, publisher, product code, upgrade code, package code, per-machine or per-user, services | `msiexec /i "x.msi" /qn /norestart` (with a transform if there's an .mst) and `msiexec /x {ProductCode} /qn /norestart`, both logging to the Intune agent's log folder. Detection: the MSI product code and version. |
+| EXE | Its version information (product, publisher, version) and what made it: Inno Setup, NSIS, WiX Burn, Advanced Installer, InstallShield, Squirrel, Google Update | Each builder's own silent switches. Where the uninstall depends on where the app installs (Inno's `unins000.exe`, NSIS's `Uninstall.exe`), the folder is filled in from the product name, with a note to check it. An unknown EXE gets `/S` and a note to check the vendor's switches. Detection: suggested as the app's Uninstall registry entry, or a file it installs. |
+| PowerShell | — | 64-bit PowerShell (`%SystemRoot%\sysnative\...\powershell.exe -ExecutionPolicy Bypass -File`), because Intune's agent is 32-bit. An `Uninstall*.ps1` alongside is the uninstall; otherwise the script with `-Uninstall`. |
+| CMD / BAT | — | `cmd.exe /c "x.cmd"`, and an `Uninstall*.cmd` alongside. |
+
+Each package opens in a side panel with:
+
+- **Download**;
+- the install and uninstall commands (copy buttons; editors can change them);
+- the install behavior (System or User);
+- the detection rule;
+- **Check before you upload** notes, such as "per-user MSI", "online installer", or "check the uninstaller's folder";
+- the product and upgrade codes;
+- the files, and notes of your own.
+
+Editors can rename a package or delete it.
+
+**Storage.** The VM's disk is small, so a package's .intunewin is kept 7 days (`PACKAGING_KEEP_DAYS`). Past 5 GB in all (`PACKAGING_MAX_TOTAL_GB`), the oldest go first. A removed package keeps its details and commands. One upload is at most 2,048 MB (`PACKAGING_MAX_UPLOAD_MB`; Caddy allows a little over 2 GB on `/packaging/`).
+
+Access is its own (Settings → Permissions): view to see and download, edit to package, change and delete. Roles that had Devices were given the same level once.
+
+The package format is checked by decrypting it again in the tests. It hasn't been uploaded to Intune from here. The first time, upload one in the Intune admin center (Apps → Windows → Add → Windows app (Win32)) and check it installs.
 
 ## Devices
 

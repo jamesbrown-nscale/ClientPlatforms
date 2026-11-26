@@ -1,7 +1,7 @@
 # Client Platforms front door (Docker: the Google Cloud VM, or your own machine).
 #
 #   /notifications/*  IT Notifications      /elevation/*  admin elevation log
-#   /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
+#   /packaging/*      App Packaging        /restart/*        Restart Reminder      /projects/*   Projects      /tasks/*   Tasks      /team/*   Team
 #   /inbox/*          your notifications   /changes/*   Change management
 #   /devices/*        Devices (Jamf, Intune) /all-users/*   All Users   /users/*   Users - FTE   /users-ct/*   Users - CT   /org/*   Org chart   /departments/*   Departments
 #   everything else: the portal (home, sign-in, settings)
@@ -83,6 +83,15 @@
 	handle @restart {
 		import signed_in
 		import to restart
+	}
+	# App Packaging: uploads installers (up to 2 GB, as the service allows).
+	@packaging path /packaging /packaging/*
+	handle @packaging {
+		import signed_in
+		request_body {
+			max_size 2100MB
+		}
+		import to packaging
 	}
 	@projects path /projects /projects/*
 	handle @projects {
