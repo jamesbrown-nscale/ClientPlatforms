@@ -7,23 +7,11 @@
 <link rel="icon" href="static/nscale-icon.svg">
 <link rel="stylesheet" href="static/inventory.css">
 <script src="/static/nav.js" defer></script>
+<script src="static/colfilter.js"></script>
 <style>
   .b-fte { background: var(--surface); color: var(--primary); }
   .b-ct { background: #F1E8FF; color: #5B2DA8; }
   tr[data-url] { cursor: pointer; }
-  /* Column filters (Type, Platform): a funnel next to the heading opens the column's values to tick. */
-  th button.flt { margin-left: 6px; padding: 2px 4px; border-radius: 5px; vertical-align: -2px; color: var(--text2); opacity: .55; }
-  th button.flt:hover, th button.flt[aria-expanded="true"] { opacity: 1; background: var(--grey-fill); }
-  th button.flt.on { opacity: 1; color: #fff; background: var(--primary); }
-  th[aria-sort] button.flt::after { content: none; }
-  th button.flt svg { width: 13px; height: 13px; display: block; }
-  .fpop { position: absolute; z-index: 50; min-width: 210px; max-height: 340px; overflow: auto; background: var(--bg); border: 1px solid var(--border);
-          border-radius: 10px; box-shadow: 0 8px 28px rgba(4, 14, 39, .16); padding: 8px; font-size: 14px; }
-  .fpop .ft { font-weight: 600; padding: 4px 6px 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
-  .fpop .ft button { all: unset; cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 500; }
-  .fpop label { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; cursor: pointer; }
-  .fpop label:hover { background: var(--grey-fill); }
-  .fpop label .c { margin-left: auto; color: var(--text2); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -41,7 +29,7 @@
       <h1>All Users</h1>
       <p class="sub">Everyone on Users - FTE and Users - CT in one list. Click someone to open them on their own list, where they're edited, imported and matched to devices.</p>
     </div>
-    <div class="acts"><a class="btn" href="api/users.csv" download>Download CSV</a></div>
+    <div class="acts"><a class="btn" href="api/users.csv" download>Download CSV</a><button class="btn" id="importBtn" type="button">Import CSV</button></div>
   </div>
   <div class="notice" id="notice" hidden></div>
 
@@ -85,6 +73,19 @@
   </div>
 </main>
 
+<dialog class="imp" id="imp" aria-labelledby="impTitle">
+  <div class="in">
+    <h2 id="impTitle">Import users from a CSV</h2>
+    <p class="sub" style="margin:0">The same import as on Users - FTE and Users - CT: each column is matched by its heading and only those fields change. With a <b>List</b> column (FTE or CT, as in Download CSV), each row goes to its own list; without one, choose the list. Nothing changes straight away: the new people, changes and leavers go to each list's <b>Review</b>, to accept or not.</p>
+    <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>List</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>Location</span><span>User type</span><span>Platform</span><span>Primary device</span></div>
+    <p class="hint">Someone already on the other list is left out rather than added twice: move them on their own list. <a href="/users/api/template.csv" download>Download a template</a>.</p>
+    <div class="seg" id="impList" role="group" aria-label="Which list" style="margin-top:14px"></div>
+    <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
+      <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
+    <div id="impOut"></div>
+  </div>
+  <div class="foot"><button class="btn" id="impClose" type="button">Cancel</button><button class="btn primary" id="impGo" type="button" disabled>Import</button></div>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -93,10 +94,6 @@ const typeBadge = t => `<span class="badge ${t === 'VIP' ? 'b-vip' : t === 'Stan
 const listBadge = u => `<span class="badge ${u.list === 'users-ct' ? 'b-ct' : 'b-fte'}" title="${esc(u.listName)}">${u.list === 'users-ct' ? 'CT' : 'FTE'}</span>`;
 const hasDevice = u => u.primaryDevice && !u.primaryDevice.missing;
 let ALL = [], FILTER = 'all', SORT = { key: 'name', dir: 1 }, LIST = '';
-// Column filters: the values ticked in the Type and Platform headings (empty = everything). '' = no platform.
-const COLF = { type: new Set(), platform: new Set() };
-const colVal = (u, col) => col === 'type' ? u.type : (u.platform || '');
-const colLabel = (col, v) => col === 'platform' && !v ? 'None' : v;
 try { LIST = localStorage.getItem('cp-all-users-list') || ''; } catch {}
 
 async function api(path) {
@@ -120,13 +117,11 @@ function deviceCell(u) {
 // Tagged with the "No Device" user type: they aren't meant to have one, so they aren't under No primary device.
 const noDeviceType = u => (u.type || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ') === 'no device';
 
-function matches(u) {
+// skipCol: leave out that column filter (for its own counts). skipTile: leave out the tile picked (for the tiles' counts).
+function matches(u, skipCol, skipTile) {
   if (LIST && u.list !== LIST) return false;
-  for (const col in COLF) if (COLF[col].size && !COLF[col].has(colVal(u, col))) return false;
-  if (FILTER.startsWith('list:') && u.list !== FILTER.slice(5)) return false;
-  if (FILTER === 'vip' && u.type !== 'VIP') return false;
-  if (FILTER === 'device' && !hasDevice(u)) return false;
-  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
+  if (!CF.passes(u, skipCol)) return false;
+  if (!skipTile && !tileOk(u)) return false;
   if ($('dept').value && u.department !== $('dept').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;
   const words = $('q').value.toLowerCase().split(/\s+/).filter(Boolean);
@@ -134,6 +129,13 @@ function matches(u) {
   const d = u.primaryDevice || {};
   const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.location, u.type, u.platform, u.listName, d.name, d.serial, d.model].join(' ').toLowerCase();
   return words.every(w => hay.includes(w));
+}
+function tileOk(u) {
+  if (FILTER.startsWith('list:') && u.list !== FILTER.slice(5)) return false;
+  if (FILTER === 'vip' && u.type !== 'VIP') return false;
+  if (FILTER === 'device' && !hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
+  return true;
 }
 function sortVal(u, k) {
   if (k === 'manager') return (u.managerName || u.manager || '~').toLowerCase();
@@ -151,9 +153,9 @@ function drawPills() {
   if (on) { th.style.left = on.offsetLeft + 'px'; th.style.width = on.offsetWidth + 'px'; }
 }
 
-// The tiles count the list picked in the FTE / CT pill (both when it's on All).
+// The tiles count who's left after the other filters (the FTE / CT pill, search, department, type, the column filters).
 function drawTiles() {
-  const us = LIST ? ALL.filter(u => u.list === LIST) : ALL;
+  const us = ALL.filter(u => matches(u, null, true));
   const st = { users: us.length, 'users-fte': us.filter(u => u.list === 'users').length, 'users-ct': us.filter(u => u.list === 'users-ct').length,
                vip: us.filter(u => u.type === 'VIP').length, withDevice: us.filter(hasDevice).length,
                noDevice: us.filter(u => !hasDevice(u) && !noDeviceType(u)).length };
@@ -161,7 +163,7 @@ function drawTiles() {
 }
 
 function draw() {
-  drawFltButtons();
+  CF.drawButtons();
   drawTiles();
   const rows = ALL.filter(matches), k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
@@ -200,61 +202,156 @@ $('pills').addEventListener('click', e => {
 ['q', 'dept', 'type'].forEach(id => $(id).addEventListener('input', draw));
 window.addEventListener('resize', drawPills);
 
-/* ---------- Column filters ---------- */
-let POP = null;   // {col, el, btn} while a filter list is open
-function closePop() {
-  if (!POP) return;
-  POP.el.remove(); POP.btn.setAttribute('aria-expanded', 'false'); POP = null;
+/* ---------- Import CSV: each row to Users - FTE or Users - CT (their own import, then their Review) ---------- */
+const LISTS = { users: 'Users - FTE', 'users-ct': 'Users - CT' };
+let CSV = null, PICK = 'users', ADDNEW = null, EVERYONE = false, PLAN = null;   // PLAN: {list: {csv, rows, report}}
+
+// A CSV as rows of cells (quotes, doubled quotes and line breaks in quotes; comma, semicolon or tab).
+function parseCsv(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/)[0] || '';
+  const d = [',', ';', '\t'].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === d) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
 }
-function drawFltButtons() {
-  document.querySelectorAll('th button.flt').forEach(b => {
-    const n = COLF[b.dataset.col].size;
-    b.classList.toggle('on', n > 0);
-    b.title = n ? `Filtered: ${[...COLF[b.dataset.col]].map(v => colLabel(b.dataset.col, v)).join(', ')}` : `Filter by ${b.dataset.col}`;
-  });
+const toCsv = rows => rows.map(r => r.map(c => /[",\r\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c).join(',')).join('\r\n');
+const norm = h => h.toLowerCase().replace(/[^a-z0-9]/g, '');
+// "FTE", "Users - FTE", "CT", "Users - CT", "contractor" … → the list; anything else → null
+function listOf(v) {
+  const n = norm(v);
+  if (!n) return null;
+  if (/ct$|contract/.test(n)) return 'users-ct';
+  if (/fte$|^users?$|employee|perm/.test(n)) return 'users';
+  return null;
 }
-function popBody(col) {
-  // The values in the column, with how many: counted within the other filters (so the numbers add up to what you'd see).
-  const others = ALL.filter(u => { const keep = COLF[col]; COLF[col] = new Set(); const ok = matches(u); COLF[col] = keep; return ok; });
-  const counts = new Map();
-  for (const u of others) counts.set(colVal(u, col), (counts.get(colVal(u, col)) || 0) + 1);
-  for (const v of COLF[col]) if (!counts.has(v)) counts.set(v, 0);
-  const order = col === 'type' ? ['VIP', 'Standard'] : ['Mac', 'Windows', 'Linux', ''];
-  const vals = [...counts.keys()].sort((a, b) => {
-    const ia = order.indexOf(a), ib = order.indexOf(b);
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-  });
-  return `<div class="ft"><span>${col === 'type' ? 'Type' : 'Platform'}</span><button type="button" data-clear>${COLF[col].size ? 'Clear' : ''}</button></div>`
-    + vals.map(v => `<label><input type="checkbox" value="${esc(v)}" ${COLF[col].has(v) ? 'checked' : ''}> ${esc(colLabel(col, v))}<span class="c">${(counts.get(v) || 0).toLocaleString()}</span></label>`).join('');
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', cache: 'no-store', body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'nscale-admin' } });
+  if (res.status === 401) throw new Error('Your sign-in has expired. Reload the page to sign in again.');
+  const j = await res.json().catch(() => ({}));
+  if (res.status === 403) throw new Error(`You can't import into ${LISTS[path.split('/')[1]]}: you need edit access to it.`);
+  if (!res.ok) throw new Error(j.detail || `Error ${res.status}`);
+  return j;
 }
-function openPop(btn) {
-  const col = btn.dataset.col;
-  if (POP && POP.col === col) return closePop();
-  closePop();
-  const el = document.createElement('div');
-  el.className = 'fpop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', `Filter by ${col}`);
-  el.innerHTML = popBody(col);
-  document.body.appendChild(el);
-  const r = btn.getBoundingClientRect();
-  el.style.top = (r.bottom + scrollY + 6) + 'px';
-  el.style.left = Math.max(8, Math.min(r.left + scrollX - 8, scrollX + innerWidth - el.offsetWidth - 8)) + 'px';
-  btn.setAttribute('aria-expanded', 'true');
-  POP = { col, el, btn };
-  el.addEventListener('change', e => {
-    const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
-    if (cb.checked) COLF[col].add(cb.value); else COLF[col].delete(cb.value);
-    draw(); el.querySelector('[data-clear]').textContent = COLF[col].size ? 'Clear' : '';
+
+/** Which rows go to which list, and who's left out (already on the other list, or an unknown List value). */
+function split() {
+  const rows = parseCsv(CSV);
+  if (!rows.length) throw new Error('The CSV is empty.');
+  const head = rows[0], li = head.findIndex(h => norm(h) === 'list'), ei = head.findIndex(h => ['email', 'emailaddress', 'mail', 'userprincipalname', 'upn', 'workemail'].includes(norm(h)));
+  if (ei < 0) throw new Error('The CSV needs an Email column (the first row must be the column headings).');
+  const keep = head.map((_, i) => i !== li);
+  const out = {}, skipped = [];
+  const onList = new Map(ALL.map(u => [u.email.toLowerCase(), u.list]));
+  rows.slice(1).forEach((r, n) => {
+    const email = (r[ei] || '').trim().toLowerCase();
+    let to = li >= 0 ? listOf(r[li] || '') : PICK;
+    if (li >= 0 && !to) { skipped.push(`Row ${n + 2}${email ? ` (${email})` : ''}: the List is “${r[li] || ''}”, not FTE or CT`); return; }
+    const now = onList.get(email);
+    if (now && now !== to) { skipped.push(`Row ${n + 2} (${email}): already on ${LISTS[now]}, so not added to ${LISTS[to]}`); return; }
+    (out[to] = out[to] || [head.filter((_, i) => keep[i])]).push(r.filter((_, i) => keep[i]));
   });
-  el.addEventListener('click', e => {
-    if (!e.target.closest('[data-clear]')) return;
-    COLF[col].clear(); draw(); el.innerHTML = popBody(col);
-  });
-  el.querySelector('input')?.focus();
+  return { byColumn: li >= 0, lists: out, skipped };
 }
-document.querySelectorAll('th button.flt').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openPop(b); }));
-document.addEventListener('click', e => { if (POP && !POP.el.contains(e.target) && e.target !== POP.btn) closePop(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && POP) { const b = POP.btn; closePop(); b.focus(); } });
-window.addEventListener('resize', closePop);
+
+function drawPick(byColumn) {
+  $('impList').hidden = byColumn;
+  $('impList').innerHTML = Object.entries(LISTS).map(([k, v]) => `<button type="button" aria-pressed="${k === PICK}" data-l="${k}">${v}</button>`).join('');
+}
+
+function listSummary(list, r, done) {
+  const n = x => (x || 0).toLocaleString();
+  const probs = (r.problems || []).map(p => `<li>Row ${p.row}${p.email ? ` (${esc(p.email)})` : ''}: ${esc(p.message)}</li>`).join('') + (r.moreProblems ? `<li>…and ${r.moreProblems} more.</li>` : '');
+  const changes = (r.changes || []).slice(0, 100).map(c => `<tr><td><b>${esc(c.name)}</b>${c.new ? ' <span class="badge b-intune">New</span>' : ''}<div class="muted">${esc(c.email)}</div></td>
+      <td>${c.fields.length ? c.fields.map(f => `<div><span class="muted">${esc(f.field)}:</span> ${f.from ? `<s class="muted">${esc(f.from)}</s> → ` : ''}<b>${esc(f.to) || '<span class="muted">(empty)</span>'}</b></div>`).join('') : '<span class="muted">Added with just their email</span>'}</td></tr>`).join('')
+    + ((r.changes || []).length > 100 || r.moreChanges ? `<tr><td colspan="2" class="muted">…and more.</td></tr>` : '');
+  const left = r.left ? `<p class="muted" style="margin:8px 0 0">${n(r.left)} on ${LISTS[list]} ${r.left === 1 ? "isn't" : "aren't"} in the file and will be listed as Left: ${r.leftNames.map(esc).join(', ')}${r.left > r.leftNames.length ? ' …' : ''}.</p>` : '';
+  return `<h3 style="margin:18px 0 0">${LISTS[list]}${done ? ` · <a href="/${list}/review">Open Review</a>` : ''}</h3>
+    <div class="sum" style="margin-top:8px">
+      <div><b>${n(r.updated)}</b><span class="muted">changed</span></div>
+      <div><b>${n(r.added)}</b><span class="muted">new${r.skipped ? ` · ${n(r.skipped)} left out` : ''}</span></div>
+      <div><b>${n(r.unchanged)}</b><span class="muted">already the same</span></div></div>${left}
+    ${changes ? `<div class="chg" style="margin-top:10px"><table>${changes}</table></div>` : ''}
+    ${probs ? `<ul class="probs">${probs}</ul>` : ''}`;
+}
+
+async function check() {
+  $('impOut').innerHTML = '<p class="muted">Checking…</p>'; $('impGo').disabled = true; PLAN = null;
+  try {
+    const sp = split();
+    drawPick(sp.byColumn);
+    const names = Object.values(sp.lists)[0]?.[0] || parseCsv(CSV)[0];
+    if (ADDNEW === null) ADDNEW = names.some(h => ['name', 'displayname', 'fullname', 'firstname'].includes(norm(h)));
+    PLAN = {};
+    for (const [list, rows] of Object.entries(sp.lists)) {
+      const csv = toCsv(rows);
+      PLAN[list] = { csv, report: await post(`/${list}/api/import`, { csv, dryRun: true, addNew: ADDNEW, everyone: EVERYONE }) };
+    }
+    const rs = Object.values(PLAN).map(p => p.report), sum = k => rs.reduce((a, r) => a + (r[k] || 0), 0);
+    const newIn = sum('newInFile');
+    const todo = sum('added') + sum('updated') + sum('left');
+    $('impOut').innerHTML = `${sp.byColumn ? `<p class="muted" style="margin:14px 0 0">Using the List column: ${Object.entries(sp.lists).map(([l, r]) => `${(r.length - 1).toLocaleString()} for ${LISTS[l]}`).join(', ') || 'no rows'}.</p>` : ''}
+      ${newIn ? `<label class="addnew"><input type="checkbox" id="impAddNew" ${ADDNEW ? 'checked' : ''}> Also add the ${newIn.toLocaleString()} ${newIn === 1 ? "person who isn't" : "people who aren't"} on ${sp.byColumn ? 'their list' : LISTS[PICK]} yet</label>` : ''}
+      <label class="addnew"><input type="checkbox" id="impEveryone" ${EVERYONE ? 'checked' : ''}> This file is everyone on ${sp.byColumn ? Object.keys(sp.lists).map(l => LISTS[l]).join(' and ') : LISTS[PICK]}: list who's not in it as <b>Left</b></label>
+      ${Object.entries(PLAN).map(([l, p]) => listSummary(l, p.report, false)).join('')}
+      ${sp.skipped.length ? `<h3 style="margin:18px 0 0">Left out</h3><ul class="probs">${sp.skipped.slice(0, 200).map(x => `<li>${esc(x)}</li>`).join('')}${sp.skipped.length > 200 ? `<li>…and ${sp.skipped.length - 200} more.</li>` : ''}</ul>` : ''}
+      ${!Object.keys(PLAN).length ? '<p class="muted" style="margin-top:14px">No rows to import.</p>' : ''}`;
+    $('impAddNew')?.addEventListener('change', e => { ADDNEW = e.target.checked; check(); });
+    $('impEveryone').addEventListener('change', e => { EVERYONE = e.target.checked; check(); });
+    $('impGo').disabled = !todo;
+    $('impGo').textContent = !todo ? 'Nothing to review' : `Send ${todo.toLocaleString()} to Review`;
+  } catch (e) { $('impOut').innerHTML = `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`; }
+}
+
+async function readFile(f) {
+  if (!f) return;
+  if (f.size > 5 * 1024 * 1024) { $('impOut').innerHTML = '<div class="notice" style="margin-top:14px">That file is over 5 MB.</div>'; return; }
+  const bytes = await f.arrayBuffer();   // Excel's CSV is often Windows-1252, not UTF-8
+  try { CSV = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { CSV = new TextDecoder('windows-1252').decode(bytes); }
+  ADDNEW = null; EVERYONE = false;
+  $('dropText').innerHTML = `<b>${esc(f.name)}</b> · choose another`;
+  await check();
+}
+
+$('impGo').onclick = async () => {
+  if (!PLAN) return;
+  $('impGo').disabled = true;
+  let html = '';
+  try {
+    for (const [list, p] of Object.entries(PLAN)) {
+      const r = await post(`/${list}/api/import`, { csv: p.csv, addNew: ADDNEW !== false, everyone: EVERYONE });
+      html += listSummary(list, r, true);
+    }
+    $('impOut').innerHTML = `<div class="notice ok" style="margin:14px 0 0">Sent to Review. Nothing on the lists has changed yet: accept the changes on each list's Review.</div>` + html;
+    $('impGo').textContent = 'Done'; PLAN = null; $('impClose').textContent = 'Close';
+  } catch (e) { $('impOut').insertAdjacentHTML('afterbegin', `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`); $('impGo').disabled = false; }
+};
+$('importBtn').onclick = () => {
+  CSV = null; PLAN = null; ADDNEW = null; EVERYONE = false; PICK = LIST || 'users';
+  $('file').value = ''; $('impOut').innerHTML = ''; $('impGo').disabled = true; $('impGo').textContent = 'Import';
+  $('dropText').innerHTML = '<b>Choose a CSV</b> or drop it here'; $('impClose').textContent = 'Cancel';
+  drawPick(false); $('imp').showModal();
+};
+$('impList').addEventListener('click', e => { const b = e.target.closest('button[data-l]'); if (!b) return; PICK = b.dataset.l; drawPick(false); if (CSV) check(); });
+$('impClose').onclick = () => $('imp').close();
+$('file').onchange = () => readFile($('file').files[0]);
+$('drop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+['dragenter', 'dragover'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
+$('imp').addEventListener('close', async () => { try { ALL = (await api('api/users')).items; draw(); } catch {} });
+
+const CF = colFilters({ rows: () => ALL, matches: (u, col) => matches(u, col), onChange: draw });
 
 (async () => {
   try {

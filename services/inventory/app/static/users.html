@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="static/inventory.css">
 <script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
+<script src="static/colfilter.js"></script>
 </head>
 <body>
 <header>
@@ -60,8 +61,8 @@
         <th data-sort="team"><button type="button">Department</button></th>
         <th data-sort="manager" class="hide-sm"><button type="button">Line manager</button></th>
         <th data-sort="location" class="hide-sm"><button type="button">Location</button></th>
-        <th data-sort="type"><button type="button">Type</button></th>
-        <th data-sort="platform"><button type="button">Platform</button></th>
+        <th data-sort="type"><button type="button">Type</button><button type="button" class="flt" data-col="type"></button></th>
+        <th data-sort="platform"><button type="button">Platform</button><button type="button" class="flt" data-col="platform"></button></th>
         <th data-sort="device"><button type="button">Primary device</button></th>
       </tr></thead>
       <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
@@ -163,7 +164,7 @@ function drawTypeTiles() {
     b.className = 'tile ' + (t.name === 'VIP' ? 'vip' : 'ty');
     b.dataset.f = 'type:' + t.name; b.dataset.typetile = '1';
     b.title = `Users whose type is ${t.name}`;
-    b.innerHTML = `<b>${t.count.toLocaleString()}</b><span>${esc(t.name === 'VIP' ? 'VIPs' : t.name)}</span>`;
+    b.innerHTML = `<b data-n>${t.count.toLocaleString()}</b><span>${esc(t.name === 'VIP' ? 'VIPs' : t.name)}</span>`;
     before.before(b);
   }
   const keep = $('type').value;
@@ -207,10 +208,10 @@ function deviceCell(u) {
 // Tagged with the "No Device" user type: they aren't meant to have one, so they aren't under No primary device.
 const noDeviceType = u => (u.type || '').trim().toLowerCase().replace(/[\s_-]+/g, ' ') === 'no device';
 
-function matches(u) {
-  if (FILTER.startsWith('type:') && u.type !== FILTER.slice(5)) return false;
-  if (FILTER === 'device' && !hasDevice(u)) return false;
-  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
+// skipCol: leave out that column filter (for its own counts). skipTile: leave out the tile picked (for the tiles' counts).
+function matches(u, skipCol, skipTile) {
+  if (!skipTile && !tileOk(u)) return false;
+  if (!CF.passes(u, skipCol)) return false;
   if ($('dept').value && u.department !== ($('dept').value === '__none__' ? '' : $('dept').value)) return false;
   if ($('div').value && u.division !== $('div').value) return false;
   if ($('type').value && u.type !== $('type').value) return false;
@@ -220,6 +221,23 @@ function matches(u) {
   const d = u.primaryDevice || {};
   const hay = [u.name, u.email, u.department, u.division, u.manager, u.managerName, u.title, u.location, u.department, u.type, d.name, d.serial, d.model, d.os, d.platform, u.platform].join(' ').toLowerCase();
   return words.every(w => hay.includes(w));
+}
+function tileOk(u) {
+  if (FILTER.startsWith('type:') && u.type !== FILTER.slice(5)) return false;
+  if (FILTER === 'device' && !hasDevice(u)) return false;
+  if (FILTER === 'nodevice' && (hasDevice(u) || noDeviceType(u))) return false;
+  return true;
+}
+// The tiles count who's left after the other filters (search, department, division, type, platform, the column filters).
+function drawTiles() {
+  const us = ALL.filter(u => matches(u, null, true));
+  const st = { users: us.length, departments: new Set(us.map(u => u.department).filter(Boolean)).size,
+               withDevice: us.filter(hasDevice).length, noDevice: us.filter(u => !hasDevice(u) && !noDeviceType(u)).length };
+  for (const [k, v] of Object.entries(st)) $('s-' + k).textContent = v.toLocaleString();
+  document.querySelectorAll('#tiles [data-typetile]').forEach(t => {
+    const name = t.dataset.f.slice(5);
+    t.querySelector('[data-n]').textContent = us.filter(u => u.type === name).length.toLocaleString();
+  });
 }
 function sortVal(u, k) {
   if (k === 'manager') return (u.managerName || u.manager || '~').toLowerCase();
@@ -231,6 +249,8 @@ function sortVal(u, k) {
 
 function draw() {
   drawTypePill();
+  CF.drawButtons();
+  drawTiles();
   const rows = ALL.filter(matches);
   const k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
@@ -310,6 +330,7 @@ function divisionList() {
   $('divs').innerHTML = [...names].sort().map(v => `<option value="${esc(v)}">`).join('');
 }
 
+const CF = colFilters({ rows: () => ALL, matches: (u, col) => matches(u, col), onChange: draw });
 window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
   try {
@@ -586,7 +607,7 @@ $('rows').addEventListener('click', e => {
   e.stopPropagation();
   const k = b.dataset.fold; FOLDED.has(k) ? FOLDED.delete(k) : FOLDED.add(k); draw();
 }, true);
-document.querySelectorAll('th[data-sort] button').forEach(b => b.addEventListener('click', () => {
+document.querySelectorAll('th[data-sort] button:not(.flt)').forEach(b => b.addEventListener('click', () => {
   const k = b.parentElement.dataset.sort; SORT = { key: k, dir: SORT.key === k ? -SORT.dir : 1 }; draw();
 }));
 ['q', 'div', 'type'].forEach(id => $(id).addEventListener('input', draw));

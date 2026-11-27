@@ -229,3 +229,18 @@ dialog.imp::backdrop { background: rgba(4,14,39,.45); }
   .pills button { padding: 0 10px; }
   .pills .pn { display: none; }
 }
+
+/* Column filters (Type, Platform): a funnel next to the heading opens the column's values to tick. */
+th:has(> button.flt) { white-space: nowrap; }
+th button.flt { margin-left: 6px; padding: 2px 4px; border-radius: 5px; vertical-align: -2px; color: var(--text2); opacity: .55; }
+th button.flt:hover, th button.flt[aria-expanded="true"] { opacity: 1; background: var(--grey-fill); }
+th button.flt.on { opacity: 1; color: #fff; background: var(--primary); }
+th[aria-sort] button.flt::after { content: none; }
+th button.flt svg { width: 13px; height: 13px; display: block; }
+.fpop { position: absolute; z-index: 50; min-width: 210px; max-height: 340px; overflow: auto; background: var(--bg); border: 1px solid var(--border);
+        border-radius: 10px; box-shadow: 0 8px 28px rgba(4, 14, 39, .16); padding: 8px; font-size: 14px; }
+.fpop .ft { font-weight: 600; padding: 4px 6px 8px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.fpop .ft button { all: unset; cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 500; }
+.fpop label { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; cursor: pointer; }
+.fpop label:hover { background: var(--grey-fill); }
+.fpop label .c { margin-left: auto; color: var(--text2); font-size: 12px; }
