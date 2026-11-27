@@ -76,10 +76,13 @@
 <dialog class="imp" id="imp" aria-labelledby="impTitle">
   <div class="in">
     <h2 id="impTitle">Import users from a CSV</h2>
-    <p class="sub" style="margin:0">The same import as on Users - FTE and Users - CT: each column is matched by its heading and only those fields change. With a <b>List</b> column (FTE or CT, as in Download CSV), each row goes to its own list; without one, choose the list. Nothing changes straight away: the new people, changes and leavers go to each list's <b>Review</b>, to accept or not.</p>
+    <p class="sub" style="margin:0">The same import as on Users - FTE and Users - CT: each column is matched by its heading and only those fields change. With a <b>List</b> column (FTE or CT, as in Download CSV), each row goes to its own list. Without one, choose a list, or <b>All users</b>: everyone is updated on the list they're on, and new people go to the list you pick. Nothing changes straight away: the new people, changes and leavers go to each list's <b>Review</b>, to accept or not.</p>
     <div class="cols" aria-label="Columns it reads"><span><b>Email</b> (needed)</span><span>List</span><span>Name</span><span>Job title</span><span>Department</span><span>Division</span><span>Line manager</span><span>Location</span><span>User type</span><span>Platform</span><span>Primary device</span></div>
     <p class="hint">Someone already on the other list is left out rather than added twice: move them on their own list. <a href="/users/api/template.csv" download>Download a template</a>.</p>
-    <div class="seg" id="impList" role="group" aria-label="Which list" style="margin-top:14px"></div>
+    <div id="impPick" style="margin-top:14px">
+      <div class="seg" id="impList" role="group" aria-label="Which list"></div>
+      <div id="impNewBox" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center"><span class="muted">New people go to</span><div class="seg" id="impNew" role="group" aria-label="New people go to"></div></div>
+    </div>
     <label class="drop" id="drop" tabindex="0"><input type="file" id="file" accept=".csv,text/csv" hidden>
       <span id="dropText"><b>Choose a CSV</b> or drop it here</span></label>
     <div id="impOut"></div>
@@ -204,7 +207,8 @@ window.addEventListener('resize', drawPills);
 
 /* ---------- Import CSV: each row to Users - FTE or Users - CT (their own import, then their Review) ---------- */
 const LISTS = { users: 'Users - FTE', 'users-ct': 'Users - CT' };
-let CSV = null, PICK = 'users', ADDNEW = null, EVERYONE = false, PLAN = null;   // PLAN: {list: {csv, rows, report}}
+// PICK: users, users-ct, or all (each person on the list they're on; new people to NEWTO)
+let NEWTO = 'users', CSV = null, PICK = 'all', ADDNEW = null, EVERYONE = false, PLAN = null;   // PLAN: {list: {csv, rows, report}}
 
 // A CSV as rows of cells (quotes, doubled quotes and line breaks in quotes; comma, semicolon or tab).
 function parseCsv(text) {
@@ -255,7 +259,7 @@ function split() {
   const onList = new Map(ALL.map(u => [u.email.toLowerCase(), u.list]));
   rows.slice(1).forEach((r, n) => {
     const email = (r[ei] || '').trim().toLowerCase();
-    let to = li >= 0 ? listOf(r[li] || '') : PICK;
+    let to = li >= 0 ? listOf(r[li] || '') : PICK === 'all' ? (onList.get(email) || NEWTO) : PICK;
     if (li >= 0 && !to) { skipped.push(`Row ${n + 2}${email ? ` (${email})` : ''}: the List is “${r[li] || ''}”, not FTE or CT`); return; }
     const now = onList.get(email);
     if (now && now !== to) { skipped.push(`Row ${n + 2} (${email}): already on ${LISTS[now]}, so not added to ${LISTS[to]}`); return; }
@@ -265,8 +269,10 @@ function split() {
 }
 
 function drawPick(byColumn) {
-  $('impList').hidden = byColumn;
-  $('impList').innerHTML = Object.entries(LISTS).map(([k, v]) => `<button type="button" aria-pressed="${k === PICK}" data-l="${k}">${v}</button>`).join('');
+  $('impPick').hidden = byColumn;
+  $('impList').innerHTML = Object.entries({ all: 'All users', ...LISTS }).map(([k, v]) => `<button type="button" aria-pressed="${k === PICK}" data-l="${k}">${v}</button>`).join('');
+  $('impNewBox').hidden = PICK !== 'all';
+  $('impNew').innerHTML = Object.entries(LISTS).map(([k, v]) => `<button type="button" aria-pressed="${k === NEWTO}" data-l="${k}">${v}</button>`).join('');
 }
 
 function listSummary(list, r, done) {
@@ -301,8 +307,8 @@ async function check() {
     const newIn = sum('newInFile');
     const todo = sum('added') + sum('updated') + sum('left');
     $('impOut').innerHTML = `${sp.byColumn ? `<p class="muted" style="margin:14px 0 0">Using the List column: ${Object.entries(sp.lists).map(([l, r]) => `${(r.length - 1).toLocaleString()} for ${LISTS[l]}`).join(', ') || 'no rows'}.</p>` : ''}
-      ${newIn ? `<label class="addnew"><input type="checkbox" id="impAddNew" ${ADDNEW ? 'checked' : ''}> Also add the ${newIn.toLocaleString()} ${newIn === 1 ? "person who isn't" : "people who aren't"} on ${sp.byColumn ? 'their list' : LISTS[PICK]} yet</label>` : ''}
-      <label class="addnew"><input type="checkbox" id="impEveryone" ${EVERYONE ? 'checked' : ''}> This file is everyone on ${sp.byColumn ? Object.keys(sp.lists).map(l => LISTS[l]).join(' and ') : LISTS[PICK]}: list who's not in it as <b>Left</b></label>
+      ${newIn ? `<label class="addnew"><input type="checkbox" id="impAddNew" ${ADDNEW ? 'checked' : ''}> Also add the ${newIn.toLocaleString()} ${newIn === 1 ? "person who isn't" : "people who aren't"} on ${sp.byColumn ? 'their list' : PICK === 'all' ? 'either list' : LISTS[PICK]} yet${!sp.byColumn && PICK === 'all' ? ` (to ${LISTS[NEWTO]})` : ''}</label>` : ''}
+      <label class="addnew"><input type="checkbox" id="impEveryone" ${EVERYONE ? 'checked' : ''}> This file is everyone on ${sp.byColumn || PICK === 'all' ? Object.keys(sp.lists).map(l => LISTS[l]).join(' and ') : LISTS[PICK]}: list who's not in it as <b>Left</b></label>
       ${Object.entries(PLAN).map(([l, p]) => listSummary(l, p.report, false)).join('')}
       ${sp.skipped.length ? `<h3 style="margin:18px 0 0">Left out</h3><ul class="probs">${sp.skipped.slice(0, 200).map(x => `<li>${esc(x)}</li>`).join('')}${sp.skipped.length > 200 ? `<li>…and ${sp.skipped.length - 200} more.</li>` : ''}</ul>` : ''}
       ${!Object.keys(PLAN).length ? '<p class="muted" style="margin-top:14px">No rows to import.</p>' : ''}`;
@@ -337,12 +343,13 @@ $('impGo').onclick = async () => {
   } catch (e) { $('impOut').insertAdjacentHTML('afterbegin', `<div class="notice" style="margin-top:14px">${esc(e.message)}</div>`); $('impGo').disabled = false; }
 };
 $('importBtn').onclick = () => {
-  CSV = null; PLAN = null; ADDNEW = null; EVERYONE = false; PICK = LIST || 'users';
+  CSV = null; PLAN = null; ADDNEW = null; EVERYONE = false; PICK = LIST || 'all';
   $('file').value = ''; $('impOut').innerHTML = ''; $('impGo').disabled = true; $('impGo').textContent = 'Import';
   $('dropText').innerHTML = '<b>Choose a CSV</b> or drop it here'; $('impClose').textContent = 'Cancel';
   drawPick(false); $('imp').showModal();
 };
 $('impList').addEventListener('click', e => { const b = e.target.closest('button[data-l]'); if (!b) return; PICK = b.dataset.l; drawPick(false); if (CSV) check(); });
+$('impNew').addEventListener('click', e => { const b = e.target.closest('button[data-l]'); if (!b) return; NEWTO = b.dataset.l; drawPick(false); if (CSV) check(); });
 $('impClose').onclick = () => $('imp').close();
 $('file').onchange = () => readFile($('file').files[0]);
 $('drop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
