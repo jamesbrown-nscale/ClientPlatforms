@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import access, auth, changes, files, inbox, modules, recycle, tasks, team
+from . import access, auth, changes, files, inbox, modules, recycle, tasks, team, workbook
 from .auth import User, require_user
 from .modules import BY_KEY, ValidationError
 from .store import Store
@@ -523,6 +523,115 @@ def add_template(pid: str, key: str, body: TemplateIn, user: User = Depends(requ
     for rec in modules.template_records(mod, start):
         added.append(store.add_item(pid, key, modules.next_ref(mod, store.refs(pid, key)), _check(mod, rec), user.email))
     return {"items": added}
+
+
+# ---------- Excel workbook: export and import (see workbook.py) ----------
+
+MAX_WORKBOOK = 10 * 1024 * 1024
+
+
+def _xlsx(data: bytes, name: str) -> Response:
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}",
+                             "Cache-Control": "private, no-store"})
+
+
+@app.get("/api/template.xlsx")
+def workbook_template(user: User = Depends(require_user)):
+    return _xlsx(workbook.export(None, []), "Project template.xlsx")
+
+
+@app.get("/api/projects/{pid}/export.xlsx")
+def export_workbook(pid: str, user: User = Depends(require_user)):
+    need(pid, user, *ROLES)
+    p = store.project(pid)
+    name = re.sub(r'[\\/:*?"<>|]+', " ", p.get("name") or "Project").strip() or "Project"
+    return _xlsx(workbook.export(p, store.items(pid)), f"{name} {modules.today()}.xlsx")
+
+
+async def _read_workbook(request: Request) -> dict:
+    if int(request.headers.get("content-length") or 0) > MAX_WORKBOOK:
+        raise HTTPException(413, "The workbook can be at most 10 MB.")
+    data = await request.body()
+    if len(data) > MAX_WORKBOOK:
+        raise HTTPException(413, "The workbook can be at most 10 MB.")
+    try:
+        return workbook.read(data)
+    except workbook.WorkbookError as e:
+        raise HTTPException(422, str(e))
+
+
+def _project_fields(parsed: dict) -> dict:
+    """The project's details from the Project sheet, checked."""
+    raw = parsed["project"]
+    try:
+        body = ProjectIn(**{k: raw[k] for k in ("name", "description", "status", "currency", "approvedBudget") if k in raw})
+    except Exception:
+        raise HTTPException(422, "Project sheet: the name or description is too long.")
+    if body.status is not None:
+        body.status = next((s for s in modules.PROJECT_STATUSES if s.lower() == body.status.lower()), body.status)
+    if body.currency is not None:
+        body.currency = body.currency.upper()
+    try:
+        return _apply({}, body)
+    except HTTPException as e:
+        raise HTTPException(422, f"Project sheet: {e.detail}")
+
+
+def _add_records(pid: str, good: dict, user: User) -> None:
+    for mod in modules.MODULES:   # in section order, so meetings come after the Action Log
+        for data in good.get(mod["key"], []):
+            item = store.add_item(pid, mod["key"], modules.next_ref(mod, store.refs(pid, mod["key"])), data, user.email)
+            if mod["key"] == "meetings":
+                _sync_meeting(pid, item, user)
+
+
+def _counts(good: dict) -> list[dict]:
+    return [{"key": m["key"], "label": m["label"], "count": len(good[m["key"]])} for m in modules.MODULES if good.get(m["key"])]
+
+
+@app.post("/api/projects/{pid}/import")
+async def import_workbook(pid: str, request: Request, preview: bool = False, user: User = Depends(require_user)):
+    """Adds every row in the workbook to this project as new records. preview=1 checks it and says what
+    it would add, without saving. Nothing is added if any row has a problem. The Project sheet fills in
+    the project's description and approved budget only where they're empty (owners only)."""
+    role = need(pid, user, "Owner", "Editor")
+    parsed = await _read_workbook(request)
+    good, problems = workbook.check(parsed)
+    details = {}
+    if role == "Owner" and parsed["project"]:
+        p = store.project(pid)
+        fields = _project_fields({"project": {k: v for k, v in parsed["project"].items() if k != "name"}})
+        details = {k: v for k, v in fields.items() if k in ("description", "approvedBudget") and v != "" and p.get(k) in (None, "")}
+    out = {"sections": _counts(good), "problems": problems, "skipped": parsed["skipped"],
+           "details": sorted(details), "total": sum(len(v) for v in good.values())}
+    if preview or problems:
+        return {**out, "saved": False}
+    if not out["total"] and not details:
+        raise HTTPException(422, "There's nothing to import in that workbook.")
+    if details:
+        store.save_project({**store.project(pid), **details})
+    _add_records(pid, good, user)
+    return {**out, "saved": True}
+
+
+@app.post("/api/projects/import")
+async def import_new_project(request: Request, preview: bool = False, user: User = Depends(require_user)):
+    """A new project from a workbook: its details from the Project sheet, its records from the rest.
+    You're its owner. preview=1 checks it without saving."""
+    parsed = await _read_workbook(request)
+    fields = _project_fields(parsed)
+    good, problems = workbook.check(parsed)
+    if not fields.get("name"):
+        problems.insert(0, "Project sheet: give the project a name.")
+    out = {"name": fields.get("name", ""), "sections": _counts(good), "problems": problems, "skipped": parsed["skipped"],
+           "total": sum(len(v) for v in good.values())}
+    if preview or problems:
+        return {**out, "saved": False}
+    doc = store.create_project({"name": "", "description": "", "status": "active", "currency": "GBP", "approvedBudget": "", **fields},
+                               user.email, user.name)
+    _add_records(doc["id"], good, user)
+    return {**out, "saved": True, "id": doc["id"]}
 
 
 # ---------- Meeting actions ⇄ Action Log ----------

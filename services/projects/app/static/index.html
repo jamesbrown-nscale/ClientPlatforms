@@ -242,6 +242,19 @@
     main { padding: 20px 16px 48px; } .bar { padding: 0 16px; } .bar .app, .who { display: none; }
     .fld, .fld.third { grid-column: span 6; } .sub-row.upd, .sub-row.act { grid-template-columns: 1fr; }
   }
+  dialog.impdlg { border: 0; border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px)); background: #FDFFF8; box-shadow: 0 24px 64px rgba(4,14,39,.28); }
+  dialog.impdlg::backdrop { background: rgba(4,14,39,.45); }
+  .impdlg form { padding: 22px 24px 18px; }
+  .impdlg h2 { margin: 0 0 4px; font-size: 18px; text-transform: none; letter-spacing: normal; color: var(--text); }
+  .impdlg .links { display: flex; gap: 16px; flex-wrap: wrap; margin: 10px 0 14px; font-size: 13px; }
+  .impdlg .drop { display: block; border: 1.5px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; }
+  .impdlg .drop:hover, .impdlg .drop.over { border-color: var(--primary); background: var(--surface); }
+  .impdlg .drop input { display: none; }
+  .impdlg .drop b { display: block; }
+  .impdlg .res { margin-top: 14px; font-size: 13.5px; }
+  .impdlg .res ul { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; }
+  .impdlg .res .bad { color: var(--err); }
+  .impdlg .lact { display: flex; gap: 8px; margin-top: 18px; align-items: center; }
 </style>
 </head>
 <body>
@@ -383,7 +396,7 @@ async function renderList(my = ROUTE) {
     </a>`;
   };
   $('view').innerHTML = `<main class="full">
-    <div class="row" style="margin-bottom:6px"><h1>Projects</h1><span class="sp"></span><button class="btn primary" id="newProject">New project</button></div>
+    <div class="row" style="margin-bottom:6px"><h1>Projects</h1><span class="sp"></span><button class="btn" id="importProject">Import project</button><button class="btn primary" id="newProject">New project</button></div>
     <p class="sub">Small project workspaces: status reports, timeline, RAID, actions, decisions, budget, documents and closure. You see the projects you're a member of.</p>
     <div id="npForm" class="card pad" hidden style="margin-bottom:16px; max-width:640px">
       <h2>New project</h2>
@@ -396,12 +409,76 @@ async function renderList(my = ROUTE) {
     </div>
     ${projects.length ? `<div class="cards">${projects.map(card).join('')}</div>` : '<div class="card empty">No projects yet. Create one, or ask a project owner to add you.</div>'}
   </main>`;
+  $('importProject').onclick = () => importDialog(false);
   $('newProject').onclick = () => { $('npForm').hidden = false; $('npName').focus(); };
   $('npCancel').onclick = () => { $('npForm').hidden = true; };
   $('npCreate').onclick = async () => {
     try { const p = await post('projects', { name: $('npName').value, description: $('npDesc').value }); location.hash = '#/p/' + p.id; }
     catch (e) { $('npNotice').hidden = false; $('npNotice').textContent = e.message; }
   };
+}
+
+/* ---------- Excel import (see workbook.py) ---------- */
+// into: add the rows to the open project; otherwise make a new project from the workbook.
+function importDialog(into) {
+  document.querySelector('dialog.impdlg')?.remove();
+  const d = document.createElement('dialog');
+  d.className = 'impdlg';
+  d.innerHTML = `<form method="dialog">
+      <h2>${into ? 'Import into this project' : 'Import project'}</h2>
+      <p class="muted" style="margin:0">${into
+        ? 'Adds every row in an Excel workbook to this project as new records. Nothing here is changed or removed.'
+        : 'Makes a new project from an Excel workbook: its details from the Project sheet, its records from the other sheets.'}</p>
+      <div class="links"><a href="api/template.xlsx" download>Download a blank template</a>${into ? `<a href="api/projects/${esc(P.id)}/export.xlsx" download>Export this project</a>` : ''}</div>
+      <label class="drop" id="impDrop"><input type="file" id="impFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><b id="impName">Choose a workbook (.xlsx)</b><span class="muted">or drop it here</span></label>
+      <div class="res" id="impRes" hidden></div>
+      <div class="lact"><button class="btn primary small" value="go" id="impGo" disabled>Import</button><button class="btn small" value="cancel" formnovalidate>Cancel</button></div>
+    </form>`;
+  document.body.append(d);
+  const url = into ? `projects/${P.id}/import` : 'projects/import';
+  let file = null;
+  const send = preview => fetch('api/' + url + (preview ? '?preview=1' : ''), { method: 'POST', body: file, cache: 'no-store',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-Requested-With': 'nscale-admin' } })
+    .then(async res => { if (res.status === 401) { location.reload(); throw new Error('Signed out'); }
+      const j = await res.json().catch(() => ({})); if (!res.ok) throw new Error(j.detail || res.statusText); return j; });
+  const show = r => {
+    const res = $('impRes'); res.hidden = false;
+    const list = r.sections.map(x => `<li>${x.count} × ${esc(x.label)}</li>`).join('');
+    const det = (r.details || []).length ? `<li>The project's ${r.details.map(k => k === 'approvedBudget' ? 'approved budget' : k).join(' and ')} (empty now)</li>` : '';
+    let h = '';
+    if (r.problems.length) h += `<div class="bad"><b>${r.problems.length === 1 ? 'One thing needs' : r.problems.length + ' things need'} fixing first.</b> Nothing has been imported.<ul>${r.problems.slice(0, 50).map(x => `<li>${esc(x)}</li>`).join('')}${r.problems.length > 50 ? `<li>… and ${r.problems.length - 50} more</li>` : ''}</ul></div>`;
+    else if (list || det) h += `<b>${into ? 'It adds' : `Makes “${esc(r.name)}” with`}</b><ul>${list}${det}</ul>`;
+    else h += '<div class="bad">There are no rows to import in that workbook.</div>';
+    if (r.skipped.length) h += `<p class="muted" style="margin:8px 0 0">Not recognised, so left out: ${r.skipped.map(esc).join(', ')}.</p>`;
+    res.innerHTML = h;
+    $('impGo').disabled = !!r.problems.length || !(r.total || (r.details || []).length || !into);
+    $('impGo').textContent = r.total ? `Import ${r.total} record${r.total === 1 ? '' : 's'}` : into ? 'Import' : 'Create project';
+  };
+  const pick = async f => {
+    if (!f) return;
+    file = f; $('impName').textContent = f.name; $('impGo').disabled = true;
+    $('impRes').hidden = false; $('impRes').innerHTML = '<span class="muted">Checking the workbook…</span>';
+    try { show(await send(true)); } catch (e) { $('impRes').innerHTML = `<div class="bad">${esc(e.message)}</div>`; }
+  };
+  $('impFile').onchange = e => pick(e.target.files[0]);
+  const drop = $('impDrop');
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+  d.querySelector('form').onsubmit = async e => {
+    if (e.submitter?.value !== 'go') return;
+    e.preventDefault();
+    const btn = e.submitter; btn.disabled = true; btn.textContent = 'Importing…';
+    try {
+      const r = await send(false);
+      if (!r.saved) { show(r); return; }
+      d.close(); d.remove();
+      if (into) { P = await api('projects/' + P.id); renderProject('dashboard'); }
+      else location.hash = '#/p/' + r.id;
+    } catch (err) { $('impRes').hidden = false; $('impRes').innerHTML = `<div class="bad">${esc(err.message)}</div>`; btn.disabled = false; btn.textContent = 'Import'; }
+  };
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
 }
 
 /* ---------- Project workspace ---------- */
@@ -442,7 +519,7 @@ function renderDashboard() {
   const s = SUMMARY, b = s.budget, link = k => `#/p/${P.id}/${k}`;
   const spend = b.approved ? Math.round(100 * Math.max(b.actual, 0) / b.approved) : null;
   $('pmain').innerHTML = `
-    <div class="row" style="margin-bottom:4px"><h1>${esc(P.name)}</h1>${chip(P.status)}</div>
+    <div class="row" style="margin-bottom:4px"><h1>${esc(P.name)}</h1>${chip(P.status)}<span class="sp"></span><a class="btn" href="api/projects/${esc(P.id)}/export.xlsx" download>Export to Excel</a>${canEdit() ? '<button class="btn primary" id="importBtn">Import</button>' : ''}</div>
     <p class="sub">${esc(P.description || '')}</p>
     <div class="tiles">
       ${tile('Overall RAG', s.status.overallRag ? `<span class="dot ${esc(s.status.overallRag)}"></span> ${esc(s.status.overallRag)}` : '—',
@@ -477,6 +554,7 @@ function renderDashboard() {
     </div>`;
   $('pdName').value = P.name; $('pdDesc').value = P.description || ''; $('pdStatus').value = P.status;
   $('pdCur').value = P.currency || 'GBP'; $('pdBudget').value = P.approvedBudget ?? '';
+  if ($('importBtn')) $('importBtn').onclick = () => importDialog(true);
   if (!isOwner()) { document.querySelectorAll('#pmain .form input, #pmain .form select, #pmain .form textarea').forEach(e => e.disabled = true); $('pdActions').hidden = true; $('pdRO').hidden = false; }
   $('pdSave').onclick = async () => {
     try {
