@@ -575,16 +575,40 @@ def departments(users: list[dict]) -> list[dict]:
     return out
 
 
+class ViewIn(BaseModel):
+    """A download of just these people (the page's current view), in this order."""
+    emails: list[str] = Field(max_length=50000)
+
+
+def _only(items: list[dict], emails: list[str] | None) -> list[dict]:
+    """The people whose emails are listed, in the list's order (everyone, as they are, when it's None)."""
+    if emails is None:
+        return items
+    order = {}
+    for i, e in enumerate(emails):
+        order.setdefault(str(e).strip().lower(), i)
+    return sorted((u for u in items if u["email"].lower() in order), key=lambda u: order[u["email"].lower()])
+
+
 @users_app.get("/api/users.csv")
 def users_csv(user: User = Depends(auth.users_viewer)):
+    return _users_csv(None)
+
+
+@users_app.post("/api/users.csv")
+def users_csv_view(body: ViewIn, user: User = Depends(auth.users_viewer)):
+    return _users_csv(body.emails)
+
+
+def _users_csv(emails: list[str] | None) -> Response:
     rows = [{**u, "pd": (u["primaryDevice"] or {}).get("name", ""), "pdSerial": (u["primaryDevice"] or {}).get("serial", ""),
              "pdModel": (u["primaryDevice"] or {}).get("model", ""), "pdOs": " ".join(filter(None, [(u["primaryDevice"] or {}).get("os"), (u["primaryDevice"] or {}).get("osVersion")])),
              "pdPlatform": (u["primaryDevice"] or {}).get("platform", ""),
-             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _users()]
+             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _only(_users(), emails)]
     cols = [("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"), ("division", "Division"),
             ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("platform", "Platform"), ("pd", "Primary device"), ("pdSerial", "Serial"),
             ("pdModel", "Model"), ("pdOs", "OS"), ("pdPlatform", "Managed by"), ("others", "Other devices")]
-    return _csv(cols, rows, f"users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
+    return _csv(cols, rows, f"users{'-view' if emails is not None else ''}-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 
 
 @users_app.get("/api/template.csv")
@@ -1358,13 +1382,22 @@ def all_list(user: User = Depends(auth.all_users_viewer)):
 
 @all_app.get("/api/users.csv")
 def all_csv(user: User = Depends(auth.all_users_viewer)):
+    return _all_csv(None)
+
+
+@all_app.post("/api/users.csv")
+def all_csv_view(body: ViewIn, user: User = Depends(auth.all_users_viewer)):
+    return _all_csv(body.emails)
+
+
+def _all_csv(emails: list[str] | None) -> Response:
     rows = [{**u, "pd": (u["primaryDevice"] or {}).get("name", ""), "pdSerial": (u["primaryDevice"] or {}).get("serial", ""),
              "pdModel": (u["primaryDevice"] or {}).get("model", ""),
-             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in all_users()]
+             "others": ", ".join(f"{d['name'] or d['serial']} ({d['platform']})" for d in u["otherDevices"])} for u in _only(all_users(), emails)]
     cols = [("listName", "List"), ("email", "Email"), ("name", "Name"), ("title", "Job title"), ("department", "Department"),
             ("division", "Division"), ("manager", "Line manager"), ("location", "Location"), ("type", "User type"), ("platform", "Platform"),
             ("pd", "Primary device"), ("pdSerial", "Serial"), ("pdModel", "Model"), ("others", "Other devices")]
-    return _csv(cols, rows, f"all-users-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
+    return _csv(cols, rows, f"all-users{'-view' if emails is not None else ''}-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv")
 
 
 org_app = _view_app("Nscale Org chart", ORG, "org.html", auth.org_viewer)

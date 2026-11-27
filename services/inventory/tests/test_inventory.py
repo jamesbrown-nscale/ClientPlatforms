@@ -360,6 +360,12 @@ def test_csv_downloads(c):
     c.post("/users/api/users", headers=UE, json={"email": "eve@nscale.com", "name": "=HYPERLINK(1)"})
     body = c.get("/users/api/users.csv", headers=UV).text
     assert body.startswith("﻿Email,Name") and "'=HYPERLINK(1)" in body
+    c.post("/users/api/users", headers=UE, json={"email": "amy@nscale.com", "name": "Amy"})
+    c.post("/users/api/users", headers=UE, json={"email": "bob@nscale.com", "name": "Bob"})
+    view = c.post("/users/api/users.csv", headers=UV, json={"emails": ["BOB@nscale.com", "amy@nscale.com", "nobody@nscale.com"]})
+    assert view.status_code == 200 and [line.split(",")[0] for line in view.text.lstrip("\ufeff").splitlines()] == ["Email", "bob@nscale.com", "amy@nscale.com"]
+    assert "users-view-" in view.headers["content-disposition"]
+    assert c.post("/users/api/users.csv", headers={"X-CP-User": UV["X-CP-User"]}, json={"emails": []}).status_code == 403   # needs the header, like any POST
     assert "Email" in c.get("/users/api/template.csv", headers=UV).text
     assert c.get("/devices/api/devices.csv", headers=DV).text.startswith("﻿Name,Platform,Make,Model,OS")
 

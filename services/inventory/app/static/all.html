@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="static/inventory.css">
 <script src="/static/nav.js" defer></script>
 <script src="static/colfilter.js"></script>
+<script src="static/csvdownload.js"></script>
 <style>
   .b-fte { background: var(--surface); color: var(--primary); }
   .b-ct { background: #F1E8FF; color: #5B2DA8; }
@@ -29,7 +30,7 @@
       <h1>All Users</h1>
       <p class="sub">Everyone on Users - FTE and Users - CT in one list. Click someone to open them on their own list, where they're edited, imported and matched to devices.</p>
     </div>
-    <div class="acts"><a class="btn" href="api/users.csv" download>Download CSV</a><button class="btn" id="importBtn" type="button">Import CSV</button></div>
+    <div class="acts"><a class="btn" id="csvBtn" href="api/users.csv" download>Download CSV</a><button class="btn" id="importBtn" type="button">Import CSV</button></div>
   </div>
   <div class="notice" id="notice" hidden></div>
 
@@ -167,8 +168,9 @@ function drawTiles() {
 function draw() {
   CF.drawButtons();
   drawTiles();
-  const rows = ALL.filter(matches), k = SORT.key;
+  const rows = ALL.filter(u => matches(u)), k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
+  VIEW = rows;
   document.querySelectorAll('th[data-sort]').forEach(th => {
     if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
   });
@@ -355,6 +357,8 @@ $('drop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 
 $('drop').addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
 $('imp').addEventListener('close', async () => { try { ALL = (await api('api/users')).items; draw(); } catch {} });
 
+let VIEW = [];   // who the table shows, in its order (for Download CSV)
+csvDownload($('csvBtn'), { total: () => ALL.length, view: () => VIEW });
 const CF = colFilters({ rows: () => ALL, matches: (u, col) => matches(u, col), onChange: draw });
 
 (async () => {

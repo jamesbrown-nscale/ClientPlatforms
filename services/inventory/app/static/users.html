@@ -9,6 +9,7 @@
 <script src="/static/dialog.js"></script>
 <script src="/static/nav.js" defer></script>
 <script src="static/colfilter.js"></script>
+<script src="static/csvdownload.js"></script>
 </head>
 <body>
 <header>
@@ -27,7 +28,7 @@
     </div>
     <div class="acts">
       <button class="btn" id="matchBtn" type="button" hidden title="For users without a primary device: the one computer Jamf or Intune says is theirs">Match devices</button>
-      <a class="btn" href="api/users.csv" download>Download CSV</a>
+      <a class="btn" id="csvBtn" href="api/users.csv" download>Download CSV</a>
       <button class="btn" id="importBtn" type="button" hidden>Import CSV</button>
       <button class="btn primary" id="addBtn" type="button" hidden>Add user</button>
     </div>
@@ -251,9 +252,10 @@ function draw() {
   drawTypePill();
   CF.drawButtons();
   drawTiles();
-  const rows = ALL.filter(matches);
+  const rows = ALL.filter(u => matches(u));
   const k = SORT.key;
   rows.sort((a, b) => ((sortVal(a, k) < sortVal(b, k) ? -1 : sortVal(a, k) > sortVal(b, k) ? 1 : 0) * SORT.dir) || a.name.localeCompare(b.name));
+  VIEW = rows;
   document.querySelectorAll('th[data-sort]').forEach(th => {
     if (th.dataset.sort === k) th.setAttribute('aria-sort', SORT.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
   });
@@ -330,6 +332,8 @@ function divisionList() {
   $('divs').innerHTML = [...names].sort().map(v => `<option value="${esc(v)}">`).join('');
 }
 
+let VIEW = [];   // who the table shows, in its order (for Download CSV)
+csvDownload($('csvBtn'), { total: () => ALL.length, view: () => VIEW });
 const CF = colFilters({ rows: () => ALL, matches: (u, col) => matches(u, col), onChange: draw });
 window.cpRefresh = () => load();   // the refresh button in the header
 async function load() {
